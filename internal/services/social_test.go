@@ -380,13 +380,13 @@ func TestVictimStolenByAtMostThreePeoplePerDay(t *testing.T) {
 func TestStealPlayersAndFarmView(t *testing.T) {
 	e := setup(t)
 	w := e.world()
-	g1, a, b, c, d := w.g1, w.a, w.b, w.c, w.d
+	g1, a, b, d := w.g1, w.a, w.b, w.d
 	e.grow(b, 1, "wheat")
 	e.grow(b, 2, "wheat")
 	e.clock.Advance(60)
 	rows := must[[]StealPlayer](t)(e.so.StealPlayers(e.ctx, g1, a))
-	if len(rows) != 2 || rows[0].PlayerID != b || rows[0].Stealable != 2 || rows[0].LimitReached ||
-		rows[1].PlayerID != c || rows[1].Stealable != 0 {
+	// Go 版：農田全是空地的玩家（c）不列出（Python 會列出 c，可偷 0 格）
+	if len(rows) != 1 || rows[0].PlayerID != b || rows[0].Stealable != 2 || rows[0].LimitReached {
 		t.Fatalf("%+v", rows)
 	}
 	v := e.farmView(g1, a, b)

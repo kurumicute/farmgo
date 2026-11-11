@@ -311,9 +311,32 @@ func TestDeferKindsAndModal(t *testing.T) {
 }
 
 func TestCommandsPayloadIsFarmAndHelp(t *testing.T) {
-	cmds := CommandsPayload()
+	cmds := CommandsPayload(false)
 	if len(cmds) != 2 || cmds[0].Name != "farm" || cmds[1].Name != "help" || cmds[0].Type != 1 {
 		t.Fatalf("%+v", cmds)
+	}
+	// 音樂啟用時加上 16 個音樂指令；參數型別、必填、選項與「只能在伺服器使用」照 Python
+	with := CommandsPayload(true)
+	if len(with) != 18 {
+		t.Fatal(len(with))
+	}
+	byName := map[string]wireCommand{}
+	for _, c := range with {
+		byName[c.Name] = c
+	}
+	play, loop, remove, vol, help := byName["play"], byName["loop"], byName["remove"], byName["volume"], byName["music"]
+	if len(play.Options) != 1 || play.Options[0].Type != 3 || !play.Options[0].Required || len(play.Contexts) != 1 || play.Contexts[0] != 0 {
+		t.Fatalf("%+v", play)
+	}
+	if len(loop.Options[0].Choices) != 3 || loop.Options[0].Required || remove.Options[0].Type != 4 || vol.Options[0].Type != 10 {
+		t.Fatalf("%+v %+v %+v", loop, remove, vol)
+	}
+	if help.Contexts != nil { // /music 私訊也能用
+		t.Fatalf("%+v", help)
+	}
+	raw, _ := json.Marshal(with)
+	if strings.Contains(string(raw), `"options":null`) {
+		t.Fatal(string(raw))
 	}
 }
 

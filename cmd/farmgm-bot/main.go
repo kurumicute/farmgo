@@ -8,8 +8,8 @@
 //   - 清理逾時的釣魚、登入、同步 /farm 與 /help、處理互動；BACKGROUND_TASKS_RUNNER=bot 時背景結算；
 //   - 收到 SIGINT／SIGTERM 時關閉連線。
 //
-// 音樂不移植：Go 版只有農場。Python 版在沒有設定 MUSIC_BOT_TOKEN 時把音樂放在農場 Bot 程序內；
-// 改用 Go 版後音樂必須以獨立的音樂 Bot（Python app.music、MUSIC_BOT_TOKEN）執行。
+// 音樂（internal/music）與 Python 相同：沒有設定 MUSIC_BOT_TOKEN 時在農場 Bot 程序內執行，連線 LAVALINK_URI 的 Lavalink；
+// 只有斜線指令（前綴指令需要 Message Content 特權 Intent，正式環境沒有開啟，不移植）。
 package main
 
 import (
@@ -63,9 +63,6 @@ func run(ctx context.Context, envFile string) error {
 	}
 	bus := cachebus.StartFromSettings(ctx, settings.RedisURL, slog.Default()) // 選用：沒有設定或連不上時照常啟動
 	defer bus.Close()
-	if settings.MusicEnabled && !settings.MusicBotConfigured {
-		slog.Warn("Go 版 Bot 不包含音樂：沒有設定 MUSIC_BOT_TOKEN 時，音樂需要另外以 Python 的獨立音樂 Bot 執行。")
-	}
 
 	svc := services.NewAdminService(d, services.Options{})
 	cmds := bot.NewCommands(svc, bot.NewRunner(workers), ui.NewRegistry())

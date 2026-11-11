@@ -15,6 +15,7 @@ import (
 	"farmgm/internal/bot/ui"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/gameerr"
+	"farmgm/internal/game/seasons"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/services"
 )
@@ -74,7 +75,7 @@ func (p *Panel) loadShop(ctx context.Context) (any, error) {
 		return nil, err
 	}
 	for _, c := range all {
-		if c.ShopBuyable { // 稀有作物只能探索或培育取得
+		if c.ShopBuyable && c.InSeason { // 稀有作物只能探索或培育取得；只賣當季的種子（Go 版新增）
 			d.crops = append(d.crops, c)
 		}
 	}
@@ -200,6 +201,7 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	e := &ui.Embed{Title: "🏪 ✦ 農場商店 ✦", Color: Gold, Description: sections(
 		fmt.Sprintf("💰 你的金幣：**%s**　｜　🎣 釣具在「釣具商店」分頁　｜　🎁 溫室、每週特賣、稱號在「特賣與升級」", money(d.gold)),
+		seasons.NowText(time.Now())+"：🌰 商店只賣當季可以種的種子，換季後會換一批。",
 		Section{Title: "🌰 種子", Lines: seeds, Sep: "\n\n"},
 		Section{Title: "🧪 道具", Lines: consumables, Sep: "\n\n"},
 		Section{Title: "📦 倉庫", Lines: []string{warehouse}},
@@ -315,12 +317,16 @@ func (p *Panel) buildPrices(_ context.Context, data any) (*ui.Embed, error) {
 		if c.SeasonText != "" {
 			season = "　" + c.SeasonText
 		}
+		if c.SeasonSellPct > 100 { // 非當季：賣價較高（Go 版新增）
+			season += fmt.Sprintf("　📈 非當季售價 +%d%%", c.SeasonSellPct-100)
+		}
 		blocks = append(blocks, fmt.Sprintf("%s **%s**　種子 %d 金%s\n　⏱️ %s　🧺 收成 ×%d %s%s\n　🏷️ 一般：%s\n　🌟 黃金作物：%s\n　💎 珍稀變種「%s」：%s",
 			cropEmoji(c.Code), c.Name, c.SeedPrice, season, services.LongDuration(c.GrowSeconds), c.HarvestQuantity,
 			cropEmoji(c.Code), c.Name, row(c.Prices, "none"), row(c.Prices, "golden"), c.VariantName, row(c.Prices, "variant")))
 	}
 	e := &ui.Embed{Title: "📈 ✦ 市場價格 ✦", Color: Gold, Description: sections(
-		"每個農產品的單價依 **品質** 與 **突變** 而不同（金幣／個）。",
+		fmt.Sprintf("每個農產品的單價依 **品質** 與 **突變** 而不同（金幣／個）。\n%s：當季作物照原價，非當季的作物售價 +%d%%（物以稀為貴）。",
+			seasons.NowText(time.Now()), seasons.OffSeasonSellPct-100),
 		Section{Title: "作物", Lines: blocks, Sep: "\n\n"},
 		"🍀 巨型作物：收成數量變多，單價同一般｜⚡ 快速生長：只縮短時間，單價同一般",
 	)}

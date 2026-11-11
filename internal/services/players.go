@@ -22,7 +22,7 @@ import (
 )
 
 func cropInfo(c *models.CropType, now *time.Time) CropInfo {
-	return CropInfo{
+	info := CropInfo{
 		SeasonText:      seasons.Describe(c.Seasons, c.HourStart, c.HourEnd),
 		InSeason:        now == nil || seasons.Available(c.Seasons, c.HourStart, c.HourEnd, *now),
 		Code:            c.Code,
@@ -31,8 +31,14 @@ func cropInfo(c *models.CropType, now *time.Time) CropInfo {
 		GrowSeconds:     c.GrowSeconds,
 		HarvestQuantity: c.HarvestQuantity,
 		SellPrice:       c.SellPrice,
+		SeasonSellPct:   100,
 		ShopBuyable:     c.ShopBuyable,
 	}
+	if now != nil { // 目前的市場價格：非當季物以稀為貴（Go 版新增）
+		info.SeasonSellPct = seasons.SellPct(c.Seasons, *now)
+		info.SellPrice = seasons.SellPrice(c.SellPrice, c.Seasons, *now)
+	}
+	return info
 }
 
 // ---------- 玩家 ----------

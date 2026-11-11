@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -542,6 +543,7 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 		return nil
 	}, btn{emoji: "📥", row: 2, disabled: ready == 0, style: ui.Success})
 	p.nav("機器", "machines", btn{emoji: "🔧", row: 2})
+	p.cancelCraftControls(d.orders)
 	p.navBack(4)
 	p.attachImage(e, d.image)
 	return e, nil
@@ -949,4 +951,41 @@ func (p *Panel) buildCasino(_ context.Context, data any) (*ui.Embed, error) {
 	p.navBack(4)
 	p.attachImage(e, d.image)
 	return e, nil
+}
+
+// cancelCraftControls 取消加工訂單（Go 版新增）：從選單選一張加工中或排隊中的訂單，再按一次「確認取消」才取消，
+// 退回原料，後面排隊的訂單往前遞補。
+func (p *Panel) cancelCraftControls(orders []services.OrderView) {
+	pending, hasPending := strings.CutPrefix(p.confirm, "cancel_craft:")
+	var options []option
+	for _, o := range orders {
+		if o.State != "in_progress" {
+			continue
+		}
+		options = append(options, option{fmt.Sprintf("#%d %s ×%d", o.OrderID, o.RecipeName, o.OutputQuantity), fmt.Sprint(o.OrderID),
+			fmt.Sprintf("%s｜還要 %s｜取消後退回原料", o.BuildingName, services.LongDuration(o.RemainingSeconds)), "❌"})
+	}
+	p.selectMenu("❌ 取消加工訂單（退回原料）…", options, func(ctx context.Context, it ui.Interaction, value string) error {
+		i := slices.IndexFunc(orders, func(o services.OrderView) bool { return fmt.Sprint(o.OrderID) == value })
+		if i < 0 {
+			return gameerr.NotFoundf("找不到這個項目。")
+		}
+		o := orders[i]
+		p.picker, p.confirm = nil, "cancel_craft:"+value
+		p.refresh(ctx, it, fmt.Sprintf("⚠️ 確定要取消加工訂單 #%d（%d 份%s）嗎？原料會全部退回，後面排隊的訂單會往前遞補。再按一次「確認取消」。",
+			o.OrderID, o.OutputQuantity, o.RecipeName), nil, "重繪", time.Time{})
+		return nil
+	}, 3, pending)
+	if hasPending {
+		id, err := strconv.ParseInt(pending, 10, 64)
+		if err != nil {
+			return
+		}
+		p.button("確認取消 #"+pending, func(ctx context.Context, it ui.Interaction) error {
+			p.act(ctx, it, p.call("cancel_craft", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().CancelCraft(ctx, p.playerID, id)
+			}), actOpts{})
+			return nil
+		}, btn{emoji: "❌", row: 4, style: ui.Danger})
+	}
 }

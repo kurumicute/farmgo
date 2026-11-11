@@ -1,7 +1,7 @@
 package discordio
 
 // Bot 本體（對應 Python app/discord_bot/bot.py 的 FarmBot）：登入、同步斜線指令、加入伺服器時建立對應群組、
-// 處理互動，以及（設定時）背景結算與面板延遲彙總。音樂不移植：Go 版 Bot 只有農場（見 README 與進度說明）。
+// 處理互動，以及（設定時）背景結算與面板延遲彙總。音樂（internal/music）在同一個程序內執行（沒有設定 MUSIC_BOT_TOKEN 時，與 Python 相同）。
 
 import (
 	"context"
@@ -21,6 +21,7 @@ import (
 	"farmgm/internal/bot/latency"
 	"farmgm/internal/bot/ui"
 	"farmgm/internal/config"
+	"farmgm/internal/music"
 	"farmgm/internal/services"
 )
 
@@ -43,6 +44,11 @@ type Bot struct {
 	mu       sync.Mutex
 	known    map[string]bool // 登入時已加入的伺服器（之後的 GUILD_CREATE 才是新加入）
 	ready    bool
+
+	// 音樂（沒有設定時為 nil）：登入後才知道 Bot 的使用者 ID，所以在第一次 READY 時建立並連線 Lavalink
+	music     *music.Music
+	musicOnce sync.Once
+	ctx       context.Context
 }
 
 // New 建立 Bot（尚未連線）。Intents 只需要伺服器基本資料（名稱、加入事件），不需要特權 Intent。
@@ -52,16 +58,23 @@ func New(settings config.Settings, cmds *bot.Commands, svc *services.AdminServic
 		return nil, err
 	}
 	s.Identify.Intents = discordgo.IntentsGuilds
+	if musicEnabled(settings) {
+		s.Identify.Intents |= discordgo.IntentsGuildVoiceStates // 加入語音頻道、偵測頻道沒人時自動離開（非特權）
+	}
 	s.StateEnabled = true
 	b := &Bot{S: s, Settings: settings, Cmds: cmds, Svc: svc, Reg: cmds.Registry, Log: slog.Default(), known: map[string]bool{}}
 	s.AddHandler(b.onReady)
 	s.AddHandler(b.onGuildCreate)
 	s.AddHandler(b.onInteraction)
+	s.AddHandler(b.onVoiceState)
+	s.AddHandler(b.onVoiceServer)
+	s.AddHandler(b.onGuildDelete)
 	return b, nil
 }
 
 // Run 連線並執行直到 ctx 取消：啟動時清理逾時的釣魚、定期檢查面板逾時、彙總延遲，BACKGROUND_TASKS_RUNNER=bot 時背景結算。
 func (b *Bot) Run(ctx context.Context) error {
+	b.ctx = ctx
 	b.cleanupFishing(ctx)
 	if err := b.S.Open(); err != nil {
 		return openError(err)
@@ -120,7 +133,12 @@ func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
 	b.ready = true
 	b.mu.Unlock()
 	b.Log.Info("Bot 已登入", "user", r.User.Username, "id", r.User.ID, "guilds", len(r.Guilds))
-	if err := s.UpdateGameStatus(0, "/farm 種田"); err != nil {
+	b.musicOnce.Do(func() { b.startMusic(r.User.ID) })
+	activity := "/farm 種田"
+	if b.music != nil {
+		activity += " ・ /play 聽歌"
+	}
+	if err := s.UpdateGameStatus(0, activity); err != nil {
 		b.Log.Warn("設定狀態失敗", "type", fmt.Sprintf("%T", err))
 	}
 	b.syncOnce.Do(func() { b.syncCommands(r.User.ID) })
@@ -150,7 +168,7 @@ func (b *Bot) syncCommands(userID string) {
 	if guildID != "" {
 		url = API + "applications/" + appID + "/guilds/" + guildID + "/commands"
 	}
-	body, err := client{b.S}.send(context.Background(), http.MethodPut, url, CommandsPayload(), nil)
+	body, err := client{b.S}.send(context.Background(), http.MethodPut, url, CommandsPayload(musicEnabled(st)), nil)
 	var synced []json.RawMessage
 	if err == nil {
 		err = json.Unmarshal(body, &synced)
@@ -179,18 +197,45 @@ func (b *Bot) syncCommands(userID string) {
 	}
 }
 
-// wireCommand 斜線指令（CHAT_INPUT）。
+// wireCommand 斜線指令（CHAT_INPUT）。Contexts [0] = 只能在伺服器中使用（discord.py guild_only）。
 type wireCommand struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Type        int    `json:"type"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Type        int             `json:"type"`
+	Options     []wireCmdOption `json:"options,omitempty"`
+	Contexts    []int           `json:"contexts,omitempty"`
 }
 
-// CommandsPayload 要註冊的斜線指令（只有 /farm 與 /help；以 PUT 整批覆寫，舊的指令會被移除）。
-func CommandsPayload() []wireCommand {
+type wireCmdOption struct {
+	Type        int          `json:"type"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Required    bool         `json:"required,omitempty"`
+	Choices     []wireChoice `json:"choices,omitempty"`
+}
+
+type wireChoice struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// CommandsPayload 要註冊的斜線指令：/farm、/help，音樂啟用時加上音樂指令（以 PUT 整批覆寫，舊的指令會被移除）。
+func CommandsPayload(withMusic bool) []wireCommand {
 	var out []wireCommand
 	for _, c := range bot.Specs() {
-		out = append(out, wireCommand{c.Name, c.Description, 1})
+		out = append(out, wireCommand{Name: c.Name, Description: c.Description, Type: 1})
+	}
+	if withMusic {
+		for _, s := range music.Specs() {
+			w := wireCommand{Name: s.Name, Description: s.Description, Type: 1}
+			if s.GuildOnly {
+				w.Contexts = []int{0}
+			}
+			for _, o := range s.Options {
+				w.Options = append(w.Options, wireOptionOf(o))
+			}
+			out = append(out, w)
+		}
 	}
 	return out
 }
@@ -229,7 +274,12 @@ func (b *Bot) onInteraction(s *discordgo.Session, ic *discordgo.InteractionCreat
 	it := NewInteraction(s, i, b.Reg)
 	switch i.Type {
 	case discordgo.InteractionApplicationCommand:
-		b.Cmds.Handle(ctx, it, i.ApplicationCommandData().Name)
+		name := i.ApplicationCommandData().Name
+		if b.music != nil && music.IsCommand(name) {
+			b.music.Handle(ctx, it, musicCommand(i, it))
+			return
+		}
+		b.Cmds.Handle(ctx, it, name)
 	case discordgo.InteractionMessageComponent:
 		d := i.MessageComponentData()
 		// 找不到元件（舊訊息、已逾時）時不回應，Discord 顯示互動失敗（discord.py 相同）
@@ -323,5 +373,51 @@ func sleep(ctx context.Context, d time.Duration) bool {
 		return false
 	case <-t.C:
 		return true
+	}
+}
+
+// startMusic 建立音樂模組並在背景連線 Lavalink（登入後才知道 Bot 的使用者 ID）。
+func (b *Bot) startMusic(botID string) {
+	st := b.Settings
+	if !musicEnabled(st) {
+		if st.MusicEnabled && st.LavalinkPassword == "" && !st.MusicBotConfigured {
+			b.Log.Warn("未設定 LAVALINK_PASSWORD，音樂功能無法使用")
+		}
+		return
+	}
+	cfg := music.Config{Volume: st.MusicVolume, PlaylistLimit: st.MusicPlaylistLimit, Prefix: st.MusicPrefix,
+		IdleTimeout: time.Duration(st.MusicIdleTimeout) * time.Second}
+	m := music.New(cfg, musicDiscord{b.S, b.Reg}, nil, b.Reg, music.LoadSettings(st.MusicSettingsFile), botID, b.Log)
+	node := music.NewClient(st.LavalinkURI, st.LavalinkPassword, botID, m, b.Log)
+	m.SetNode(node)
+	b.music = m
+	ctx := b.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	go node.Run(ctx)
+	b.Log.Info("音樂功能已啟用", "lavalink", st.LavalinkURI)
+}
+
+func (b *Bot) onVoiceState(_ *discordgo.Session, v *discordgo.VoiceStateUpdate) {
+	if b.music == nil || v.VoiceState == nil {
+		return
+	}
+	before := ""
+	if v.BeforeUpdate != nil {
+		before = v.BeforeUpdate.ChannelID
+	}
+	b.music.OnVoiceState(v.GuildID, v.UserID, before, v.ChannelID, v.SessionID)
+}
+
+func (b *Bot) onVoiceServer(_ *discordgo.Session, v *discordgo.VoiceServerUpdate) {
+	if b.music != nil {
+		b.music.OnVoiceServer(v.GuildID, v.Token, v.Endpoint)
+	}
+}
+
+func (b *Bot) onGuildDelete(_ *discordgo.Session, g *discordgo.GuildDelete) {
+	if b.music != nil && g.Guild != nil && !g.Unavailable {
+		b.music.OnGuildRemove(g.ID)
 	}
 }

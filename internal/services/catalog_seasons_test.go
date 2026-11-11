@@ -239,7 +239,10 @@ func TestCropOnlyPlantedInSeason(t *testing.T) {
 	pid := e.player()
 	gold := 10_000
 	must[FarmValues](t)(e.a.SetFarmValues(e.ctx, "test", pid, &gold, nil))
-	e.ok(e.a.BuySeeds(e.ctx, pid, "corn", 3)) // 種子隨時可以買
+	// Go 版改為商店只賣當季種子（Python 是種子隨時可以買）；之前買的或探索得到的非當季種子仍可能在背包裡
+	_, err := e.a.BuySeeds(e.ctx, pid, "corn", 3)
+	wantMsg(t, err, gameerr.Validation, "商店沒有販售玉米種子")
+	e.give(pid, "seed_corn", 3)
 	info := map[string]CropInfo{}
 	for _, c := range must[[]CropInfo](t)(e.a.GetMarketPrices(e.ctx)) {
 		info[c.Code] = c
@@ -257,7 +260,7 @@ func TestCropOnlyPlantedInSeason(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	_, err := e.a.PlantCrop(e.ctx, pid, 1, "corn")
+	_, err = e.a.PlantCrop(e.ctx, pid, 1, "corn")
 	wantSeason(err)
 	_, err = e.a.PlantAll(e.ctx, pid, "玉米")
 	wantSeason(err)

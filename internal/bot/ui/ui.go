@@ -55,6 +55,7 @@ type Embed struct {
 	Color       int
 	Fields      []Field
 	Footer      string
+	FooterIcon  string
 	Image       string
 	Thumbnail   string
 	AuthorName  string

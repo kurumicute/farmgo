@@ -110,7 +110,7 @@ func embedOf(e *ui.Embed) *discordgo.MessageEmbed {
 		out.Fields = append(out.Fields, &discordgo.MessageEmbedField{Name: f.Name, Value: f.Value, Inline: f.Inline})
 	}
 	if e.Footer != "" {
-		out.Footer = &discordgo.MessageEmbedFooter{Text: e.Footer}
+		out.Footer = &discordgo.MessageEmbedFooter{Text: e.Footer, IconURL: e.FooterIcon}
 	}
 	if e.Image != "" {
 		out.Image = &discordgo.MessageEmbedImage{URL: e.Image}

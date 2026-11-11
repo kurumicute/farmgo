@@ -67,6 +67,10 @@ type Settings struct {
 	MusicPlaylistLimit  int
 	MusicIdleTimeout    int
 	MusicVolume         float64
+	// Lavalink 音樂伺服器（Go 版的音樂在農場 Bot 程序內執行；沒有設定 MUSIC_BOT_TOKEN 時）。密碼不出現在 String()。
+	LavalinkURI       string
+	LavalinkPassword  string
+	MusicSettingsFile string // 各伺服器的音量與前綴（與 Python 相同的 JSON 檔）
 }
 
 func (s Settings) String() string {
@@ -189,6 +193,9 @@ func FromLookup(get func(string) string) (Settings, error) {
 		MusicPlaylistLimit:           p.int("MUSIC_PLAYLIST_LIMIT", 20, 1, 200),
 		MusicIdleTimeout:             p.int("MUSIC_IDLE_TIMEOUT", 300, 30, 3600),
 		MusicVolume:                  p.float("MUSIC_VOLUME", 0.1, 0, 2, false),
+		LavalinkURI:                  p.str("LAVALINK_URI", "http://127.0.0.1:2333"),
+		LavalinkPassword:             p.str("LAVALINK_PASSWORD", ""),
+		MusicSettingsFile:            p.str("MUSIC_SETTINGS_FILE", "data/music_guild_settings.json"),
 	}
 	if s.DatabaseURL == "" {
 		p.errs = append(p.errs, "DATABASE_URL 未設定")

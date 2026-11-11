@@ -103,6 +103,22 @@ func Available(seasons []string, start, end *int, now time.Time) bool {
 	return InHours(now, start, end)
 }
 
+// OffSeasonSellPct 非當季作物的售價倍率（%）：Go 版新增（2026-11-12），當季照原價，非當季物以稀為貴。
+const OffSeasonSellPct = 130
+
+// SellPct 這個時間的售價倍率：不限季節或當季 100，非當季 OffSeasonSellPct。只看季節，不看時段。
+func SellPct(seasons []string, now time.Time) int {
+	if len(seasons) == 0 || contains(seasons, SeasonOf(now)) {
+		return 100
+	}
+	return OffSeasonSellPct
+}
+
+// SellPrice 套用季節倍率後的單價（無條件捨去）。
+func SellPrice(base int, seasons []string, now time.Time) int {
+	return base * SellPct(seasons, now) / 100
+}
+
 // Describe 顯示用：「🍂秋季限定」「🕒 18:00–06:00」，沒有限制時回傳空字串。
 func Describe(seasons []string, start, end *int) string {
 	var parts []string

@@ -27,6 +27,8 @@ type CropInfo struct {
 	ShopBuyable     bool   `json:"shop_buyable"` // false：稀有作物，商店不販售種子
 	SeasonText      string `json:"season_text"`  // 季節／時段限定的說明（沒有限制時為空字串）
 	InSeason        bool   `json:"in_season"`    // 現在可不可以種
+	// SeasonSellPct 目前的季節售價倍率（%，當季或不限季節 100；Go 版新增）；SellPrice 已套用
+	SeasonSellPct int `json:"season_sell_pct"`
 }
 
 type PlotInfo struct {

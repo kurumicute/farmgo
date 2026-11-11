@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -972,6 +973,93 @@ func (r *RanchService) CollectCraft(ctx context.Context, playerID, orderID int64
 		}
 		return r.collectOrder(ctx, t, farm, order, "")
 	})
+}
+
+// CancelCraft 取消一張還沒完成的加工訂單（加工中或排隊中；Go 版新增，Python 沒有）：退回全部原料、刪除訂單，
+// 同一座設施排在它後面的訂單依序往前遞補（開始與完成時間提早被取消訂單剩下的時間）。已完成待領取的訂單不能取消。
+// 資料表的狀態只有 in_progress／collected，所以取消是刪除訂單，另寫一筆交易紀錄（種類沿用 craft_start，說明為取消）。
+func (r *RanchService) CancelCraft(ctx context.Context, playerID, orderID int64) (ActionResult, error) {
+	return inTx(ctx, r.GameService, func(t *db.Tx) (ActionResult, error) {
+		farm, err := r.lockedFarm(ctx, t, playerID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		order, err := ranch.GetOrder(ctx, t, farm.ID, orderID, true)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if order == nil {
+			return ActionResult{}, gameerr.NotFoundf("找不到你的加工訂單 #%d。", orderID)
+		}
+		now := r.now()
+		names, err := catalog.ItemNames(ctx, t)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		outName := ItemName(order.OutputCode, names)
+		switch rules.CraftStateAt(order.Status, order.ReadyAt, now) {
+		case rules.CraftCollected:
+			return ActionResult{}, gameerr.Validationf("訂單 #%d 的%s已經領取過了，不能取消。", order.ID, outName)
+		case rules.CraftReady:
+			return ActionResult{}, gameerr.Validationf("訂單 #%d 的%s已經完成，請直接領取。", order.ID, outName)
+		}
+		// 原料放回倉庫（素材放回素材背包）；放不下時不取消
+		codes := make([]string, 0, len(order.Inputs))
+		for code := range order.Inputs {
+			codes = append(codes, code)
+		}
+		sort.Strings(codes)
+		warehouse, material := 0, 0
+		for _, code := range codes {
+			if inventory.IsMaterial(code) {
+				material += order.Inputs[code]
+			} else {
+				warehouse += order.Inputs[code]
+			}
+		}
+		if warehouse > 0 {
+			if err := r.ensureSpace(ctx, t, farm, warehouse); err != nil {
+				return ActionResult{}, err
+			}
+		}
+		if material > 0 {
+			if err := r.ensureMaterialSpace(ctx, t, farm, material); err != nil {
+				return ActionResult{}, err
+			}
+		}
+		parts := make([]string, len(codes))
+		for i, code := range codes {
+			if err := inventory.Add(ctx, t, farm.ID, code, order.Inputs[code], "normal", "none"); err != nil {
+				return ActionResult{}, err
+			}
+			parts[i] = fmt.Sprintf("%s x%d", ItemName(code, names), order.Inputs[code])
+		}
+		// 後面的訂單往前遞補：提早的時間 = 這張訂單還沒用掉的加工時間
+		shift := order.ReadyAt.Sub(maxTime(order.StartedAt, now))
+		if _, err := t.Exec(ctx, `UPDATE craft_orders SET started_at = started_at - $1::interval, ready_at = ready_at - $1::interval
+			WHERE farm_id = $2 AND building_code = $3 AND status = 'in_progress' AND started_at >= $4 AND id <> $5`,
+			fmt.Sprintf("%d microseconds", shift.Microseconds()), farm.ID, order.BuildingCode, order.ReadyAt, order.ID); err != nil {
+			return ActionResult{}, err
+		}
+		if _, err := t.Exec(ctx, "DELETE FROM craft_orders WHERE id = $1", order.ID); err != nil {
+			return ActionResult{}, err
+		}
+		returned := strings.Join(parts, "、")
+		if err := r.record(ctx, t, farm, rules.EvCraftStart,
+			fmt.Sprintf("取消加工訂單 #%d（%d 份%s），退回原料 %s", order.ID, order.OutputQuantity, outName, returned),
+			rec{ItemCode: order.OutputCode}); err != nil {
+			return ActionResult{}, err
+		}
+		return result(fmt.Sprintf("已取消加工訂單 #%d（%d 份%s），退回原料 %s。", order.ID, order.OutputQuantity, outName, returned),
+			farm.Gold, 0, order.OutputCode, 0), nil
+	})
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
 
 // collectOrder 領取已鎖定農場的一張訂單；倉庫不足時在修改任何資料前回傳 WarehouseFull 錯誤。

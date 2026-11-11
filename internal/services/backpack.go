@@ -4,6 +4,7 @@ package services
 
 import (
 	"context"
+	"farmgm/internal/game/seasons"
 	"fmt"
 	"slices"
 	"time"
@@ -77,7 +78,7 @@ func BuildBackpack(ctx context.Context, t *db.Tx, farm *models.Farm, now time.Ti
 		}
 		c := entry.Crop
 		l := line(i.ItemCode, genetics.ProduceName(c.Name, c.VariantName, i.Mutation), i.Quantity,
-			genetics.UnitPrice(c.SellPrice, i.Quality, i.Mutation, settings), "")
+			seasons.SellPrice(genetics.UnitPrice(c.SellPrice, i.Quality, i.Mutation, settings), c.Seasons, now), "")
 		l.Quality, l.Mutation = i.Quality, i.Mutation
 		bp.Produce = append(bp.Produce, l)
 	}
@@ -250,7 +251,7 @@ func (s *GameService) CropCatalog(ctx context.Context) ([]CropCatalogEntry, erro
 			for _, q := range balance.QualityOrder {
 				prices[q] = map[string]int{}
 				for _, m := range []string{"none", "golden", "variant"} {
-					prices[q][m] = genetics.UnitPrice(c.SellPrice, q, m, settings)
+					prices[q][m] = seasons.SellPrice(genetics.UnitPrice(c.SellPrice, q, m, settings), c.Seasons, now)
 				}
 			}
 			rows[i] = CropCatalogEntry{

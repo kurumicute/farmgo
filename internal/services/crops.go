@@ -93,6 +93,10 @@ func (s *GameService) BuySeeds(ctx context.Context, playerID int64, cropKey stri
 		if !crop.ShopBuyable {
 			return ActionResult{}, gameerr.Validationf("商店不販售%s種子，只能從山洞探索或稀有作物培育器取得。", crop.Name)
 		}
+		if !seasons.Available(crop.Seasons, nil, nil, s.now()) { // 商店只賣當季的種子（Go 版新增）
+			return ActionResult{}, gameerr.Validationf("現在不是%s的季節，商店沒有販售%s種子（%s）。", crop.Name, crop.Name,
+				seasons.Describe(crop.Seasons, nil, nil))
+		}
 		cost := crop.SeedPrice * quantity
 		if farm.Gold < cost {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：需要 %d，目前只有 %d。", cost, farm.Gold)
@@ -571,6 +575,7 @@ func (s *GameService) sellPrice(ctx context.Context, t *db.Tx, crop *models.Crop
 		return 0, eventrules.Bonus{}, err
 	}
 	sell := eventrules.BonusOf(active, "sell_price_pct", &crop.ID)
+	base = seasons.SellPrice(base, crop.Seasons, s.now()) // 非當季物以稀為貴（Go 版新增）
 	return eventrules.ApplySellBonus(base, sell.Value), sell, nil
 }
 
