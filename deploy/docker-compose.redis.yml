@@ -1,0 +1,40 @@
+# 選用：加入 Redis，讓 Go 版網站與 Bot 的快取同步失效（internal/cachebus）。和 go-web／go-bot 覆寫檔一起使用，
+# 在 Python 專案目錄執行：
+#
+#   docker compose -f docker-compose.yml -f ../fmgonew/deploy/docker-compose.go-web.yml \
+#                  -f ../fmgonew/deploy/docker-compose.go-bot.yml -f ../fmgonew/deploy/docker-compose.redis.yml up -d --build
+#
+# 效果：管理網站修改作物／動物／魚種／品質設定或新功能規則後，Bot 立即套用（沒有 Redis 時最晚 10 秒），
+# 平常的目錄快取也從 10 秒拉長到 60 秒，減少資料庫查詢。
+#
+# Redis 只用來傳送「快取已失效」的通知，不保存任何遊戲資料：不開放 Port、不寫入磁碟，重新啟動不會遺失任何東西；
+# Redis 停止時 Go 版照常運作，只是回到每 10 秒重新讀取。Python 版不使用 Redis（會忽略 REDIS_URL）。
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "32mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  bot:
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy

@@ -1,0 +1,1108 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>油祥農場 ✦ Discord 農場與音樂機器人</title>
+  <meta name="description" content="在 Discord 種田、養動物、偷菜、加工、山洞冒險、賭場與排行榜，還能一起聽音樂的機器人。">
+  <meta name="theme-color" content="#0b1026">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要內容</a>
+  <!-- 銀河星空背景：canvas 繪製，捲動時各層以不同速度移動（視差） -->
+  <div class="sky" aria-hidden="true">
+    <canvas id="galaxy" class="galaxy"></canvas>
+    <div class="nebula nebula-a"></div>
+    <div class="nebula nebula-b"></div>
+  </div>
+  <div class="moon" id="moon" aria-hidden="true"></div>
+
+  <header class="topbar" id="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top"><span class="brand-moon" aria-hidden="true">☾</span> <span id="site-name">油祥農場</span></a>
+      <button class="menu-btn" id="menu-btn" type="button" aria-expanded="false" aria-controls="nav" aria-label="開啟選單">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="nav" id="nav" aria-label="主選單">
+        <a href="#top">首頁</a>
+        <a href="#farm">農場</a>
+        <a href="#guide">操作手冊</a>
+        <a href="#music">音樂</a>
+        <a href="#start">開始使用</a>
+        <a href="#status">狀態</a>
+        <a href="#terms">條款與隱私</a>
+        <a class="nav-cta" id="invite-top" href="#start">邀請機器人</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <div class="hero-text">
+        <p class="eyebrow">Discord 機器人 ✦ 農場經營 × 音樂播放</p>
+        <h1>在伺服器裡<br><span class="grad">一起種田、一起聽歌</span></h1>
+        <p class="tagline">
+          輸入 <code>/farm</code> 打開只有自己看得到的農場面板，所有操作都用按鈕完成；
+          進語音頻道輸入 <code>/play</code>，大家一起聽 YouTube、Spotify 的音樂。
+        </p>
+        <div class="actions">
+          <a class="btn btn-primary" id="invite-btn" href="#start">🌙 邀請機器人</a>
+          <a class="btn" id="music-invite-btn" href="#music" hidden>🎵 邀請音樂機器人</a>
+          <a class="btn" id="support-btn" href="#start" hidden>💬 支援伺服器</a>
+          <a class="btn btn-ghost" href="#guide">📖 操作手冊</a>
+        </div>
+      </div>
+      <aside class="hero-card" aria-labelledby="hero-card-title">
+        <div class="hero-card-head">
+          <h2 id="hero-card-title">今晚的農場</h2>
+          <span class="live" id="hero-live" role="status" aria-live="polite">讀取中…</span>
+        </div>
+        <ul class="quick-stats" aria-label="即時統計">
+          <li><span class="qs-icon" aria-hidden="true">🧑‍🌾</span><strong id="stat-players" class="loading">—</strong><span>位農夫</span></li>
+          <li><span class="qs-icon" aria-hidden="true">🏘️</span><strong id="stat-servers" class="loading">—</strong><span>個伺服器</span></li>
+          <li><span class="qs-icon" aria-hidden="true">🌱</span><strong id="stat-growing" class="loading">—</strong><span>格作物生長中</span></li>
+        </ul>
+        <p class="hero-card-foot">所有數字皆為即時彙總，不含任何玩家個人資料。</p>
+      </aside>
+    </section>
+
+    <section class="section" id="services" aria-labelledby="services-title">
+      <h2 id="services-title" class="sr-only">服務</h2>
+      <ul class="service-list">
+        <li><a id="invite-link" class="service" href="#start"><span class="service-icon" aria-hidden="true">🌙</span>
+          <span><strong>邀請機器人</strong><small>加到你的伺服器，立即開始</small></span></a></li>
+        <li><a class="service" href="#status"><span class="service-icon" aria-hidden="true">📈</span>
+          <span><strong>狀態監控</strong><small>農夫、伺服器與今日操作數</small></span></a></li>
+        <li><a id="support-link" class="service" href="#start"><span class="service-icon" aria-hidden="true">💬</span>
+          <span><strong>支援伺服器</strong><small>回報問題、提出建議</small></span></a></li>
+      </ul>
+    </section>
+
+    <section class="section" id="farm" aria-labelledby="farm-title">
+      <p class="kicker">FEATURES</p>
+      <h2 id="farm-title">🌾 農場</h2>
+      <p class="lead">每個 Discord 帳號都有一座屬於自己的全域農場，農場屬於建立時所在的伺服器，和伺服器的朋友一起衝排行。</p>
+      <div class="cards">
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🌱</span>
+          <h3>種田</h3>
+          <p>選一種作物就種滿所有空地，種子不夠自動買。<span id="crop-times">各作物生長時間不同（見操作手冊）</span>，成熟時間會在 Discord 上自動倒數。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">💎</span>
+          <h3>品質與突變</h3>
+          <p>播種時決定品質（<span id="c-qualities">普通、優良、稀有、傳說</span>）與突變（<span id="c-mutations">巨型作物、黃金作物、快速生長、珍稀變種</span>），越稀有越值錢。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🐔</span>
+          <h3>養殖與加工</h3>
+          <p>蓋畜舍養<span id="c-animals">雞、牛、羊</span>；<span id="c-buildings">磨坊、烘焙坊、果醬工坊</span>把作物加工成更值錢的<span id="c-recipes">麵粉、麵包、草莓果醬</span>。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🥷</span>
+          <h3>偷菜與防守</h3>
+          <p>偷同一伺服器朋友成熟的作物！<span id="c-defenses">稻草人、警戒犬、防盜圍欄</span>守護你的農田，巡查券查出是誰來偷。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🎰</span>
+          <h3>幸運賭場</h3>
+          <p>拿稀有作物比大小（價值 ×<span id="c-hilo">2</span>）或猜數字（價值 ×<span id="c-exact">5</span>），贏來的獎品可以賣掉，也可以留著炫耀。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🏆</span>
+          <h3>排行榜與活動</h3>
+          <p>個人、伺服器內與伺服器總排行，每日／每週／每月自動發獎；每天都有不同的活動，例如免澆水、大風颳走。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🤖</span>
+          <h3>奢侈品</h3>
+          <p><span id="c-tools">自動播種機、自動販售機、自動澆水器、傳說扒手手套</span>與倉庫擴大卷，讓農場越來越省事。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">⛰️</span>
+          <h3>山洞冒險</h3>
+          <p>探索<span id="c-areas">青青草原、古老森林、神秘礦坑、古代遺跡</span>，收集木材、礦石、水晶等素材，還有機會撿到假幣與稀有種子（<span id="c-rare-seeds">琥珀瓜、月光花</span>）。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🏛️</span>
+          <h3>古代遺跡與守護者</h3>
+          <p>伺服器成員一起捐素材修復古代遺跡，修好後每個人每天都能<b>額外</b>探索一次；每週還要合力打倒石像守護者，否則遺跡會崩塌。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">📰</span>
+          <h3>農場日報與傳聞</h3>
+          <p>總覽最下方每天刊出伺服器昨天的大事；偶爾還有「某座農場埋了寶藏」的傳聞，去那裡偷菜時順手挖挖看，第一個挖到的人獨得寶藏。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🔧</span>
+          <h3>自動化機器</h3>
+          <p>用探索素材打造<span id="c-machines">種子製造機、自動收割機、自動加工機與稀有作物培育器</span>，農場等級越高解鎖越多。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🎣</span>
+          <h3>釣魚</h3>
+          <p>買魚竿、魚線和魚餌，等魚上鉤後拉竿，再跟魚拉扯把牠拉上岸。<span id="c-fish-rarities">普通到傳說四種稀有度</span>，釣到好魚還能分享到群組炫耀。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🐉</span>
+          <h3>世界 Boss</h3>
+          <p>所有伺服器的玩家一起當農場後勤！<span id="c-boss">深淵魔龍每 2 天晚上 9 點出現</span>，捐獻作物、漁獲與素材補給前線，前線自動作戰扣 Boss 血量；打倒後依貢獻領金幣、稀有種子與稱號。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">👥</span>
+          <h3>群組任務與競賽</h3>
+          <p>伺服器一起完成任務、和其他伺服器比賽；農場每 <span id="c-transfer">7</span> 天可以轉移到另一個伺服器一次。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🏅</span>
+          <h3>簽到、成就與圖鑑</h3>
+          <p>每天打開農場自動簽到，連續 7 天一輪；完成 <span id="c-achievements">33</span> 個成就領取道具與稱號，收集作物、動物產品、加工品、素材與魚類圖鑑。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="guide" aria-labelledby="guide-title">
+      <p class="kicker">GUIDE</p>
+      <div class="section-head">
+        <h2 id="guide-title">📖 農場操作手冊</h2>
+        <div class="guide-tools">
+          <button type="button" class="chip-btn" id="guide-expand">全部展開</button>
+          <button type="button" class="chip-btn" id="guide-collapse">全部收合</button>
+        </div>
+      </div>
+      <p class="lead">所有操作都在 <code>/farm</code> 面板裡，用按鈕和選單完成。以下是每個功能的詳細說明。</p>
+      <p class="data-source" id="guide-source" role="status" aria-live="polite">讀取最新遊戲設定中…（目前顯示預設值）</p>
+
+      <div class="guide-list">
+        <details class="guide" open>
+          <summary>⚡ 常見操作速查</summary>
+          <div class="guide-body">
+            <p>不知道要按哪裡？先輸入 <code>/farm</code> 打開面板，再依下表操作。面板只有你看得到。</p>
+            <div class="table-scroll">
+              <table class="guide-table quick-table">
+                <thead><tr><th>我想要…</th><th>在面板上這樣做</th></tr></thead>
+                <tbody>
+                  <tr><td>建立農場</td><td>「🌱 建立農場」或「✏️ 自訂名稱建立」</td></tr>
+                  <tr><td>種田</td><td>「🌱 農田」→ 從選單選作物（種滿所有空地，種子不夠自動買）</td></tr>
+                  <tr><td>澆水／收成</td><td>總覽或農田頁的「💧 全部澆水」「🧺 全部收成」</td></tr>
+                  <tr><td>清掉乾枯的作物</td><td>「🌱 農田」→「🥀 清除乾枯」</td></tr>
+                  <tr><td>增加農田格數</td><td>「🌱 農田」→「⬆️ 擴建」→ 再按一次「確認擴建」</td></tr>
+                  <tr><td>買種子、道具、工具</td><td>「🏪 商店」→ 選商品 → 按數量（1／5／10 或「✏️ 自訂數量…」）</td></tr>
+                  <tr><td>賣東西換金幣</td><td>「💰 販售」→ 選商品 → 選數量；或「☑️ 勾選多項」→「確認賣出」；或「全部賣出」→ 再按一次確認</td></tr>
+                  <tr><td>看背包、啟用／停用工具</td><td>「🎒 背包」→「🔧 啟用／停用（工具名稱）」</td></tr>
+                  <tr><td>查作物價格、品質機率</td><td>「📈 作物價格」→「🧬 品質與突變」</td></tr>
+                  <tr><td>養動物</td><td>「🐔 動物」→ 先蓋畜舍 →「🛒 購買動物」→「🍽️ 全部餵食」→「🧺 收集全部」</td></tr>
+                  <tr><td>加工</td><td>「🏭 加工」→「🏗️ 建造設施」→ 回加工頁選配方 →「📥 領取完成品」</td></tr>
+                  <tr><td>偷朋友的菜</td><td>「🥷 偷菜」→ 用玩家選單打開朋友的農田，再選要偷哪一格；也可以直接從作物選單選一株（可翻頁、🔄 重新整理）</td></tr>
+                  <tr><td>防止被偷、查誰來偷</td><td>「🛡️ 防守」→ 購買設施 →「📍 調整守護範圍」；「🔦 巡查」查看偷菜者</td></tr>
+                  <tr><td>探索山洞</td><td>「⛰️ 山洞」→ 選區域 →「🧭 出發探險」→ 時間到回來後「📦 領取探險獎勵」；「📖 探索紀錄」看最近 10 次</td></tr>
+                  <tr><td>製作或使用機器</td><td>「⛰️ 山洞」或「🏭 加工」→「🔧 機器」→ 選要製作的機器（消耗素材）／「⚙️ 使用機器」</td></tr>
+                  <tr><td>把假幣換成金幣</td><td>「🎒 背包」→「💱 兌換假幣」→ 選數量</td></tr>
+                  <tr><td>釣魚</td><td>「🎣 釣魚」→「🛒 釣具商店」買魚竿、魚線、魚餌 →「🎣 開始釣魚」→ 魚上鉤按「拉竿」→ 依 💬 提示收線／放線／等待</td></tr>
+                  <tr><td>賣魚、分享釣到的魚</td><td>「🎣 釣魚」→「🎒 我的魚簍」→ 選魚 →「💰 出售」或「📢 分享到群組」</td></tr>
+                  <tr><td>賭一把</td><td>「🎰 賭場」→ 選作物與玩法；贏得的獎品可到「🏆 賣獎品」</td></tr>
+                  <tr><td>領養、升級貓咪和狗狗</td><td>「🐔 動物」→「🐾 寵物（貓狗）」→ 領養／升級 → 再按一次確認</td></tr>
+                  <tr><td>升級溫室、買稱號、搶每週特賣</td><td>「🏪 商店」→「🎁 特賣與升級」→ 選商品（溫室與稱號再按一次「確認購買」）</td></tr>
+                  <tr><td>每日簽到</td><td>每天（台灣時間）第一次打開 <code>/farm</code> 就自動簽到；連續天數在「🏅 成就圖鑑」</td></tr>
+                  <tr><td>領成就獎勵、換稱號</td><td>「🏅 成就圖鑑」→「🏅 成就」→「🎁 領取全部」；「🎖️ 稱號」選擇要顯示的稱號</td></tr>
+                  <tr><td>看圖鑑</td><td>「🏅 成就圖鑑」→「📖 圖鑑」→ 選分類</td></tr>
+                  <tr><td>看排行與獎勵</td><td>「🏆 排行榜」→ 切換範圍與期間；「🎁 排名獎勵」看發獎規則</td></tr>
+                  <tr><td>任務與競賽</td><td>「📜 任務競賽」→ 看進度、領獎；「📚 已結算的競賽」看結果</td></tr>
+                  <tr><td>把農場搬到這個伺服器</td><td>「👥 群組」→「🔁 把農場轉移到這個伺服器」→ 再按一次確認</td></tr>
+                  <tr><td>更改農場名稱</td><td>「❓ 說明」→「✏️ 更改農場名稱」→ 輸入新名稱送出（每次 <b id="g-rename-quick">300 金幣</b>）</td></tr>
+                  <tr><td>給朋友看我的農場</td><td>總覽「📢 分享到頻道」</td></tr>
+                  <tr><td>查最近做了什麼</td><td>「🧾 紀錄」</td></tr>
+                  <tr><td>面板沒反應／逾時</td><td>15 分鐘沒操作會逾時，再輸入一次 <code>/farm</code>；資料不會遺失</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🏠 建立農場與總覽</summary>
+          <div class="guide-body">
+            <ul>
+              <li>在伺服器輸入 <code>/farm</code> →「🌱 建立農場」（或「✏️ 自訂名稱建立」）。每個 Discord 帳號只有一座農場。</li>
+              <li>起始資源：<b id="g-start">500 金幣、4 格農田、倉庫 50 格</b>。農場屬於建立時所在的伺服器。</li>
+              <li>想換農場名稱：總覽「❓ 說明」→「✏️ 更改農場名稱」，每次 <b id="g-rename">300 金幣</b>（金幣不足時按鈕無法按）。</li>
+              <li>總覽會列出每格農田的作物與成熟倒數、倉庫、所屬群組、動物、加工、進行中的活動與待辦事項。</li>
+              <li>總覽上的「💧 全部澆水」「🧺 全部收成」可以直接操作；「📢 分享到頻道」會把農場狀態公開貼到頻道。</li>
+              <li>面板只有你看得到，15 分鐘沒操作會逾時，再輸入 <code>/farm</code> 即可。</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🌱 農田：種植、澆水、收成</summary>
+          <div class="guide-body">
+            <ol>
+              <li>到「🌱 農田」，從選單選一種作物，會<b>種滿所有空地</b>；種子不夠時自動用金幣補買。</li>
+              <li>按「💧 全部澆水」，作物<b>澆水後才開始生長</b>（免澆水活動或自動澆水器會自動澆）。</li>
+              <li>成熟後按「🧺 全部收成」，作物進入倉庫；倉庫放不下的格子會留在農田，不會遺失。</li>
+              <li>成熟後 <b id="g-wither">16 小時</b>沒收成就會乾枯，按「🥀 清除乾枯」清掉才能再種。</li>
+              <li>「⬆️ 擴建」：<span id="g-upgrade">每次農田 +1 格：500 → 1,000 → 2,000 → 4,000 → 8,000 → 20,000 → 40,000 → 80,000 → 120,000 → 160,000 → 170,000 → 180,000 金幣（最多 16 格）</span>、農場等級 +1（等級越高，好品質機率越高）。需要再按一次確認。</li>
+            </ol>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>作物</th><th>種子</th><th>生長時間</th><th>收成</th><th>售價（普通）</th><th>珍稀變種</th><th>可種季節</th></tr></thead>
+                <tbody id="g-crops">
+                  <tr><td>🌾 小麥</td><td>5</td><td>1 小時</td><td>×2</td><td>11</td><td>琥珀小麥</td><td>四季</td></tr>
+                  <tr><td>🥕 胡蘿蔔</td><td>12</td><td>2 小時</td><td>×3</td><td>15</td><td>紫晶胡蘿蔔</td><td>🍂❄️秋、冬季限定</td></tr>
+                  <tr><td>🍅 番茄</td><td>25</td><td>4 小時</td><td>×4</td><td>22</td><td>黑鑽番茄</td><td>❄️🌸冬、春季限定</td></tr>
+                  <tr><td>🍓 草莓</td><td>60</td><td>8 小時</td><td>×5</td><td>34</td><td>白雪草莓</td><td>❄️🌸冬、春季限定</td></tr>
+                  <tr><td>🌽 玉米</td><td>18</td><td>3 小時</td><td>×3</td><td>20</td><td>金粒玉米</td><td>🌸☀️春、夏季限定</td></tr>
+                  <tr><td>🎃 南瓜</td><td>80</td><td>12 小時</td><td>×4</td><td>55</td><td>月影南瓜</td><td>☀️🍂夏、秋季限定</td></tr>
+                  <tr><td>🍇 葡萄</td><td>120</td><td>16 小時</td><td>×6</td><td>45</td><td>水晶葡萄</td><td>☀️🍂夏、秋季限定</td></tr>
+                  <tr><td>🍉 西瓜</td><td>150</td><td>24 小時</td><td>×3</td><td>130</td><td>星紋西瓜</td><td>🌸☀️春、夏季限定</td></tr>
+                  <tr><td>🍈 琥珀瓜</td><td>不販售（探索／培育）</td><td>12 小時</td><td>×3</td><td>120</td><td>黃金琥珀瓜</td><td>🍂❄️秋、冬季限定</td></tr>
+                  <tr><td>🌙 月光花</td><td>不販售（探索／培育）</td><td>24 小時</td><td>×2</td><td>450</td><td>星辰花</td><td>❄️🌸冬、春季限定</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">🗓️ <b>季節限定</b>：季節依台灣的真實月份（春 3–5 月、夏 6–8 月、秋 9–11 月、冬 12–2 月），<span id="g-season-now">現在是秋季</span>。
+              季節只限制<b>種下</b>的時間：種子隨時可以買，種下後過了季節照樣長大、收成；種植選單只列出現在能種的作物。</p>
+            <p class="note">標示「不販售」的是稀有作物：商店買不到種子，只能從「⛰️ 山洞」探索或用「🧬 稀有作物培育器」取得；一鍵種植也不會自動購買。</p>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>💎 品質與突變</summary>
+          <div class="guide-body">
+            <p>播種時就決定，之後不會改變。可在總覽「📈 作物價格」查看完整價目表。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>品質</th><th>機率</th><th>售價倍率</th></tr></thead>
+                <tbody id="g-qualities">
+                  <tr><td>普通</td><td>70%</td><td>×1</td></tr>
+                  <tr><td>優良</td><td>20%</td><td>×1.2</td></tr>
+                  <tr><td>稀有</td><td>8%</td><td>×1.5</td></tr>
+                  <tr><td>傳說</td><td>2%</td><td>×2</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note" id="g-level-note">農場每升 1 級，有 0.5% 機率從普通升到較高品質（最多 5%）。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>突變</th><th>機率</th><th>效果</th></tr></thead>
+                <tbody id="g-mutations">
+                  <tr><td>巨型作物</td><td>3%</td><td>收成數量 ×2</td></tr>
+                  <tr><td>黃金作物</td><td>1%</td><td>售價 ×3</td></tr>
+                  <tr><td>快速生長</td><td>3%</td><td>生長時間減少 2 小時（最短 1 分鐘，仍需澆水）</td></tr>
+                  <tr><td>珍稀變種</td><td>1%</td><td>長成獨立的稀有作物（例如琥珀小麥），售價 ×4</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🏪 商店、道具與倉庫</summary>
+          <div class="guide-body">
+            <p>從「🛒 選擇要買的商品」選好後，按數量按鈕（1／5／10 或自訂）購買；工具與奢侈品要再按「確認購買」。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>道具</th><th>價格</th><th>效果</th></tr></thead>
+                <tbody id="g-items">
+                  <tr><td>🧪 化肥</td><td>30</td><td>生長中的農田剩餘時間減少 15%（每次種植限用一次）</td></tr>
+                  <tr><td>🪱 人工養殖蚯蚓</td><td>300</td><td>正在生長的作物剩餘時間 ×0.85，之後 3 天內澆水的作物生長時間也 ×0.85；效果期間再用延長 3 天</td></tr>
+                  <tr><td>🔦 巡查券</td><td>60</td><td>查看自己農場近 7 天所有偷菜嘗試（含偷菜者）</td></tr>
+                  <tr><td>🚿 自動澆水器</td><td>3,500</td><td>永久：種下立即澆水</td></tr>
+                  <tr><td>🤖 自動播種機</td><td>30,000</td><td>奢侈品：收成、清除、擴建或買種子後，用背包裡的種子把空地種滿</td></tr>
+                  <tr><td>🏧 自動販售機</td><td>150,000</td><td>奢侈品：收成的作物依價目表立即賣出，不佔倉庫</td></tr>
+                  <tr><td>🧤 傳說扒手手套</td><td>500,000</td><td>奢侈品：偷菜不受每日限制，可以偷同群組所有人的所有成熟農田（每株仍只能偷一次，每次最多 2 個，小麥 1 個）</td></tr>
+                </tbody>
+                <tbody>
+                  <tr><td>📦 倉庫擴大卷</td><td id="g-wh-price">4,000 起</td><td id="g-wh-desc">每次 +50 格：4,000 → 20,000 → 50,000 → 100,000 → 200,000，最大 300 格</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">工具可以在「🎒 背包」啟用或停用（例如想自己加工作物時先停用自動販售機）。</p>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>💰 販售</summary>
+          <div class="guide-body">
+            <ul>
+              <li>到「💰 販售」從選單選商品，再選賣 1、一半、全部或自訂數量。</li>
+              <li>單價 = 基本售價 × 品質倍率 × 突變倍率，再加上進行中的活動加成。</li>
+              <li>想一次賣好幾種：用「☑️ 勾選多項一起賣出」選單勾選（每項賣全部，一次最多 25 項），再按「確認賣出」。</li>
+              <li>「全部賣出」會賣掉所有農產品與商品（需再按一次確認），但<b>不會賣掉賭場獎品</b>。</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🐔 動物養殖</summary>
+          <div class="guide-body">
+            <ol>
+              <li>先在「🐔 動物」建造<b>畜舍</b>（<span id="g-barn">1,000 金幣，每座 4 個欄位，最多 3 座</span>）。</li>
+              <li>購買動物 →「🍽️ 全部餵食」開始生產 → 時間到「🧺 收集全部」。</li>
+            </ol>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>動物</th><th>價格</th><th>餵食</th><th>生產時間</th><th>產品</th></tr></thead>
+                <tbody id="g-animals">
+                  <tr><td>🐔 雞</td><td>500</td><td>20</td><td>24 小時</td><td>雞蛋 ×2（25 / 個）</td></tr>
+                  <tr><td>🐄 牛</td><td>2,000</td><td>50</td><td>24 小時</td><td>牛奶 ×2（60 / 個）</td></tr>
+                  <tr><td>🐑 羊</td><td>1,500</td><td>35</td><td>48 小時</td><td>羊毛 ×1（120 / 個）</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🏭 加工</summary>
+          <div class="guide-body">
+            <ol>
+              <li>到「🏭 加工」→「🏗️ 建造設施」蓋磨坊、烘焙坊或果醬工坊。</li>
+              <li>回到加工頁，「開始加工」只會列出已建好設施的配方，選好後按份數（最多 <span id="g-craft-max">10</span> 份）。</li>
+              <li>設施忙碌時新訂單會排隊，前一張完成後自動接著加工（每種設施最多 10 張）。完成後按「📥 領取完成品」。</li>
+            </ol>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>配方</th><th>設施（價格）</th><th>材料</th><th>時間／份</th><th>售價</th></tr></thead>
+                <tbody id="g-recipes">
+                  <tr><td>麵粉</td><td>磨坊（2,000）</td><td>小麥 ×3</td><td>30 分鐘</td><td>45</td></tr>
+                  <tr><td>麵包</td><td>烘焙坊（3,500）</td><td>麵粉 ×2</td><td>1 小時</td><td>200</td></tr>
+                  <tr><td>草莓果醬</td><td>果醬工坊（2,500）</td><td>草莓 ×3</td><td>1 小時</td><td>300</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide" id="fishing">
+          <summary>🎣 釣魚</summary>
+          <div class="guide-body">
+            <ol>
+              <li>在總覽按「🎣 釣魚」進入釣魚中心；第一次先到「🛒 釣具商店」（商店頁也有「🎣 釣具商店」分頁）買<b>魚竿、魚線、魚餌</b>，買第一件時會自動裝備。全部使用農場金幣。</li>
+              <li>按「🎣 開始釣魚」拋竿，每次用掉 1 個魚餌。等魚上鉤需要 <b id="g-fish-wait">5–12 秒</b>（魚餌可以縮短），等待時畫面會自動更新。</li>
+              <li>畫面出現「‼️ 魚上鉤了！」時，要在 <b id="g-fish-react">5 秒</b>內按「🎣 拉竿」（魚竿可以延長），太慢魚會把餌吃掉跑走。</li>
+              <li>拉竿成功後進入<b>拉扯</b>：每條魚要<b>成功拉幾下</b>才上岸（普通 2–4 下、稀有 3–5、史詩 4–6、傳說 5–7），畫面會顯示還差幾下、🪢 魚線張力，以及 💬 魚接下來要做什麼。
+                <ul>
+                  <li><b>🎣 收線</b>：張力撐得住就算 1 下，但張力會上升；<b>連續收線時張力越加越多</b>，魚衝刺時收線張力也會暴增。</li>
+                  <li><b>⏳ 等待</b>：穩住魚竿，張力下降，並減少連續收線的累積。</li>
+                  <li><b>↩️ 放線</b>：張力大幅下降，但魚會游遠一些。</li>
+                  <li><b>⬅️ 左壓／➡️ 右壓</b>：每場一定會遇到魚竄向一邊，<b>只有按同方向才算 1 下</b>；按錯或按其他鍵，張力暴增、魚被拉遠，魚還會繼續竄，所以<b>只按收線一定會斷線</b>。</li>
+                </ul>
+              </li>
+              <li>拉滿需要的次數就釣起來了，魚會放進魚簍（<span id="g-fish-basket">最多 20 隻</span>）。</li>
+              <li>偶爾會出現<b>人機確認</b>：按下題目指定的生物就會繼續釣魚；答錯會暫停釣魚一段時間，但不會扣金幣、魚或魚餌。</li>
+              <li>失敗的情況：<b>張力超過魚線上限</b>（斷線）、<b>距離達到 100</b>（魚逃走）、<b>沒有及時拉竿</b>、<b>拉扯時 <span id="g-fish-timeout">20 秒</span>沒有操作</b>，或魚鉤沒有咬牢（脫鉤）。</li>
+              <li>小訣竅：看到魚竄向一邊就壓同方向；張力快滿或魚要「猛烈掙扎」時先等待；其他時候收線。依提示操作，任何稀有度的成功率都接近基礎成功率。</li>
+            </ol>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>稀有度</th><th>出現機率</th><th>售價（金幣）</th><th>拉扯難度</th></tr></thead>
+                <tbody id="g-fish-rarities">
+                  <tr><td>⚪ 普通</td><td>80%</td><td>1–20</td><td>拉 2–4 下；偶爾衝刺</td></tr>
+                  <tr><td>🔵 稀有</td><td>15%</td><td>21–50</td><td>拉 3–5 下；會突然衝刺</td></tr>
+                  <tr><td>🟣 史詩</td><td>4%</td><td>51–100</td><td>拉 4–6 下；強力掙扎機率較高</td></tr>
+                  <tr><td>🟡 傳說</td><td>1%</td><td>101–200</td><td>拉 5–7 下；可能連續強力衝刺</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note" id="g-fish-success"><b>基礎釣魚成功率 90%</b>，所有稀有度都一樣。稀有度只決定出現哪種魚與拉扯有多難，不會降低成功率；更好的魚竿和魚線能降低操作難度，魚餌能提高稀有魚的出現機率。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>釣具</th><th>類型</th><th>價格</th><th>需要等級</th><th>效果</th></tr></thead>
+                <tbody id="g-fish-gear">
+                  <tr><td>🎋 竹製魚竿</td><td>魚竿</td><td>100</td><td>Lv.1</td><td>收線力 10</td></tr>
+                  <tr><td>🎋 木製魚竿</td><td>魚竿</td><td>600</td><td>Lv.2</td><td>收線力 11、魚的衝擊張力 -5%、拉竿時間 +0.5 秒</td></tr>
+                  <tr><td>🎣 鐵製魚竿</td><td>魚竿</td><td>2,000</td><td>Lv.4</td><td>收線力 13、魚的衝擊張力 -10%、拉竿時間 +1 秒</td></tr>
+                  <tr><td>🎣 高級魚竿</td><td>魚竿</td><td>6,000</td><td>Lv.7</td><td>收線力 15、魚的衝擊張力 -18%、拉竿時間 +1.5 秒</td></tr>
+                  <tr><td>✨ 傳說魚竿</td><td>魚竿</td><td>20,000</td><td>Lv.10</td><td>收線力 18、魚的衝擊張力 -25%、拉竿時間 +2 秒</td></tr>
+                  <tr><td>🪢 普通魚線</td><td>魚線</td><td>50</td><td>Lv.1</td><td>最大張力 100</td></tr>
+                  <tr><td>🪢 強化魚線</td><td>魚線</td><td>800</td><td>Lv.3</td><td>最大張力 115</td></tr>
+                  <tr><td>🪢 高強度魚線</td><td>魚線</td><td>3,000</td><td>Lv.6</td><td>最大張力 130</td></tr>
+                  <tr><td>🪱 普通蚯蚓</td><td>魚餌</td><td>3／個</td><td>Lv.1</td><td>一般魚餌，沒有額外效果</td></tr>
+                  <tr><td>🦐 高級魚餌</td><td>魚餌</td><td>6／個</td><td>Lv.3</td><td>🔵稀有 +3%、🟣史詩 +1%、🟡傳說 +0.3%、上鉤快 20%</td></tr>
+                  <tr><td>🌟 特殊魚餌</td><td>魚餌</td><td>12／個</td><td>Lv.6</td><td>🔵稀有 +5%、🟣史詩 +3%、🟡傳說 +1.5%、上鉤快 40%</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">魚竿、魚線、魚餌分別裝備，可以在釣魚中心或釣具商店的「🔧 更換裝備」切換；魚餌加成的機率是從普通魚扣除。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>魚類圖鑑</th><th>稀有度</th><th>售價</th><th>重量</th><th>出現條件</th><th>說明</th></tr></thead>
+                <tbody id="g-fish-list">
+                  <tr><td>🐟 鯽魚</td><td>⚪ 普通</td><td>3–27</td><td>100 g–800 g</td><td>隨時</td><td>池塘裡最常見的魚。</td></tr>
+                  <tr><td>🐍 鰻魚</td><td>🔵 稀有</td><td>68–113</td><td>500 g–3.00 kg</td><td>🕒 18:00–06:00</td><td>滑溜又有力，咬到餌就往石縫裡鑽。</td></tr>
+                  <tr><td>🐟 黃鰭鮪</td><td>🟣 史詩</td><td>270–405</td><td>10.00 kg–80.00 kg</td><td>需要🦑 深海誘餌或🐉 龍涎香餌；☀️夏季限定</td><td>深海的速度之王。</td></tr>
+                  <tr><td>🧊 霜龍魚</td><td>🟡 傳說</td><td>1013–1575</td><td>10.00 kg–60.00 kg</td><td>需要🐉 龍涎香餌；❄️冬季限定　🕒 22:00–02:00</td><td>冬天深夜冰海中的龍形巨魚。</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">🔒 部分史詩、傳說魚只吃<b>指定的高級魚餌</b>（深海誘餌、龍涎香餌），還有些魚只在特定<b>季節</b>（台灣月份）或<b>時段</b>（台灣時間）出現；拋竿當下三個條件都符合才釣得到。</p>
+            <p class="note">同一種魚越重越值錢（在該魚的售價範圍內）。釣到過的魚會登記在「📖 魚類圖鑑」，賣掉也算。</p>
+            <h4>魚簍、販售與分享</h4>
+            <ul>
+              <li>「🎒 我的魚簍」可以查看每隻魚的稀有度、重量與價值；可以單獨出售、勾選多隻出售或全部出售，出售前都會再確認一次。賣魚的金幣直接加到農場金幣。</li>
+              <li>選一隻魚按「📢 分享到群組」，Bot 會在目前頻道發一則公開的展示訊息（魚類、稀有度、重量、價值、是否為個人最重紀錄）；「🏆 展示最珍貴的魚」會分享魚簍裡最值錢的一隻。</li>
+              <li>分享<b>不會消耗或轉移</b>魚，也沒有額外獎勵；沒有分享的魚只有自己看得到，其他伺服器也看不到。</li>
+              <li>「🏆 釣魚排行榜」可以看本伺服器或全部玩家的捕獲數與最有價值的一隻魚。</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="guide" id="cave">
+          <summary>⛰️ 山洞冒險</summary>
+          <div class="guide-body">
+            <ol>
+              <li>在總覽按「⛰️ 山洞」，選一個區域查看可能的獎勵，再按「🧭 出發探險」。</li>
+              <li><b>一次只能去一個區域</b>：出發後要等該區域的<b>探險時間</b>結束才會回來（<span id="g-area-example">例如青青草原 8 小時、古老森林 16 小時</span>），探險期間不能去其他區域。</li>
+              <li>回來後按「📦 領取探險獎勵」，物品才會放進背包，領取後才能再出發。</li>
+              <li>素材、假幣與稀有種子放進獨立的<b>素材背包</b>（<span id="g-material-bag">上限 500 個</span>），<b>不佔倉庫空間</b>。放不下時先清出空間再領取。</li>
+              <li>素材不能在商店購買或販售，用來製作「🔧 機器」；<b>假幣</b>可以在「🎒 背包」兌換金幣（<span id="g-fake-coin">1 個 = 100 金幣</span>）。</li>
+              <li>農場等級達到區域的「高級探索」門檻後，稀有素材、稀有種子與特殊事件的機率會提高。</li>
+            </ol>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>區域</th><th>解鎖</th><th>探險時間</th><th>每次抽獎</th><th>高級探索</th><th>可能取得</th></tr></thead>
+                <tbody id="g-areas">
+                  <tr><td>🌿 青青草原</td><td>Lv.1</td><td>8 小時</td><td>3 次</td><td>Lv.16</td><td>木材、石塊、藥草、銅礦（Lv.2）；稀有：鐵礦（Lv.4）；種子：琥珀瓜種子</td></tr>
+                  <tr><td>🌲 古老森林</td><td>Lv.5</td><td>16 小時</td><td>4 次</td><td>Lv.9</td><td>木材、樹脂、藥草、鐵礦（Lv.6）；稀有：齒輪、古木核心（Lv.7）；種子：月光花種子</td></tr>
+                  <tr><td>⛏️ 神秘礦坑</td><td>Lv.10</td><td>24 小時</td><td>5 次</td><td>Lv.16</td><td>石塊、銅礦、鐵礦（Lv.11）；稀有：鐵礦、齒輪、水晶、機械核心</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>每次抽獎的類型</th><th>普通探索</th><th>高級探索</th></tr></thead>
+                <tbody id="g-reward-types">
+                  <tr><td>普通素材</td><td>65%</td><td>45%</td></tr>
+                  <tr><td>稀有素材</td><td>20%</td><td>30%</td></tr>
+                  <tr><td>稀有種子</td><td>8%</td><td>12%</td></tr>
+                  <tr><td>假幣</td><td>5%</td><td>8%</td></tr>
+                  <tr><td>特殊事件</td><td>2%</td><td>5%</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">抽到的類型在該區域沒有可掉落的物品時（例如礦坑沒有種子），會改給其他類型的獎勵，不會落空。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>區域</th><th>特殊事件（需要的等級）</th></tr></thead>
+                <tbody id="g-area-events">
+                  <tr><td>🌿 青青草原</td><td>🎁 特殊寶箱（Lv.1）、🔍 草原稀有發現（Lv.4）、🏛️ 古代遺跡（Lv.15）</td></tr>
+                  <tr><td>🌲 古老森林</td><td>🎁 特殊寶箱（Lv.5）、🔍 森林稀有發現（Lv.7）、🏛️ 森林古代遺跡（Lv.15）</td></tr>
+                  <tr><td>⛏️ 神秘礦坑</td><td>🎁 特殊寶箱（Lv.10）、🔍 礦坑稀有發現（Lv.13）、🏛️ 地底遺跡（Lv.15）</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">特殊事件會給假幣，並額外再抽稀有素材或稀有種子。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>素材</th><th>稀有度</th><th>用途</th></tr></thead>
+                <tbody id="g-materials">
+                  <tr><td>木材</td><td>普通</td><td>機器製作</td></tr>
+                  <tr><td>石塊</td><td>普通</td><td>機器製作</td></tr>
+                  <tr><td>銅礦</td><td>普通</td><td>機器製作</td></tr>
+                  <tr><td>鐵礦</td><td>稀有</td><td>機器製作</td></tr>
+                  <tr><td>樹脂</td><td>普通</td><td>機器製作</td></tr>
+                  <tr><td>藥草</td><td>普通</td><td>作物培育</td></tr>
+                  <tr><td>齒輪</td><td>稀有</td><td>自動化機器</td></tr>
+                  <tr><td>水晶</td><td>稀有</td><td>稀有作物培育</td></tr>
+                  <tr><td>古木核心</td><td>極稀有</td><td>高級機器製作</td></tr>
+                  <tr><td>機械核心</td><td>極稀有</td><td>高級機器製作</td></tr>
+                  <tr><td>假幣</td><td>特殊</td><td>兌換金幣</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide" id="ruins">
+          <summary>🏛️ 古代遺跡與守護者</summary>
+          <div class="guide-body">
+            <ol>
+              <li>「⛰️ 山洞」→「🏛️ 修復遺跡」：所屬伺服器的成員一起捐山洞素材，分三個階段修復（捐超過還缺的數量只會扣需要的部分）。</li>
+              <li>修好後，伺服器每個人（<span id="g-ruins-level">Lv.4</span> 起）每天都能<b>額外</b>探索一次古代遺跡：不佔一般探險的名額，按下立即拿到獎勵，<span id="g-ruins-cooldown">冷卻 1 天</span>；掉落和古老森林一樣，每次再多 <span id="g-ruins-extra">1–2</span> 份。</li>
+              <li>所有捐過素材的成員獲得稱號「<span id="g-ruins-title">遺跡修復者</span>」。遺跡屬於農場的所屬伺服器，轉移後改看新伺服器的遺跡。</li>
+            </ol>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>階段</th><th>需要的素材</th><th>說明</th></tr></thead>
+                <tbody id="g-ruins-stages">
+                  <tr><td>1. 清除碎石</td><td>石塊 ×150、木材 ×150</td><td>把堵住入口的碎石與倒下的樹木搬開。</td></tr>
+                  <tr><td>2. 修補石柱</td><td>銅礦 ×80、鐵礦 ×50、樹脂 ×80</td><td>用礦石與樹脂補強快要倒塌的石柱。</td></tr>
+                  <tr><td>3. 喚醒遺跡核心</td><td>齒輪 ×20、水晶 ×12、古木核心 ×3、機械核心 ×3</td><td>把齒輪、水晶與核心裝回遺跡中央的古代裝置。</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h4>🗿 遺跡守護者</h4>
+            <ul id="g-guardian">
+              <li>修好後的下一個週一（台灣時間）起，每週出現一隻石像守護者：HP 3,000，伺服器每多一座農場 +1,000（最多 40,000），本週第一次受到傷害時固定。</li>
+              <li>在修復遺跡頁選素材攻擊：普通素材每個 3、稀有 15、極稀有 80 傷害（假幣不行）；每次探索遺跡也會自動造成 200 傷害。</li>
+              <li>打倒後當週每次探索遺跡多 2 份獎勵；整週都沒打倒，遺跡崩塌回第三階段，要重新捐核心素材才能再進去。</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="guide" id="news">
+          <summary>📰 農場日報與傳聞寶藏</summary>
+          <div class="guide-body">
+            <ul id="g-news">
+              <li>打開 <code>/farm</code>，總覽最下方的「📰 昨日農場日報」會刊出所屬伺服器成員<b>昨天</b>的大事：銷售冠軍、稀有突變、偷菜、防守、稀有魚、遺跡進度與守護者、賭場（最多 4 條）。昨天完全沒有動靜就不顯示。</li>
+              <li>日報只在你自己的面板裡顯示，Bot 不會發訊息到頻道，也沒有額外的按鈕。</li>
+              <li>約 50% 的日子最後會多一條「🗺️ 傳聞：某座農場的田底下埋了寶藏」，約 70% 是真的。</li>
+              <li>當天偷那座農場的菜成功時會順手挖一次（每人每天一次）；傳聞是真的就有 35% 機率挖到 300–800 金幣，寶藏只有第一個挖到的人拿得到，隔天的日報會報導是誰挖到的。</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="guide" id="machines">
+          <summary>🔧 機器與等級解鎖</summary>
+          <div class="guide-body">
+            <ul>
+              <li>到「⛰️ 山洞」或「🏭 加工」→「🔧 機器」，選擇要製作的機器；製作一次<b>永久持有</b>，可在背包啟用／停用。</li>
+              <li><b>種子製造機</b>：從「⚙️ 使用機器」選作物，<span id="g-seed-ratio">1 個普通作物 = 2 顆種子</span>。</li>
+              <li><b>自動收割機</b>、<b>自動加工機</b>在你打開 <code>/farm</code> 面板時自動運作。</li>
+              <li><b>稀有作物培育器</b>和加工設施一樣下訂單，時間到再領取，一次最多 <span id="g-incubator-max">5</span> 份。</li>
+            </ul>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>機器</th><th>解鎖等級</th><th>素材</th><th>效果</th></tr></thead>
+                <tbody id="g-machines">
+                  <tr><td>🌱 種子製造機</td><td>Lv.3</td><td>木材 ×10、石塊 ×10、銅礦 ×5、齒輪 ×3</td><td>把收成的作物做成種子：1 個作物 = 2 顆對應種子</td></tr>
+                  <tr><td>🚜 自動收割機</td><td>Lv.5</td><td>木材 ×20、鐵礦 ×10、齒輪 ×5</td><td>開啟面板時自動收成成熟的作物（含成熟後才乾枯的作物）</td></tr>
+                  <tr><td>🏭 自動加工機</td><td>Lv.8</td><td>石塊 ×15、銅礦 ×15、鐵礦 ×10、機械核心 ×1</td><td>開啟面板時自動領取完成的加工品，並用背包原料開始設定的加工項目</td></tr>
+                  <tr><td>🧬 稀有作物培育器</td><td>Lv.12</td><td>木材 ×20、藥草 ×15、水晶 ×5、古木核心 ×1</td><td>用普通作物與探索素材培育稀有作物種子</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>培育配方</th><th>材料／份</th><th>成品</th><th>時間／份</th></tr></thead>
+                <tbody id="g-incubator">
+                  <tr><td>琥珀瓜種子培育</td><td>小麥 ×10、藥草 ×3</td><td>琥珀瓜種子 ×1</td><td>4 小時</td></tr>
+                  <tr><td>月光花種子培育</td><td>草莓 ×5、藥草 ×5、水晶 ×1</td><td>月光花種子 ×1</td><td>8 小時</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note" id="g-level-max">農場等級靠「⬆️ 擴建」提升，每擴建 1 次 +1 級，目前最高 Lv.13。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>等級</th><th>解鎖內容</th></tr></thead>
+                <tbody id="g-level-unlocks">
+                  <tr><td>Lv.1</td><td>青青草原</td></tr>
+                  <tr><td>Lv.2</td><td>草原進階素材</td></tr>
+                  <tr><td>Lv.3</td><td>種子製造機</td></tr>
+                  <tr><td>Lv.4</td><td>草原稀有發現</td></tr>
+                  <tr><td>Lv.5</td><td>古老森林、自動收割機</td></tr>
+                  <tr><td>Lv.6</td><td>森林進階素材</td></tr>
+                  <tr><td>Lv.7</td><td>森林稀有發現</td></tr>
+                  <tr><td>Lv.8</td><td>自動加工機</td></tr>
+                  <tr><td>Lv.9</td><td>森林高級探索獎勵</td></tr>
+                  <tr><td>Lv.10</td><td>神秘礦坑</td></tr>
+                  <tr><td>Lv.11</td><td>礦坑進階素材</td></tr>
+                  <tr><td>Lv.12</td><td>稀有作物培育器</td></tr>
+                  <tr><td>Lv.13</td><td>礦坑稀有發現</td></tr>
+                  <tr><td>Lv.14</td><td>高級機器素材（尚未開放）</td></tr>
+                  <tr><td>Lv.15</td><td>極稀有探索事件（尚未開放）</td></tr>
+                  <tr><td>Lv.16</td><td>三個區域完整探索獎勵池（尚未開放）</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🥷 偷菜與 🛡️ 防守</summary>
+          <div class="guide-body">
+            <ul>
+              <li>「🥷 偷菜」可以選一位同伺服器的玩家，打開他的農田畫面再選要偷哪一格，也可以直接從可偷作物清單選一株；每次最多 <span id="g-steal-max">2</span> 個，每株每人只能偷一次；每天只能偷同一位玩家 <span id="g-steal-day">1</span> 格田；每位玩家每天最多被 <span id="g-steal-thieves">3</span> 個人偷（被防守設施擋下的都不算）。</li>
+              <li>只能偷同一伺服器的成員；對方的防守設施可能會擋下你。</li>
+            </ul>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>防守設施</th><th>價格</th><th>上限</th><th>阻止機率</th><th>守護範圍</th></tr></thead>
+                <tbody id="g-defenses">
+                  <tr><td>稻草人</td><td>400</td><td>2</td><td>25%</td><td>連續 3 格（可調整）</td></tr>
+                  <tr><td>警戒犬</td><td>1,200</td><td>1</td><td>30%</td><td>全部農田</td></tr>
+                  <tr><td>防盜圍欄</td><td>800</td><td>1</td><td>20%</td><td>連續 4 格（可調整）</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note" id="g-defense-note">判定順序：稻草人 → 警戒犬 → 防盜圍欄，整體阻止機率最高 60%。「📍 調整守護範圍」輸入起始農田編號；
+              「🔦 巡查」消耗 1 張巡查券，可以看到近 7 天是誰來偷。</p>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🎰 幸運賭場</summary>
+          <div class="guide-body">
+            <ul id="g-gamble">
+              <li>只能押<b>稀有、傳說</b>品質，或<b>巨型作物、黃金作物、珍稀變種</b>。</li>
+              <li>系統從 1–10 擲一個數字：<b>比大</b>（6–10）／<b>比小</b>（1–5）贏了價值 ×2（機率 50%）；
+                <b>猜數字</b>猜中價值 ×5（機率 10%）。</li>
+              <li>輸了下注的作物會被沒收；贏了存成「🏆 賭場獎品」，可以在販售頁賣掉，也可以留著展示。</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🏆 排行榜、任務、競賽與活動</summary>
+          <div class="guide-body">
+            <ul>
+              <li>「🏆 排行榜」可切換：個人總排行／本伺服器排行／伺服器總排行；金幣／農產品販售／商品總販售；全部、本日、本週、本月。</li>
+              <li>「🎁 排名獎勵」每日／每週／每月自動發放，不用手動領，詳細規則見下方「🎁 排名獎勵」。</li>
+              <li>「📜 任務競賽」：伺服器共同任務（完成後選單領獎）與伺服器之間的競賽。
+                <b>只有在農場所屬伺服器中的操作才會計分。</b></li>
+              <li>活動（總覽會顯示目前生效的活動）：活動在你操作的當下判斷是否生效，播種時決定品質與收成量、澆水時決定生長時間、販售時決定單價。</li>
+            </ul>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>活動</th><th>效果</th><th>時段（台灣時間）</th><th>狀態</th></tr></thead>
+                <tbody id="g-events">
+                  <tr><td colspan="4">讀取活動中…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide" id="world-boss">
+          <summary>🐉 世界 Boss（伺服器後勤活動）</summary>
+          <div class="guide-body">
+            <ul>
+              <li><b>活動介紹</b>：世界 Boss 分成 🌏 <b>全服</b>（所有伺服器的玩家一起打，例如固定出現的「深淵魔龍」）
+                與 🏠 <b>伺服器</b>活動（管理員為某個伺服器開啟），大家一起當<b>農場後勤</b>。
+                玩家<b>不直接攻擊</b> Boss，而是把農作物、漁獲、素材與加工品捐給前線，Boss 戰鬥由系統自動進行。</li>
+              <li><b>參與方式</b>：在伺服器頻道輸入 <code>/farm</code> → 總覽「🐉 世界Boss」（介紹區：圖片、排行榜、活動說明）→「⚔️ 進入深淵魔龍」（戰鬥區：HP 與補給數值）→「📦 捐獻物資」→
+                選類別、物品與數量 →「✅ 確認捐獻」；🐟 漁獲可以一次勾選多種魚，勾選的魚種全部捐出。確認後才會扣除物品，按「❌ 取消」不會扣任何東西；重複點擊也只會捐一次。</li>
+              <li><b>後勤支援</b>：前線依四種補給的達成率自動作戰，每小時扣 Boss HP（基礎 <span id="g-boss-dph">1,500</span>／小時）；
+                每次捐獻也會<b>立即</b>造成「積分 × <span id="g-boss-instant">2</span> × 攻擊倍率」的傷害。</li>
+              <li><b>捐獻積分</b>：🌾 農作物與 🐟 漁獲依售價換算，每 <span id="g-boss-gpp">10</span> 金幣售價 = 1 積分
+                （無條件進位；品質越高越多分）；⚙️ 農場素材、🍲 指定加工物品、🧪 指定特殊材料依活動指定的固定積分（見下表）。</li>
+              <li><b>避免失衡</b>：單次最多捐 <span id="g-boss-action">99</span> 個；每種物品每場最多 <span id="g-boss-item">200</span> 個；
+                補給超過目標的部分最多只算到 <span id="g-boss-cap">150%</span>。</li>
+              <li><b>貢獻排行榜</b>：依個人貢獻積分排序（同分時先捐獻的在前），顯示積分與捐獻數量。
+                介紹區的「🏆 上一場排行榜」看<b>上一場</b>已結束活動的排名；進入戰鬥區後按「🏆 目前排行」看<b>這一場</b>的即時排名。</li>
+              <li><b>活動週期</b>：管理員開啟的活動有自己的開始與結束時間（預設 <span id="g-boss-hours">72</span> 小時）；
+                固定出現的 Boss 依下表時間（台灣時間）自動出現。Boss 的 HP 歸零或時間到就結束。看得到全服活動與自己所在伺服器的活動，
+                同時有多場時可以在面板「🔀 切換世界 Boss」。資料都存在資料庫，機器人重啟也不會遺失。</li>
+              <li><b>獎勵制度</b>：活動結束後按「🎁 領取獎勵」，<b>每人每場只能領一次</b>，只有捐獻過的玩家可以領。</li>
+            </ul>
+            <p class="note" id="g-boss-now">目前全服世界 Boss：讀取中…</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>固定出現的 Boss</th><th>範圍</th><th>出現頻率</th><th>出現時間（台灣）</th><th>HP</th><th>主要獎勵</th></tr></thead>
+                <tbody id="g-boss-schedules">
+                  <tr><td>🐉 深淵魔龍</td><td>全服</td><td>2 天一次</td><td>晚上 9 點（持續 3 小時）</td><td>15,000</td>
+                    <td>擊敗：1,200 金幣、水晶 ×2；第 1 名 3,000 金幣、月光花種子 ×2、古木核心 ×1；前 3 名稱號「降龍勇士」</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>補給</th><th>來源</th><th>影響</th><th>目標</th></tr></thead>
+                <tbody id="g-boss-supplies">
+                  <tr><td>🌾 糧食補給</td><td>農作物</td><td>持續作戰（沒有糧食時出勤率 30%）</td><td>1,000</td></tr>
+                  <tr><td>🩹 醫療補給</td><td>藥草、雞蛋、牛奶、果醬等</td><td>恢復能力（救回 50% 缺勤時間）</td><td>600</td></tr>
+                  <tr><td>⚔️ 戰鬥補給</td><td>漁獲、麵粉、麵包</td><td>傷害效率（傷害 +100%）</td><td>700</td></tr>
+                  <tr><td>🛡️ 裝備補給</td><td>洞窟探索與機器製作素材</td><td>戰鬥能力（傷害 +50%）</td><td>800</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>指定物品</th><th>補給</th><th>每個積分</th></tr></thead>
+                <tbody id="g-boss-items">
+                  <tr><td colspan="3">讀取指定物品中…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>獎勵</th><th>條件</th><th>內容</th></tr></thead>
+                <tbody id="g-boss-rewards">
+                  <tr><td>🎯 參與門檻</td><td>個人積分 ≥ 30</td><td>未達門檻沒有任何獎勵（含排名）</td></tr>
+                  <tr><td>🏆 勝利獎勵</td><td>Boss 被擊敗，所有貢獻者</td><td>1,200 金幣、水晶 ×2</td></tr>
+                  <tr><td>🤝 參與獎勵</td><td>Boss 未被擊敗，所有貢獻者</td><td>300 金幣</td></tr>
+                  <tr><td>⭐ 貢獻達標</td><td>個人積分 ≥ 200</td><td>500 金幣、琥珀瓜種子 ×2</td></tr>
+                  <tr><td>🥇 排名獎勵</td><td>個人排行前 10 名</td><td>3,000／2,000／1,500／800／800／400… 金幣與稀有物品</td></tr>
+                  <tr><td>🎖️ 特殊稱號</td><td>擊敗 Boss 時前 3 名</td><td>降龍勇士</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note" id="g-boss-source">補給目標與獎勵為目前全服世界 Boss（深淵魔龍）的設定；伺服器自己的活動由管理員設定，實際內容以 Discord「📖 活動說明」為準。</p>
+          </div>
+        </details>
+
+        <details class="guide" id="pets">
+          <summary>🐾 寵物（貓咪、狗狗）</summary>
+          <div class="guide-body">
+            <ul>
+              <li>在「🐔 動物」→「🐾 寵物（貓狗）」領養與升級，每次都要再按一次「確認」。寵物會出現在<b>農場圖上方</b>
+                （狗狗在左上、貓咪在右上），<b>不佔畜舍欄位</b>，也不用餵食。</li>
+              <li>領養 <b id="g-pet-buy">5,000</b> 金幣，Lv0 就有 X = <span id="g-pet-base">5</span>%；升級
+                <span id="g-pet-ladder">10,000 → 20,000 → 30,000 → 40,000</span> 金幣，每升一級 X 再 +<span id="g-pet-pct">5</span>%，
+                最高 Lv<span id="g-pet-max">4</span>（X 最多 <span id="g-pet-maxpct">25</span>%）。</li>
+              <li><b>貓咪</b>只加成主人自己收成的數量（自動收割機也算），被偷走的部分不會補回；小數部分依機率多給 1 個。</li>
+              <li><b>狗狗</b>在稻草人、警戒犬、防盜圍欄都沒擋住時再判定一次，不受防守設施整體 60% 上限限制；
+                被狗狗擋下的偷菜一樣會出現在巡查紀錄。</li>
+            </ul>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>寵物</th><th>簡介</th><th>效果（X 見上方）</th></tr></thead>
+                <tbody id="g-pets">
+                  <tr><td>🐱 貓咪</td><td>抓老鼠：趕走偷吃農作物的老鼠</td><td>收成數量 +X%</td></tr>
+                  <tr><td>🐶 狗狗</td><td>保衛農田：趕走來偷菜的小偷</td><td>防守設施沒擋住時，再有 X% 機率擋下偷菜（所有農田）</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">🐱 貓咪每格實際多收：收成數量 × 加成的整數部分一定給，小數部分換成機率多 1 個。
+              例如小麥每格 2 個、滿級 +25% = 0.5 個 → 每格 50% 機率多 1 個。下表以每種作物的基本收成數量計算
+              （巨型突變、活動加成、被偷或大風颳走時會不同）。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>作物</th><th>Lv0（+5%）</th><th>Lv1（+10%）</th><th>Lv2（+15%）</th><th>Lv3（+20%）</th><th>Lv4（+25%）</th></tr></thead>
+                <tbody id="g-cat-odds">
+                  <tr><td>小麥（每格 2 個）</td><td>10% 機率 +1</td><td>20% 機率 +1</td><td>30% 機率 +1</td><td>40% 機率 +1</td><td>50% 機率 +1</td></tr>
+                  <tr><td>胡蘿蔔（每格 3 個）</td><td>15% 機率 +1</td><td>30% 機率 +1</td><td>45% 機率 +1</td><td>60% 機率 +1</td><td>75% 機率 +1</td></tr>
+                  <tr><td>番茄（每格 4 個）</td><td>20% 機率 +1</td><td>40% 機率 +1</td><td>60% 機率 +1</td><td>80% 機率 +1</td><td>固定 +1</td></tr>
+                  <tr><td>草莓（每格 5 個）</td><td>25% 機率 +1</td><td>50% 機率 +1</td><td>75% 機率 +1</td><td>固定 +1</td><td>固定 +1，另有 25% 機率再 +1</td></tr>
+                  <tr><td>琥珀瓜（每格 3 個）</td><td>15% 機率 +1</td><td>30% 機率 +1</td><td>45% 機率 +1</td><td>60% 機率 +1</td><td>75% 機率 +1</td></tr>
+                  <tr><td>月光花（每格 2 個）</td><td>10% 機率 +1</td><td>20% 機率 +1</td><td>30% 機率 +1</td><td>40% 機率 +1</td><td>50% 機率 +1</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide" id="special-shop">
+          <summary>🎁 特賣與升級（溫室、每週特賣、稱號商店）</summary>
+          <div class="guide-body">
+            <ul>
+              <li>在「🏪 商店」→「🎁 特賣與升級」分頁（釣具商店也有這個按鈕）。</li>
+              <li><b>🏡 溫室</b>：永久升級，最高 <span id="g-gh-max">5</span> 級，
+                每一級讓<b>之後澆水</b>的作物生長時間再少 <span id="g-gh-pct">5</span>%
+                （與限時活動的加速相加，和蚯蚓、化肥可以一起用）。價格：<span id="g-gh-prices">5,000 → 15,000 → 40,000 → 100,000 → 250,000</span> 金幣。</li>
+              <li><b>🎁 每週特賣</b>：台灣時間<b>每週一 00:00</b> 換一批，所有玩家看到的商品相同：
+                2 種一般種子打 7 折（每人每週每種限購 50 顆），
+                再加 1 種<b>平常商店不賣的稀有種子</b>（每人每週限購 3 顆，放素材背包）。</li>
+              <li><b>🎖️ 稱號商店</b>：用金幣買稱號，每個只能買一次；買到後到「🏅 成就圖鑑 → 🎖️ 稱號」選擇要顯示的稱號。</li>
+            </ul>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>本週特賣</th><th>特價</th><th>原價</th><th>每人每週限購</th></tr></thead>
+                <tbody id="g-weekly">
+                  <tr><td colspan="4">讀取本週特賣中…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note" id="g-weekly-note">每週一 00:00（台灣時間）換新商品。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>稱號</th><th>價格（金幣）</th></tr></thead>
+                <tbody id="g-title-shop">
+                  <tr><td>🎖️ 黃金地主</td><td>100,000</td></tr>
+                  <tr><td>🎖️ 農場貴族</td><td>250,000</td></tr>
+                  <tr><td>🎖️ 傳奇農場主</td><td>500,000</td></tr>
+                  <tr><td>🎖️ 億萬富農</td><td>1,000,000</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide" id="progress">
+          <summary>🏅 每日簽到、成就與圖鑑</summary>
+          <div class="guide-body">
+            <ul>
+              <li><b>每日簽到</b>：每天（台灣時間 00:00 換日）第一次打開 <code>/farm</code> 或在面板換頁時<b>自動簽到</b>，獎勵顯示在畫面頂端，
+                不用按任何按鈕。連續簽到 7 天一輪（第 7 天最多），<b>中斷一天就從第 1 天重新計算</b>；連續天數與明天的獎勵在「🏅 成就圖鑑」查看。</li>
+              <li><b>成就</b>：總覽「🏅 成就圖鑑」→「🏅 成就」依分類查看進度。<b>成就上線前的紀錄也會算進去</b>；
+                達成後按「🎁 領取全部」一次領完，每個成就只能領一次。</li>
+              <li><b>稱號</b>：部分成就與世界 Boss（擊敗時名列前茅）會給稱號。到「🎖️ 稱號」選一個顯示，
+                會出現在總覽、排行榜與世界 Boss 貢獻排行的名字旁邊，例如「阿明〔傳說農夫〕」；也可以選「不顯示稱號」。</li>
+              <li><b>圖鑑</b>：「📖 圖鑑」分成 <span id="g-codex-cats">作物（含珍稀變種）、動物產品、加工品、山洞素材、魚類</span>。
+                收成、偷菜、收集動物產品、領取加工品、山洞探險與釣魚取得過的物品會自動登記，顯示累計數量與最高品質；沒取得過的顯示「？？？」。</li>
+              <li><b>獎勵發放</b>：道具放進倉庫；倉庫放不下時改發等值金幣（道具商店價格），不會因為倉庫滿而領不到。簽到與成就獎勵不計入排名。</li>
+            </ul>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>連續簽到</th><th>獎勵</th></tr></thead>
+                <tbody id="g-checkin">
+                  <tr><td>第 1 天</td><td>100 金幣</td></tr>
+                  <tr><td>第 2 天</td><td>化肥 ×3</td></tr>
+                  <tr><td>第 3 天</td><td>200 金幣</td></tr>
+                  <tr><td>第 4 天</td><td>巡查券 ×2</td></tr>
+                  <tr><td>第 5 天</td><td>300 金幣</td></tr>
+                  <tr><td>第 6 天</td><td>化肥 ×5</td></tr>
+                  <tr><td>第 7 天</td><td>500 金幣、人工養殖蚯蚓 ×1</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>分類</th><th>成就</th><th>條件</th><th>獎勵</th></tr></thead>
+                <tbody id="g-achievements">
+                  <tr><td>🌾 農耕</td><td>🌱 初出茅廬</td><td>取得作物達到 100 個</td><td>200 金幣</td></tr>
+                  <tr><td>🌾 農耕</td><td>🌾 勤勞農夫</td><td>取得作物達到 1,000 個</td><td>化肥 ×10、稱號「勤勞農夫」</td></tr>
+                  <tr><td>🌾 農耕</td><td>🚜 農業大亨</td><td>取得作物達到 10,000 個</td><td>2,000 金幣、人工養殖蚯蚓 ×3、稱號「農業大亨」</td></tr>
+                  <tr><td>🌾 農耕</td><td>⭐ 小有規模</td><td>農場等級達到 5 級</td><td>化肥 ×5</td></tr>
+                  <tr><td>🌾 農耕</td><td>🌟 資深農夫</td><td>農場等級達到 10 級</td><td>人工養殖蚯蚓 ×2、稱號「資深農夫」</td></tr>
+                  <tr><td>🌾 農耕</td><td>🗺️ 大地主</td><td>農田達到 16 格</td><td>1,000 金幣、稱號「大地主」</td></tr>
+                  <tr><td>🌾 農耕</td><td>👑 傳說農夫</td><td>取得傳說品質作物</td><td>巡查券 ×3、稱號「傳說農夫」</td></tr>
+                  <tr><td>🌾 農耕</td><td>💎 變種獵人</td><td>取得珍稀變種作物</td><td>人工養殖蚯蚓 ×1、稱號「變種獵人」</td></tr>
+                  <tr><td>💰 財富</td><td>🪙 小本生意</td><td>作物販售收入達到 10,000 金</td><td>300 金幣</td></tr>
+                  <tr><td>💰 財富</td><td>💵 生意興隆</td><td>作物販售收入達到 100,000 金</td><td>人工養殖蚯蚓 ×2、稱號「生意興隆」</td></tr>
+                  <tr><td>💰 財富</td><td>💰 富甲一方</td><td>作物販售收入達到 1,000,000 金</td><td>5,000 金幣、稱號「富甲一方」</td></tr>
+                  <tr><td>💰 財富</td><td>🏦 大富翁</td><td>持有金幣達到 500,000 金</td><td>稱號「大富翁」</td></tr>
+                  <tr><td>🐔 牧場與加工</td><td>🥚 小小牧場</td><td>收集動物產品達到 50 個</td><td>化肥 ×5</td></tr>
+                  <tr><td>🐔 牧場與加工</td><td>🐄 牧場主人</td><td>收集動物產品達到 500 個</td><td>人工養殖蚯蚓 ×2、稱號「牧場主人」</td></tr>
+                  <tr><td>🐔 牧場與加工</td><td>🍞 學徒工匠</td><td>領取加工品達到 20 份</td><td>300 金幣</td></tr>
+                  <tr><td>🐔 牧場與加工</td><td>🏭 工匠</td><td>領取加工品達到 200 份</td><td>人工養殖蚯蚓 ×2、稱號「工匠」</td></tr>
+                  <tr><td>⛰️ 冒險與釣魚</td><td>🔦 初探山洞</td><td>完成山洞探險達到 10 次</td><td>化肥 ×5</td></tr>
+                  <tr><td>⛰️ 冒險與釣魚</td><td>⛏️ 洞穴探險家</td><td>完成山洞探險達到 100 次</td><td>人工養殖蚯蚓 ×2、稱號「洞穴探險家」</td></tr>
+                  <tr><td>⛰️ 冒險與釣魚</td><td>🎣 第一次釣魚</td><td>釣到的魚達到 10 隻</td><td>巡查券 ×2</td></tr>
+                  <tr><td>⛰️ 冒險與釣魚</td><td>🐟 釣魚高手</td><td>釣到的魚達到 100 隻</td><td>1,000 金幣、稱號「釣魚高手」</td></tr>
+                  <tr><td>⛰️ 冒險與釣魚</td><td>🐋 傳說釣手</td><td>取得傳說魚</td><td>人工養殖蚯蚓 ×2、稱號「傳說釣手」</td></tr>
+                  <tr><td>🥷 社交與娛樂</td><td>🥷 神偷</td><td>偷菜成功達到 20 次</td><td>巡查券 ×3、稱號「神偷」</td></tr>
+                  <tr><td>🥷 社交與娛樂</td><td>🛡️ 守護者</td><td>防守成功達到 10 次</td><td>巡查券 ×3、稱號「守護者」</td></tr>
+                  <tr><td>🥷 社交與娛樂</td><td>🎰 幸運兒</td><td>賭場遊玩達到 50 次</td><td>200 金幣、稱號「幸運兒」</td></tr>
+                  <tr><td>🐉 世界 Boss</td><td>📦 後勤新兵</td><td>領取世界 Boss 獎勵達到 1 場</td><td>300 金幣</td></tr>
+                  <tr><td>🐉 世界 Boss</td><td>⚔️ 屠龍者</td><td>擊敗世界 Boss達到 1 場</td><td>人工養殖蚯蚓 ×1、稱號「屠龍者」</td></tr>
+                  <tr><td>🐉 世界 Boss</td><td>🐉 龍之剋星</td><td>擊敗世界 Boss達到 10 場</td><td>3,000 金幣、人工養殖蚯蚓 ×3、稱號「龍之剋星」</td></tr>
+                  <tr><td>📖 簽到與圖鑑</td><td>📅 一週全勤</td><td>最長連續簽到達到 7 天</td><td>化肥 ×5</td></tr>
+                  <tr><td>📖 簽到與圖鑑</td><td>🗓️ 全勤農夫</td><td>最長連續簽到達到 30 天</td><td>人工養殖蚯蚓 ×3、稱號「全勤農夫」</td></tr>
+                  <tr><td>📖 簽到與圖鑑</td><td>🌽 作物學者</td><td>作物圖鑑達到 100 %</td><td>2,000 金幣、稱號「作物學者」</td></tr>
+                  <tr><td>📖 簽到與圖鑑</td><td>🐠 垂釣大師</td><td>魚類圖鑑達到 100 %</td><td>2,000 金幣、稱號「垂釣大師」</td></tr>
+                  <tr><td>📖 簽到與圖鑑</td><td>📗 收藏家</td><td>全部圖鑑達到 50 %</td><td>人工養殖蚯蚓 ×2</td></tr>
+                  <tr><td>📖 簽到與圖鑑</td><td>📚 博物學家</td><td>全部圖鑑達到 100 %</td><td>5,000 金幣、稱號「博物學家」</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide" id="ranking">
+          <summary>🎁 排名獎勵</summary>
+          <div class="guide-body">
+            <ul>
+              <li><b>自動發放、不用報名</b>：每個統計期間結束後，系統依排名把獎勵直接放進得獎者的農場（金幣或道具），
+                「🧾 紀錄」會出現「排名獎勵」，「🏆 排行榜 → 🎁 排名獎勵」可以查看規則與自己得過的獎勵。</li>
+              <li><b>統計期間</b>（台灣時間）：每日從 00:00 起算；每週從週一 00:00 起算；每月從 1 日 00:00 起算。
+                期間結束後約 <span id="g-rank-grace">1 分鐘</span>結算，確保最後一刻的操作也算進去。</li>
+              <li><b>排名項目</b>：
+                <b>金幣</b>＝期間內<b>賣出農產品（作物，含珍稀變種）賺到的錢</b>（買種子、道具、動物等花費不會扣分；動物產品、加工品、魚和各種獎勵不算）；
+                <b>農產品販售</b>＝期間內賣出的作物數量（含珍稀變種）；
+                <b>商品總販售</b>＝期間內賣出所有商品（作物、動物產品、加工品）的收入。</li>
+              <li><b>個人排名</b>：所有玩家一起比，前幾名各自得獎。</li>
+              <li><b>群組排名</b>：每個伺服器的分數是「以這個伺服器為所屬群組的成員」加總；得獎時，
+                <b>結算當下</b>以該伺服器為所屬群組、而且還在伺服器裡的<b>每一位成員都會拿到一份</b>完整獎勵。
+                每個人只有一個所屬群組，所以不會重複領；想替某個伺服器拿分，要先把農場轉移過去。</li>
+              <li>分數必須<b>大於 0</b> 才能得獎；同分時依次要條件排序（例如收入相同比賣出數量），名次不會並列。</li>
+              <li>規則是新啟用的，只會結算啟用<b>之後</b>結束的期間，不會補發以前的期間；同一期間只會發一次。</li>
+            </ul>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>獎勵規則</th><th>對象</th><th>項目</th><th>週期</th><th>各名次獎勵</th></tr></thead>
+                <tbody id="g-rankings">
+                  <tr><td colspan="5">讀取排名獎勵規則中…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">獎勵規則由管理員設定，表格會跟著遊戲設定即時更新。群組排名的獎勵是「每位成員各一份」，不是全體平分。</p>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>👥 群組、轉移與紀錄</summary>
+          <div class="guide-body">
+            <ul>
+              <li>每個 Discord 伺服器就是一個群組。「👥 群組」可以看成員與你的所屬群組。</li>
+              <li>想把農場搬到目前的伺服器：「把農場轉移到這個伺服器」→ 再按一次確認。金幣、物品、農田都不變；
+                之後每次轉移需間隔 <b id="g-transfer">7 天</b>。</li>
+              <li>「🧾 紀錄」顯示最近 15 筆操作（買賣、收成、偷菜、賭場、山洞探索結果等）。</li>
+            </ul>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="section" id="music" aria-labelledby="music-title">
+      <p class="kicker">MUSIC</p>
+      <h2 id="music-title">🎵 音樂</h2>
+      <p class="lead">進入語音頻道後點歌，每個伺服器各自有播放清單、音量與循環模式。</p>
+      <div class="cards cards-2">
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🔴</span>
+          <h3>YouTube</h3>
+          <p>關鍵字搜尋、影片網址、播放清單。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🟢</span>
+          <h3>Spotify</h3>
+          <p>歌曲、專輯、播放清單、歌手連結，自動到 YouTube 找同一首歌來播。</p>
+        </article>
+      </div>
+      <p class="note callout">「正在播放」訊息附進度條與控制按鈕：暫停、跳過、停止、循環、隨機、音量、清單。</p>
+
+      <div class="guide-list music-guide">
+        <details class="guide" open>
+          <summary>🎧 第一次點歌</summary>
+          <div class="guide-body">
+            <ol>
+              <li>先<b>進入任一個語音頻道</b>（沒進語音頻道時機器人會提醒「你需要先加入一個語音頻道」）。</li>
+              <li>在文字頻道輸入 <code>/play</code>，在 <code>query</code> 欄位填歌名、YouTube／Spotify 網址或播放清單連結。</li>
+              <li>機器人會自動加入你的語音頻道並開始播放，同時貼出「正在播放」訊息與控制按鈕。</li>
+              <li>再用 <code>/play</code> 點其他歌，會依序加入待播清單；用 <code>/queue</code> 查看清單。</li>
+            </ol>
+            <p class="note">播放清單一次最多加入 <b id="m-playlist">20</b> 首。機器人正在某個頻道播放時，其他頻道的人無法把它拉走，請到同一個頻道點歌。</p>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>⌨️ 全部音樂指令</summary>
+          <div class="guide-body">
+            <p id="m-prefix-note">所有音樂指令都用斜線 <code>/</code> 開頭。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>指令</th><th>用途</th><th class="m-alias">前綴簡寫</th><th>誰可以用</th></tr></thead>
+                <tbody>
+                  <tr><td><code>/play</code> 關鍵字或網址</td><td>點歌（YouTube 搜尋，或貼 YouTube／Spotify 連結）</td><td class="m-alias" data-alias="p">p</td><td>在語音頻道中的人</td></tr>
+                  <tr><td><code>/nowplaying</code></td><td>重新貼出「正在播放」訊息與控制按鈕</td><td class="m-alias" data-alias="np">np</td><td>所有人</td></tr>
+                  <tr><td><code>/queue</code></td><td>查看待播清單（多頁時用 ⬅️ ➡️ 翻頁）</td><td class="m-alias" data-alias="q">q</td><td>所有人</td></tr>
+                  <tr><td><code>/skip</code></td><td>跳過目前的歌（單曲循環時也會前進）</td><td class="m-alias" data-alias="s">s</td><td>和機器人同頻道的人</td></tr>
+                  <tr><td><code>/pause</code>／<code>/resume</code></td><td>暫停／繼續播放</td><td class="m-alias">—</td><td>和機器人同頻道的人</td></tr>
+                  <tr><td><code>/stop</code></td><td>停止播放並清空待播清單，循環改回關閉</td><td class="m-alias">—</td><td>和機器人同頻道的人</td></tr>
+                  <tr><td><code>/loop</code> off／song／queue</td><td>循環：關閉／單曲循環／清單循環（不填則依序切換）</td><td class="m-alias">—</td><td>所有人</td></tr>
+                  <tr><td><code>/shuffle</code></td><td>隨機打亂待播清單（至少 2 首）</td><td class="m-alias">—</td><td>和機器人同頻道的人</td></tr>
+                  <tr><td><code>/remove</code> 編號</td><td>移除待播清單中的某首歌（編號看 <code>/queue</code>）</td><td class="m-alias" data-alias="rm">rm</td><td>和機器人同頻道的人</td></tr>
+                  <tr><td><code>/clear</code></td><td>清空待播清單（目前這首繼續播）</td><td class="m-alias">—</td><td>和機器人同頻道的人</td></tr>
+                  <tr><td><code>/volume</code> 0–200</td><td>設定音量百分比；不填數字則顯示目前音量。伺服器會記住設定</td><td class="m-alias" data-alias="vol">vol</td><td>所有人</td></tr>
+                  <tr><td><code>/join</code></td><td>讓機器人加入你所在的語音頻道</td><td class="m-alias">—</td><td>在語音頻道中的人</td></tr>
+                  <tr><td><code>/leave</code></td><td>讓機器人離開語音頻道並清空清單</td><td class="m-alias" data-alias="dc">dc</td><td>所有人</td></tr>
+                  <tr><td><code>/prefix</code> 符號</td><td>修改此伺服器的前綴符號（1–5 個字元，不能有空白）</td><td class="m-alias">—</td><td>有「管理伺服器」權限的人</td></tr>
+                  <tr><td><code>/music</code></td><td>在 Discord 裡顯示音樂指令說明</td><td class="m-alias">—</td><td>所有人</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🎛️ 「正在播放」控制按鈕</summary>
+          <div class="guide-body">
+            <p>只有和機器人在<b>同一個語音頻道</b>的人可以按；按了之後訊息會即時更新。</p>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>按鈕</th><th>作用</th></tr></thead>
+                <tbody>
+                  <tr><td>⏸️／▶️</td><td>暫停／繼續</td></tr>
+                  <tr><td>⏭️</td><td>跳過這首歌</td></tr>
+                  <tr><td>⏹️</td><td>停止播放並清空待播清單</td></tr>
+                  <tr><td>➡️ → 🔂 → 🔁</td><td>依序切換：不循環 → 單曲循環 → 清單循環</td></tr>
+                  <tr><td>🔀</td><td>隨機打亂待播清單</td></tr>
+                  <tr><td>🔉／🔊</td><td>音量每次 -5%／+5%（範圍 0–200%）</td></tr>
+                  <tr><td>🔄</td><td>更新播放進度</td></tr>
+                  <tr><td>📜 清單</td><td>只顯示給你看的待播清單</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>❓ 常見問題</summary>
+          <div class="guide-body">
+            <ul>
+              <li><b>機器人自己離開了？</b>待播清單播完後閒置 <span id="m-idle">5</span> 分鐘會自動離開；語音頻道只剩機器人時，約 1 分鐘後也會離開。</li>
+              <li><b>按按鈕沒反應，說要在同一個頻道？</b>控制按鈕和 <code>/skip</code>、<code>/pause</code> 等指令，只有和機器人在同一個語音頻道的人能用。</li>
+              <li><b>聲音太小／太大？</b>預設音量 <span id="m-volume">10</span>%，用 <code>/volume 50</code> 或按 🔉／🔊 調整，每個伺服器會記住自己的音量。</li>
+              <li><b>Spotify 連結怎麼播？</b>機器人會讀取歌曲名稱，到 YouTube 找同一首歌播放；歌曲、專輯、播放清單都可以；歌手連結會播他的熱門歌曲。</li>
+              <li><b>找不到歌或連結失敗？</b>確認網址可以公開觀看，或改用關鍵字搜尋。</li>
+            </ul>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="section" id="start" aria-labelledby="start-title">
+      <p class="kicker">GET STARTED</p>
+      <h2 id="start-title">開始使用</h2>
+      <ol class="steps">
+        <li><span>1</span><div><strong>邀請機器人</strong><p>按上方「邀請機器人」，選擇你的伺服器。</p></div></li>
+        <li><span>2</span><div><strong>輸入 <code>/farm</code></strong><p>按「建立農場」，農場就屬於這個伺服器。</p></div></li>
+        <li><span>3</span><div><strong>種下第一批作物</strong><p>到「🌱 農田」選作物 →「💧 全部澆水」→ 成熟後「🧺 全部收成」→「💰 販售」；有空就去「⛰️ 山洞」探索收集素材。</p></div></li>
+        <li><span>4</span><div><strong>想聽歌就 <code>/play</code></strong><p>先進語音頻道，再輸入歌名或貼上連結。</p></div></li>
+      </ol>
+      <div class="commands">
+        <div>
+          <h3>🌾 農場指令</h3>
+          <ul>
+            <li><code>/farm</code> 打開農場面板（所有功能都在裡面）</li>
+            <li><code>/help</code> 玩法說明</li>
+          </ul>
+        </div>
+        <div>
+          <h3>🎵 音樂指令</h3>
+          <ul>
+            <li><code>/play</code> 點歌 · <code>/music</code> 指令說明</li>
+            <li><code>/nowplaying</code> 控制面板 · <code>/queue</code> 播放清單</li>
+            <li><code>/skip</code> <code>/pause</code> <code>/resume</code> <code>/stop</code></li>
+            <li><code>/loop</code> <code>/shuffle</code> <code>/volume</code> <code>/music</code> 完整說明</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="status" aria-labelledby="status-title">
+      <p class="kicker">STATUS</p>
+      <div class="section-head">
+        <h2 id="status-title">📈 狀態</h2>
+        <span class="live" id="status-live" role="status" aria-live="polite">讀取中…</span>
+      </div>
+      <div class="status-grid" id="status-grid">
+        <div class="status-card"><span>農夫</span><strong id="s-players" class="loading">—</strong></div>
+        <div class="status-card"><span>農場</span><strong id="s-farms" class="loading">—</strong></div>
+        <div class="status-card"><span>伺服器</span><strong id="s-servers" class="loading">—</strong></div>
+        <div class="status-card"><span>生長中的作物</span><strong id="s-growing" class="loading">—</strong></div>
+        <div class="status-card"><span>今天的操作</span><strong id="s-today" class="loading">—</strong></div>
+        <div class="status-card"><span>最後活動</span><strong id="s-last" class="loading small-value">—</strong></div>
+      </div>
+      <p class="note" id="status-note">統計每 30 秒更新一次。</p>
+    </section>
+
+    <section class="section" id="terms" aria-labelledby="terms-title">
+      <p class="kicker">TERMS &amp; PRIVACY</p>
+      <h2 id="terms-title">條款與隱私</h2>
+      <div class="cards cards-2">
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">🔒</span>
+          <h3>我們儲存什麼</h3>
+          <p>Discord 使用者 ID、顯示名稱、伺服器 ID 與名稱，以及你在遊戲中的農場資料與操作紀錄。
+            不讀取聊天訊息內容，也不儲存語音。音樂的音量與前綴設定以伺服器為單位保存。</p>
+        </article>
+        <article class="card">
+          <span class="card-icon" aria-hidden="true">📜</span>
+          <h3>使用規範</h3>
+          <p>遊戲內的金幣與物品沒有現實價值，不得買賣。請勿利用漏洞或自動化程式大量操作；
+            管理員可依紀錄調整異常資料。音樂來源的內容版權屬於原作者。</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <a class="brand" href="#top"><span class="brand-moon" aria-hidden="true">☾</span> 回到頂端</a>
+      <nav class="footer-nav" aria-label="頁尾選單">
+        <a href="#farm">農場</a><a href="#guide">操作手冊</a><a href="#music">音樂</a><a href="#status">狀態</a><a href="#terms">條款與隱私</a>
+      </nav>
+      <p>© 2026 <span id="footer-name">油祥農場</span>. All rights reserved.</p>
+    </div>
+  </footer>
+  <script src="/static/site.js"></script>
+</body>
+</html>

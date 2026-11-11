@@ -1,0 +1,790 @@
+// 介紹網站：填入邀請連結與即時統計。一律用 textContent，不使用 innerHTML。
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const num = new Intl.NumberFormat("zh-TW");
+  const time = new Intl.DateTimeFormat("zh-TW", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Taipei" });
+
+  function setText(id, value) {
+    const node = $(id);
+    if (node) node.textContent = value;
+  }
+
+  async function loadInfo() {
+    try {
+      const res = await fetch("/api/info", { headers: { Accept: "application/json" }, cache: "no-store" });
+      if (!res.ok) return;
+      const info = await res.json();
+      setText("site-name", info.name);
+      setText("footer-name", info.name);
+      document.title = `${info.name} ✦ Discord 農場與音樂機器人`;
+      if (info.invite_url) {
+        for (const id of ["invite-btn", "invite-link", "invite-top"]) {
+          const a = $(id);
+          a.href = info.invite_url;
+          a.target = "_blank";
+          a.rel = "noopener";
+        }
+      }
+      if (info.music_invite_url) {
+        const a = $("music-invite-btn");
+        a.href = info.music_invite_url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.hidden = false;
+      }
+      if (info.music) renderMusicInfo(info.music);
+      if (info.support_url) {
+        for (const id of ["support-btn", "support-link"]) {
+          const a = $(id);
+          a.href = info.support_url;
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.hidden = false;
+        }
+      } else {
+        $("support-link").parentElement.hidden = true;
+      }
+    } catch (err) {
+      // 網路錯誤時保留預設連結
+    }
+  }
+
+  // ---------- 音樂設定（前綴指令是否開啟、歌單上限、閒置時間、預設音量） ----------
+  function renderMusicInfo(m) {
+    setText("m-playlist", num.format(m.playlist_limit));
+    setText("m-idle", String(m.idle_minutes));
+    setText("m-volume", String(m.default_volume_pct));
+    const note = $("m-prefix-note");
+    if (m.prefix_commands) {
+      note.replaceChildren(
+        document.createTextNode("所有音樂指令都可以用斜線 "), code("/"),
+        document.createTextNode(" 或前綴 "), code(m.prefix),
+        document.createTextNode(" 開頭（例如 "), code(`${m.prefix}p 歌名`),
+        document.createTextNode("）；各伺服器可以用 /prefix 改前綴。"),
+      );
+      document.querySelectorAll("td.m-alias[data-alias]").forEach((td) => {
+        td.replaceChildren(code(`${m.prefix}${td.dataset.alias}`));
+      });
+    } else {
+      // 前綴指令未開啟時隱藏簡寫欄，避免玩家輸入沒有作用的指令
+      document.querySelectorAll(".m-alias").forEach((n) => { n.hidden = true; });
+    }
+  }
+
+  function code(text) {
+    const c = document.createElement("code");
+    c.textContent = text;
+    return c;
+  }
+
+  // ---------- 操作手冊：數值即時讀自遊戲設定；讀取失敗時保留頁面上的預設值並標示 ----------
+  function duration(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h && m) return `${h} 小時 ${m} 分鐘`;
+    if (h) return `${h} 小時`;
+    if (m) return `${m} 分鐘`;
+    return `${seconds} 秒`;
+  }
+
+  const mul = (v) => `×${Number(v.toFixed(2))}`;
+  const pct = (v) => `${Number(v.toFixed(2))}%`;
+
+  function fillRows(id, rows) {
+    const body = $(id);
+    if (!body) return;
+    body.replaceChildren(...rows.map((cells) => {
+      const tr = document.createElement("tr");
+      for (const cell of cells) {
+        const td = document.createElement("td");
+        if (cell instanceof Node) td.appendChild(cell); else td.textContent = String(cell);
+        tr.appendChild(td);
+      }
+      return tr;
+    }));
+  }
+
+  function statusTag(active) {
+    const span = document.createElement("span");
+    span.className = active ? "tag tag-on" : "tag";
+    span.textContent = active ? "進行中" : "未在時段內";
+    return span;
+  }
+
+  function renderGuide(g) {
+    const s = g.start;
+    setText("g-start", `${num.format(s.gold)} 金幣、${s.plots} 格農田、倉庫 ${s.warehouse} 格`);
+    if (s.rename_cost != null) {
+      setText("g-rename", `${num.format(s.rename_cost)} 金幣`);
+      setText("g-rename-quick", `${num.format(s.rename_cost)} 金幣`);
+    }
+    setText("g-wither", duration(s.wither_minutes * 60));
+    setText("g-upgrade", `每次農田 +${s.upgrade_plots} 格：${s.upgrade_prices.map((p) => num.format(p)).join(" → ")} 金幣（最多 ${s.max_plots} 格）`);
+    setText("g-steal-max", String(s.steal_max));
+    if (s.steal_plots_per_day) setText("g-steal-day", String(s.steal_plots_per_day));
+    if (s.steal_thieves_per_day) setText("g-steal-thieves", String(s.steal_thieves_per_day));
+    setText("g-transfer", `${s.transfer_cooldown_days} 天`);
+    setText("g-craft-max", String(s.craft_max));
+    const barn = g.buildings.find((b) => b.name === "畜舍");
+    if (barn) setText("g-barn", `${num.format(barn.price)} 金幣，每座 ${s.barn_slots} 個欄位，最多 ${barn.max} 座`);
+    setText("g-wh-price", `${num.format(s.warehouse_prices[0])} 起`);
+    setText("g-wh-desc", `每次 +${s.warehouse_step} 格：${s.warehouse_prices.map((p) => num.format(p)).join(" → ")}，最大 ${s.warehouse_max} 格`);
+
+    setText("crop-times", g.crops.length
+      ? g.crops.map((c) => `${c.name} ${duration(c.grow_seconds)}`).join("、")
+      : "目前沒有開放種植的作物");
+    fillRows("g-crops", g.crops.length
+      ? g.crops.map((c) => [c.name, c.shop_buyable ? num.format(c.seed_price) : "不販售（探索／培育）",
+        duration(c.grow_seconds), `×${c.harvest_quantity}`, num.format(c.sell_price), c.variant_name,
+        c.season_text ? `${c.season_text}${c.in_season ? "（現在可種）" : ""}` : "四季"])
+      : [["目前沒有開放種植的作物", "", "", "", "", "", ""]]);
+    if (g.seasons) setText("g-season-now", `現在是${g.seasons.current}季`);
+    if (g.ruins) renderRuins(g.ruins);
+    if (g.news) renderNews(g.news);
+    fillRows("g-qualities", g.qualities.map((q) => [q.name, pct(q.chance_pct), mul(q.price_mul)]));
+    setText("g-level-note", `農場每升 1 級，有 ${pct(g.level_bonus_pct)} 機率從普通升到較高品質（最多 ${pct(g.level_bonus_max_pct)}）。`);
+    fillRows("g-mutations", g.mutations.map((m) => [m.name, pct(m.chance_pct), m.effect]));
+    fillRows("g-items", g.items.map((i) => [i.name, num.format(i.price), i.description]));
+    fillRows("g-animals", g.animals.length
+      ? g.animals.map((a) => [a.name, num.format(a.price), num.format(a.feed_cost), duration(a.cycle_seconds),
+        `${a.product_name} ×${a.product_quantity}（${num.format(a.product_price)} / 個）`])
+      : [["目前沒有開放購買的動物", "", "", "", ""]]);
+    fillRows("g-recipes", g.recipes.map((r) => [r.name, `${r.building}（${num.format(r.building_price)}）`,
+      r.inputs.map((i) => `${i.name} ×${i.quantity}`).join("、"), duration(r.seconds), num.format(r.sell_price)]));
+    fillRows("g-defenses", g.defenses.map((d) => [d.name, num.format(d.price), String(d.max), `${d.chance_pct}%`,
+      d.range === null ? "全部農田" : `連續 ${d.range} 格（可調整）`]));
+    setText("g-defense-note", `判定順序：${g.defenses.map((d) => d.name).join(" → ")}，整體阻止機率最高 ${s.max_block_pct}%。`
+      + `「📍 調整守護範圍」輸入起始農田編號；「🔦 巡查」消耗 1 張巡查券，可以看到近 ${s.patrol_days} 天是誰來偷。`);
+
+    renderExploration(g.exploration);
+
+    const gm = g.gamble;
+    const half = gm.big_from - gm.min;
+    const span = gm.max - gm.min + 1;
+    $("g-gamble").replaceChildren(...[
+      `只能押 ${gm.qualities.join("、")} 品質，或 ${gm.mutations.join("、")} 的作物。`,
+      `系統從 ${gm.min}–${gm.max} 擲一個數字：比大（${gm.big_from}–${gm.max}）／比小（${gm.min}–${gm.big_from - 1}）`
+        + `贏了價值 ×${gm.hilo_multiplier}（機率 ${Math.round(((span - half) / span) * 100)}%）；`
+        + `猜數字猜中價值 ×${gm.exact_multiplier}（機率 ${Math.round(100 / span)}%）。`,
+      "輸了下注的作物會被沒收；贏了存成「🏆 賭場獎品」，可以在販售頁賣掉，也可以留著展示。",
+    ].map((t) => { const li = document.createElement("li"); li.textContent = t; return li; }));
+
+    fillRows("g-events", g.events.length
+      ? g.events.map((e) => [e.name, e.effects_text, e.schedule_text, statusTag(e.active_now)])
+      : [["目前沒有排定的活動", "", "", ""]]);
+
+    if (g.rankings) renderRankings(g.rankings);
+    if (g.world_boss) renderWorldBoss(g.world_boss);
+    if (g.progress) renderProgress(g.progress);
+    if (g.special_shop) renderSpecialShop(g.special_shop);
+    if (g.pets) renderPets(g.pets);
+  }
+
+  // 寵物：領養與升級價格、每級加成（固定規則）
+  function renderPets(p) {
+    setText("g-pet-buy", num.format(p.buy_price));
+    setText("g-pet-ladder", p.upgrade_prices.map((v) => num.format(v)).join(" → "));
+    setText("g-pet-base", String(p.base_pct));
+    setText("g-pet-pct", String(p.pct_per_level));
+    setText("g-pet-max", String(p.max_level));
+    setText("g-pet-maxpct", String(p.max_pct));
+    fillRows("g-pets", p.pets.map((x) => [x.name, x.role, x.effect]));
+    if (p.cat_odds) {
+      fillRows("g-cat-odds", p.cat_odds.length
+        ? p.cat_odds.map((c) => [`${c.name}（每格 ${c.quantity} 個）`, ...c.levels])
+        : [["目前沒有開放種植的作物", ...Array(p.max_level + 1).fill("")]]);
+    }
+  }
+
+  // 特賣與升級：溫室價格、本週特賣（所有玩家相同）、稱號商店
+  function renderSpecialShop(sp) {
+    setText("g-gh-max", String(sp.greenhouse.prices.length));
+    setText("g-gh-pct", String(sp.greenhouse.per_level));
+    setText("g-gh-prices", sp.greenhouse.prices.map((p) => num.format(p)).join(" → "));
+    const w = sp.weekly;
+    fillRows("g-weekly", w.offers.length
+      ? w.offers.map((o) => [`${o.rare ? "🌟 " : "🌰 "}${o.name}`, num.format(o.price),
+        o.rare ? "平常不販售" : num.format(o.original_price), `${o.limit} 顆`])
+      : [["本週沒有特賣", "", "", ""]]);
+    const ends = new Date(w.ends_at);
+    setText("g-weekly-note", `本週特賣到 ${ends.toLocaleString("zh-TW", { dateStyle: "medium", timeStyle: "short" })} 為止，之後換新商品。`);
+    fillRows("g-title-shop", sp.titles.map((t) => [`🎖️ ${t.title}`, num.format(t.price)]));
+  }
+
+  // 每日簽到、成就與圖鑑（固定規則，沒有玩家資料）
+  function renderProgress(p) {
+    fillRows("g-checkin", p.checkin.map((c) => [`第 ${c.day} 天`, c.reward]));
+    fillRows("g-achievements", p.achievements.map((a) => [a.category, a.name, a.description, a.reward]));
+    setText("g-codex-cats", p.codex.join("、"));
+    setText("c-achievements", String(p.achievements.length));
+  }
+
+  // 世界 Boss：補給、指定物品、積分規則與預設獎勵（只有規則，沒有任何伺服器或玩家資料）
+  function renderWorldBoss(b) {
+    // 本場全服 Boss 的即時狀態（HP 依時間推算；手冊資料每分鐘更新一次）
+    const c = b.current;
+    const when = (iso) => new Date(iso).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    if (c) {
+      const time = c.state === "scheduled" ? `${when(c.starts_at)} 開始` : `${when(c.ends_at)} 結束`;
+      setText("g-boss-now", `目前全服世界 Boss：${c.name}｜${c.state_label}｜HP ${num.format(c.hp)} / ${num.format(c.max_hp)}`
+        + `（${c.hp_pct}%）｜${time}｜參與 ${num.format(c.participants)} 人`);
+    } else {
+      setText("g-boss-now", "目前沒有全服世界 Boss 活動，請看下表的固定出現時間。");
+    }
+    const src = b.source || {};
+    setText("g-boss-source", src.kind === "default"
+      ? "目前沒有全服活動或排程，表格為預設值；伺服器自己的活動由管理員設定，實際內容以 Discord「📖 活動說明」為準。"
+      : `補給目標與獎勵為${src.kind === "event" ? "本場" : "排程"}全服世界 Boss「${src.name}」的設定；`
+        + "伺服器自己的活動由管理員設定，實際內容以 Discord「📖 活動說明」為準。");
+    const first = (b.schedules || []).find((x) => x.scope === "全服") || (b.schedules || [])[0];
+    if (first) {
+      const [h, m] = first.time.split(":").map(Number);
+      const part = h < 5 ? "凌晨" : h < 11 ? "早上" : h < 13 ? "中午" : h < 18 ? "下午" : "晚上";
+      const freq = first.interval_days === 1 ? "每天" : `每 ${first.interval_days} 天`;
+      setText("c-boss", `${first.name}${freq}${part} ${h % 12 || 12} 點${m ? ` ${m} 分` : ""}出現`);
+    }
+    setText("g-boss-dph", num.format(b.base_damage_per_hour));
+    setText("g-boss-instant", String(b.instant_damage_per_point));
+    setText("g-boss-gpp", String(b.gold_per_point));
+    setText("g-boss-action", String(b.limits.per_action_max));
+    setText("g-boss-item", String(b.limits.per_item_max));
+    setText("g-boss-cap", `${b.ratio_cap_pct}%`);
+    setText("g-boss-hours", String(b.duration_hours));
+    fillRows("g-boss-supplies", b.supplies.map((s) => [`${s.emoji} ${s.name}`, s.description,
+      `${s.effect}（${s.effect_text}）`, num.format(s.target)]));
+    fillRows("g-boss-items", b.items.length
+      ? b.items.map((i) => [i.name, i.supply, String(i.points)])
+      : [["目前沒有指定物品", "", ""]]);
+    const r = b.rewards;
+    const rows = [];
+    if (r.min_points) rows.push(["🎯 參與門檻", `個人積分 ≥ ${num.format(r.min_points)}`, "未達門檻沒有任何獎勵（含排名）"]);
+    rows.push(
+      ["🏆 勝利獎勵", "Boss 被擊敗，所有貢獻者", r.victory],
+      ["🤝 參與獎勵", "Boss 未被擊敗，所有貢獻者", r.participation],
+    );
+    if (r.bonus_points) rows.push(["⭐ 貢獻達標", `個人積分 ≥ ${num.format(r.bonus_points)}`, r.bonus]);
+    r.rank.forEach((t, i) => rows.push([i < 3 ? ["🥇", "🥈", "🥉"][i] + " 排名獎勵" : "🏅 排名獎勵", `個人第 ${i + 1} 名`, t]));
+    if (r.title) rows.push(["🎖️ 特殊稱號", `擊敗 Boss 時前 ${r.title_top} 名`, r.title]);
+    fillRows("g-boss-rewards", rows);
+    const hm = (m) => (m % 60 ? `${Math.floor(m / 60)} 小時 ${m % 60} 分` : `${m / 60} 小時`);
+    // 「21:00」→「晚上 9 點」；「07:30」→「早上 7 點 30 分」
+    const clock = (t) => {
+      const [h, m] = t.split(":").map(Number);
+      const part = h < 5 ? "凌晨" : h < 11 ? "早上" : h < 13 ? "中午" : h < 18 ? "下午" : "晚上";
+      return `${part} ${h % 12 || 12} 點${m ? ` ${m} 分` : ""}`;
+    };
+    fillRows("g-boss-schedules", (b.schedules || []).length
+      ? b.schedules.map((x) => [x.name, x.scope, x.interval_days === 1 ? "每天一次" : `${x.interval_days} 天一次`,
+        `${clock(x.time)}（持續 ${hm(x.duration_minutes)}）`, num.format(x.max_hp),
+        [`擊敗：${x.rewards.victory}`, x.rewards.rank.length ? `第 1 名 ${x.rewards.rank[0]}` : "",
+          x.rewards.title ? `前 ${x.rewards.title_top} 名稱號「${x.rewards.title}」` : ""].filter(Boolean).join("；")])
+      : [["目前沒有固定出現的世界 Boss", "", "", "", "", ""]]);
+  }
+
+  // 排名獎勵：啟用中的規則（不含任何得獎紀錄）
+  function renderRankings(r) {
+    const grace = r.settle_grace_seconds;
+    setText("g-rank-grace", grace >= 60 ? `${Math.round(grace / 60)} 分鐘` : `${grace} 秒`);
+    fillRows("g-rankings", r.rules.length
+      ? r.rules.map((x) => [x.name, x.scope === "group" ? "群組（每位成員各一份）" : "個人", x.metric, x.period,
+        x.rewards.map((t, i) => `第 ${i + 1} 名 ${t}`).join("、")])
+      : [["目前沒有啟用中的排名獎勵", "", "", "", ""]]);
+  }
+
+  // 古代遺跡：修復階段、額外探索與守護者（固定規則）
+  function renderRuins(r) {
+    setText("g-ruins-level", `Lv.${r.unlock_level}`);
+    setText("g-ruins-cooldown", `冷卻 ${duration(r.cooldown_seconds)}`);
+    setText("g-ruins-extra", `${r.extra_rolls[0]}–${r.extra_rolls[1]}`);
+    setText("g-ruins-title", r.title);
+    fillRows("g-ruins-stages", r.stages.map((st, i) => [`${i + 1}. ${st.name}`,
+      st.materials.map((m) => `${m.name} ×${num.format(m.quantity)}`).join("、"), st.description]));
+    const gd = r.guardian;
+    const dmg = Object.entries(gd.damage).map(([rarity, d]) => `${rarity}素材每個 ${d}`).join("、");
+    $("g-guardian").replaceChildren(...[
+      `修好後的下一個週一（台灣時間）起，每週出現一隻${gd.name}：HP ${num.format(gd.hp_base)}，伺服器每多一座農場 +${num.format(gd.hp_per_member)}（最多 ${num.format(gd.hp_max)}），本週第一次受到傷害時固定。`,
+      `在修復遺跡頁選素材攻擊：${dmg} 傷害（假幣不行）；每次探索遺跡也會自動造成 ${gd.expedition_damage} 傷害。`,
+      `打倒後當週每次探索遺跡多 ${gd.bonus_rolls} 份獎勵；整週都沒打倒，遺跡崩塌回第三階段，要重新捐核心素材才能再進去。`,
+    ].map((t) => { const li = document.createElement("li"); li.textContent = t; return li; }));
+  }
+
+  // 農場日報與傳聞寶藏（固定規則）
+  function renderNews(n) {
+    $("g-news").replaceChildren(...[
+      `打開 /farm，總覽最下方的「📰 昨日農場日報」會刊出所屬伺服器成員昨天的大事：銷售冠軍、稀有突變、偷菜、防守、稀有魚、遺跡進度與守護者、賭場（最多 ${n.max_headlines} 條）。昨天完全沒有動靜就不顯示。`,
+      "日報只在你自己的面板裡顯示，Bot 不會發訊息到頻道，也沒有額外的按鈕。",
+      `約 ${n.rumor_chance_pct}% 的日子最後會多一條「🗺️ 傳聞：某座農場的田底下埋了寶藏」，約 ${n.rumor_true_pct}% 是真的。`,
+      `當天偷那座農場的菜成功時會順手挖一次（每人每天一次）；傳聞是真的就有 ${n.dig_chance_pct}% 機率挖到 ${num.format(n.treasure_gold[0])}–${num.format(n.treasure_gold[1])} 金幣，寶藏只有第一個挖到的人拿得到，隔天的日報會報導是誰挖到的。`,
+    ].map((t) => { const li = document.createElement("li"); li.textContent = t; return li; }));
+  }
+
+  // 山洞冒險與機器：區域、抽獎類型機率、素材、機器配方、培育配方與等級解鎖
+  function renderExploration(x) {
+    const lv = (n) => `Lv.${n}`;
+    const qty = (list) => list.map((i) => `${i.name} ×${i.quantity}`).join("、");
+    // 物品需要比區域解鎖更高的等級時才標示等級
+    const names = (list, unlock) => list.map((i) => (i.min_level > unlock ? `${i.name}（${lv(i.min_level)}）` : i.name))
+      .join("、");
+    if (x.areas.length) {
+      setText("g-area-example", `例如${x.areas.slice(0, 2).map((a) => `${a.name} ${duration(a.duration_seconds)}`).join("、")}`);
+    }
+    setText("g-fake-coin", `1 個 = ${num.format(x.fake_coin_value)} 金幣`);
+    setText("g-material-bag", `上限 ${num.format(x.material_bag_capacity)} 個`);
+    fillRows("g-areas", x.areas.map((a) => [`${a.emoji} ${a.name}`,
+      a.needs_ruins ? `${lv(a.unlock_level)}（伺服器修好遺跡後）` : lv(a.unlock_level),
+      a.needs_ruins ? `額外探索，每 ${duration(a.duration_seconds)}一次` : duration(a.duration_seconds),
+      `${a.rolls} 次`, lv(a.advanced_level),
+      [names(a.common, a.unlock_level), a.rare.length ? `稀有：${names(a.rare, a.unlock_level)}` : "",
+        a.seeds.length ? `種子：${names(a.seeds, a.unlock_level)}` : ""].filter(Boolean).join("；")]));
+    fillRows("g-reward-types", x.reward_types.normal.map((t, i) =>
+      [t.name, pct(t.chance_pct), pct(x.reward_types.advanced[i].chance_pct)]));
+    fillRows("g-area-events", x.areas.map((a) => [`${a.emoji} ${a.name}`,
+      a.events.map((e) => `${e.name}（${lv(Math.max(e.min_level, a.unlock_level))}）`).join("、")]));
+    fillRows("g-materials", x.materials.map((m) => [m.name, m.rarity, m.usage]));
+    setText("g-seed-ratio", `1 個普通作物 = ${x.seed_maker_ratio} 顆種子`);
+    setText("g-incubator-max", String(x.incubator_max));
+    fillRows("g-machines", x.machines.map((m) => [`${m.emoji} ${m.name}`, lv(m.unlock_level), qty(m.materials),
+      m.description]));
+    fillRows("g-incubator", x.incubator.map((r) => [r.name, qty(r.inputs), `${r.output} ×${r.output_quantity}`,
+      duration(r.seconds)]));
+    setText("g-level-max", `農場等級靠「⬆️ 擴建」提升，每擴建 1 次 +1 級，目前最高 ${lv(x.max_level)}。`);
+    fillRows("g-level-unlocks", x.level_unlocks.map((u) => [lv(u.level),
+      u.level > x.max_level ? `${u.text}（尚未開放）` : u.text]));
+  }
+
+  // 「農場」功能卡片：名稱與數字取自同一份遊戲設定；清單是空的就保留頁面上的預設文字
+  function listText(items) {
+    if (items.length <= 1) return items.join("");
+    return `${items.slice(0, -1).join("、")}與${items[items.length - 1]}`;
+  }
+
+  function setList(id, items, joiner = "、") {
+    if (items.length) setText(id, joiner ? items.join(joiner) : listText(items));
+  }
+
+  function renderCards(g) {
+    setList("c-qualities", g.qualities.map((q) => q.name));
+    setList("c-mutations", g.mutations.map((m) => m.name));
+    setList("c-animals", g.animals.map((a) => a.name));
+    setList("c-buildings", [...new Set(g.recipes.map((r) => r.building))]);
+    setList("c-recipes", g.recipes.map((r) => r.name));
+    setList("c-defenses", g.defenses.map((d) => d.name));
+    setText("c-hilo", String(g.gamble.hilo_multiplier));
+    setText("c-exact", String(g.gamble.exact_multiplier));
+    setList("c-tools", g.items.filter((i) => i.kind === "tool").map((i) => i.name));
+    setList("c-areas", g.exploration.areas.map((a) => a.name));
+    setList("c-rare-seeds", g.crops.filter((c) => !c.shop_buyable).map((c) => c.name));
+    setList("c-machines", g.exploration.machines.map((m) => m.name), null);
+    setText("c-transfer", String(g.start.transfer_cooldown_days));
+    const r = g.fishing ? g.fishing.rarities : [];
+    if (r.length) setText("c-fish-rarities", `${r[0].name}到${r[r.length - 1].name}共 ${r.length} 種稀有度`);
+  }
+
+  // 釣魚：稀有度機率與售價、基礎成功率、時間設定、釣具與魚類圖鑑
+  function renderFishing(f) {
+    setText("g-fish-wait", `${f.bite_wait[0]}–${f.bite_wait[1]} 秒`);
+    setText("g-fish-react", `${f.reaction_seconds} 秒`);
+    setText("g-fish-timeout", `${f.action_timeout_seconds} 秒`);
+    setText("g-fish-basket", `最多 ${num.format(f.basket_capacity)} 隻`);
+    setText("g-fish-success", `基礎釣魚成功率 ${f.base_success_pct}%，所有稀有度都一樣。稀有度只決定出現哪種魚與拉扯有多難，`
+      + "不會降低成功率；更好的魚竿和魚線能降低操作難度，魚餌能提高稀有魚的出現機率。");
+    fillRows("g-fish-rarities", f.rarities.map((r) => [`${r.emoji} ${r.name}`, pct(r.chance_pct),
+      r.price ? `${num.format(r.price[0])}–${num.format(r.price[1])}` : "目前沒有這種稀有度的魚",
+      (r.pulls ? `拉 ${r.pulls[0]}–${r.pulls[1]} 下；` : "") +
+      `衝刺 ${r.surge_pct}%、強力掙扎 ${r.strong_pct}%` + (r.chain_pct ? `、連續衝刺 ${r.chain_pct}%` : "")]));
+    fillRows("g-fish-gear", f.gear.length
+      ? f.gear.map((g) => [`${g.emoji} ${g.name}`, g.kind_name, g.kind === "bait" ? `${num.format(g.price)}／個` : num.format(g.price),
+        `Lv.${g.required_level}`, g.effects_text])
+      : [["目前沒有販售中的釣具", "", "", "", ""]]);
+    fillRows("g-fish-list", f.fish.length
+      ? f.fish.map((x) => [`${x.emoji} ${x.name}`, `${x.rarity_emoji} ${x.rarity_name}`, `${x.price[0]}–${x.price[1]}`,
+        `${x.weight[0]}–${x.weight[1]}`,
+        [x.baits && x.baits.length ? `需要${x.baits.join("或")}` : "", x.limit_text || ""].filter(Boolean).join("；") || "隨時",
+        x.description])
+      : [["目前沒有開放的魚", "", "", "", "", ""]]);
+  }
+
+  async function loadGuide() {
+    const note = $("guide-source");
+    try {
+      const res = await fetch("/api/guide", { headers: { Accept: "application/json" }, cache: "no-store" });
+      if (!res.ok) throw new Error(String(res.status));
+      const guide = await res.json();
+      renderGuide(guide);
+      if (guide.fishing) renderFishing(guide.fishing);
+      renderCards(guide);
+      note.textContent = `✓ 以下數值即時讀自遊戲設定（最後更新 ${time.format(new Date())}），管理員調整後會自動同步。`;
+      note.className = "data-source ok";
+    } catch (err) {
+      note.textContent = "⚠ 暫時無法讀取最新遊戲設定，以下顯示預設值，實際數值請以遊戲內顯示為準。";
+      note.className = "data-source warn";
+      fillRows("g-events", [["暫時無法讀取活動，請在 /farm 總覽查看目前的活動", "", "", ""]]);
+      fillRows("g-rankings", [["暫時無法讀取排名獎勵規則，請在 /farm 的「🏆 排行榜 → 🎁 排名獎勵」查看", "", "", "", ""]]);
+    }
+  }
+
+  const STAT_IDS = ["stat-players", "s-players", "stat-servers", "s-servers", "stat-growing", "s-growing", "s-farms",
+    "s-today", "s-last"];
+  let hasStats = false;
+
+  // 統計狀態：讀取中／即時／無法取得。失敗時不顯示假數字：保留上次真實數值但淡化，並清楚標示
+  function setLive(kind, text) {
+    for (const id of ["hero-live", "status-live"]) {
+      const node = $(id);
+      node.textContent = text;
+      node.className = `live ${kind}`;
+    }
+  }
+
+  async function loadStats() {
+    try {
+      const res = await fetch("/api/stats", { headers: { Accept: "application/json" }, cache: "no-store" });
+      if (!res.ok) throw new Error(String(res.status));
+      const s = await res.json();
+      for (const [id, key] of [["stat-players", "players"], ["s-players", "players"], ["stat-servers", "servers"],
+        ["s-servers", "servers"], ["stat-growing", "growing"], ["s-growing", "growing"], ["s-farms", "farms"],
+        ["s-today", "actions_today"]]) {
+        setText(id, num.format(s[key]));
+      }
+      setText("s-last", s.last_activity ? time.format(new Date(s.last_activity)) : "尚無紀錄");
+      for (const id of STAT_IDS) $(id).classList.remove("loading");
+      hasStats = true;
+      document.querySelectorAll(".quick-stats, #status-grid").forEach((n) => n.classList.remove("stale"));
+      setLive("ok", "即時");
+      $("status-note").classList.remove("error");
+      setText("status-note", `統計每 ${s.cached_seconds} 秒更新一次。最後更新：${time.format(new Date())}`);
+    } catch (err) {
+      for (const id of STAT_IDS) {
+        $(id).classList.remove("loading");
+        if (!hasStats) setText(id, "—");
+      }
+      if (hasStats) document.querySelectorAll(".quick-stats, #status-grid").forEach((n) => n.classList.add("stale"));
+      setLive("bad", "暫時無法取得");
+      $("status-note").classList.add("error");
+      setText("status-note", hasStats
+        ? "統計資料暫時無法取得，畫面上是上一次成功取得的數字，可能不是最新，稍後會自動重試。"
+        : "統計資料暫時無法取得，稍後會自動重試。");
+    }
+  }
+
+  // 手機選單
+  function initMenu() {
+    const btn = $("menu-btn");
+    const nav = $("nav");
+    const setOpen = (open) => {
+      nav.classList.toggle("open", open);
+      btn.setAttribute("aria-expanded", String(open));
+      btn.setAttribute("aria-label", open ? "關閉選單" : "開啟選單");
+    };
+    btn.addEventListener("click", () => setOpen(!nav.classList.contains("open")));
+    nav.addEventListener("click", (e) => { if (e.target.closest("a")) setOpen(false); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && nav.classList.contains("open")) { setOpen(false); btn.focus(); }
+    });
+    document.addEventListener("click", (e) => {
+      if (nav.classList.contains("open") && !e.target.closest("#topbar")) setOpen(false);
+    });
+  }
+
+  // 導覽列：捲動後加背景，並標示目前所在的區塊
+  function initScrollSpy() {
+    const bar = $("topbar");
+    const onScroll = () => bar.classList.toggle("scrolled", window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    if (!("IntersectionObserver" in window)) return;
+    const links = [...document.querySelectorAll("#nav a[href^='#']:not(.nav-cta)")];
+    const byId = new Map(links.map((a) => [a.getAttribute("href").slice(1), a]));
+    const visible = new Map();
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) visible.set(entry.target.id, entry.isIntersecting ? entry.intersectionRatio : 0);
+      let best = null;
+      for (const [id, ratio] of visible) if (ratio > 0 && (!best || ratio > visible.get(best))) best = id;
+      if (!best) return;
+      for (const a of links) {
+        const on = a === byId.get(best);
+        a.classList.toggle("active", on);
+        if (on) a.setAttribute("aria-current", "location"); else a.removeAttribute("aria-current");
+      }
+    }, { rootMargin: "-30% 0px -55% 0px", threshold: [0, 0.25, 0.5, 1] });
+    for (const id of byId.keys()) {
+      const section = $(id);
+      if (section) observer.observe(section);
+    }
+  }
+
+  // 操作手冊：全部展開／收合
+  function initGuide() {
+    const all = () => document.querySelectorAll("#guide details.guide");
+    $("guide-expand").addEventListener("click", () => all().forEach((d) => { d.open = true; }));
+    $("guide-collapse").addEventListener("click", () => all().forEach((d) => { d.open = false; }));
+  }
+
+  // ---------- 銀河星空背景 ----------
+  // 三層星星＋銀河帶＋星雲，捲動時遠景移動慢、近景移動快（視差）；星星閃爍、偶爾出現流星。
+  // 減少動態效果偏好：只畫靜態星空，不閃爍、不視差；分頁隱藏時暫停動畫。
+  function galaxy() {
+    const canvas = $("galaxy");
+    const ctx = canvas && canvas.getContext && canvas.getContext("2d");
+    if (!ctx) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const LAYERS = [
+      { speed: 0.04, density: 1 / 2600, size: [0.4, 0.9], alpha: [0.25, 0.6] },  // 遠景
+      { speed: 0.10, density: 1 / 6500, size: [0.8, 1.4], alpha: [0.45, 0.85] }, // 中景
+      { speed: 0.20, density: 1 / 26000, size: [1.3, 2.2], alpha: [0.7, 1] },     // 近景（較亮、有光暈）
+    ];
+    const TINTS = ["255,255,255", "255,244,224", "214,226,255", "255,226,240", "200,215,255"];
+    const rand = (a, b) => a + Math.random() * (b - a);
+    let w = 0;
+    let h = 0;
+    let dpr = 1;
+    let layers = [];
+    let band = null;
+    let glow = null;
+    let shooting = null;
+    let nextShoot = 0;
+    let mouseX = 0;
+    let mouseY = 0;
+    let running = false;
+
+    // 近景亮星的光暈貼圖（預先畫好，每幀只貼圖）
+    function makeGlow() {
+      const c = document.createElement("canvas");
+      c.width = c.height = 32;
+      const g = c.getContext("2d");
+      const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+      grad.addColorStop(0, "rgba(255,255,255,0.9)");
+      grad.addColorStop(0.25, "rgba(220,230,255,0.35)");
+      grad.addColorStop(1, "rgba(200,210,255,0)");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 32, 32);
+      return c;
+    }
+
+    // 銀河帶：斜向的發光帶，由色霧、細塵與暗帶組成，畫在比畫面高的離屏 canvas 上供捲動
+    function makeBand() {
+      const c = document.createElement("canvas");
+      const bw = Math.ceil(w * dpr);
+      const bh = Math.ceil(h * 1.8 * dpr);
+      c.width = bw;
+      c.height = bh;
+      const g = c.getContext("2d");
+      g.scale(dpr, dpr);
+      const H = h * 1.8;
+      g.translate(w / 2, H / 2);
+      g.rotate(-0.42);
+      const len = Math.hypot(w, H);
+      const thick = Math.max(160, Math.min(w, h) * 0.32);
+      g.globalCompositeOperation = "lighter";
+      // 色霧：沿著帶狀分布的大小光團
+      const hues = ["120,90,255", "90,140,255", "255,120,190", "255,200,150"];
+      for (let i = 0; i < 70; i += 1) {
+        const x = rand(-len / 2, len / 2);
+        const y = rand(-thick / 2, thick / 2) * (0.4 + Math.random() * 0.6);
+        const r = rand(thick * 0.25, thick * 0.9);
+        const core = Math.abs(x) < len * 0.18 && Math.random() < 0.5;
+        const color = core ? hues[3] : hues[Math.floor(Math.random() * 3)];
+        const grad = g.createRadialGradient(x, y, 0, x, y, r);
+        grad.addColorStop(0, `rgba(${color},${core ? 0.07 : 0.05})`);
+        grad.addColorStop(1, `rgba(${color},0)`);
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(x, y, r, 0, Math.PI * 2);
+        g.fill();
+      }
+      // 細塵：大量極小的星點，越靠近中線越密
+      const dust = Math.floor((len * thick) / 260);
+      for (let i = 0; i < dust; i += 1) {
+        const x = rand(-len / 2, len / 2);
+        const y = (Math.random() + Math.random() + Math.random() - 1.5) * thick * 0.55;
+        g.fillStyle = `rgba(255,255,255,${rand(0.08, 0.5)})`;
+        const s = rand(0.3, 1.1);
+        g.fillRect(x, y, s, s);
+      }
+      // 暗帶：銀河中央的塵埃遮蔽
+      g.globalCompositeOperation = "source-over";
+      for (let i = 0; i < 26; i += 1) {
+        const x = rand(-len / 2, len / 2);
+        const y = rand(-thick * 0.08, thick * 0.08);
+        const r = rand(thick * 0.08, thick * 0.22);
+        const grad = g.createRadialGradient(x, y, 0, x, y, r);
+        grad.addColorStop(0, "rgba(5,8,22,0.35)");
+        grad.addColorStop(1, "rgba(5,8,22,0)");
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(x, y, r, 0, Math.PI * 2);
+        g.fill();
+      }
+      return c;
+    }
+
+    function makeStars() {
+      layers = LAYERS.map((L) => {
+        const count = Math.round(w * h * 1.6 * L.density);
+        const stars = [];
+        for (let i = 0; i < count; i += 1) {
+          stars.push({
+            x: Math.random() * w,
+            y: Math.random() * h * 1.6, // 比畫面高，捲動時循環
+            r: rand(L.size[0], L.size[1]),
+            a: rand(L.alpha[0], L.alpha[1]),
+            tw: rand(0.6, 2.2),        // 閃爍速度
+            ph: Math.random() * Math.PI * 2,
+            tint: TINTS[Math.floor(Math.random() * TINTS.length)],
+          });
+        }
+        return { ...L, stars };
+      });
+    }
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = window.innerWidth;
+      h = window.innerHeight;
+      canvas.width = Math.ceil(w * dpr);
+      canvas.height = Math.ceil(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      makeStars();
+      band = makeBand();
+      draw(performance.now());
+    }
+
+    function draw(t) {
+      const scroll = reduce ? 0 : window.scrollY;
+      ctx.clearRect(0, 0, w, h);
+      // 銀河帶：捲動速度介於遠景與中景之間
+      const bandH = h * 1.8;
+      const by = -((scroll * 0.07) % bandH);
+      const mx = reduce ? 0 : mouseX * 6;
+      ctx.drawImage(band, 0, 0, band.width, band.height, mx, by, w, bandH);
+      ctx.drawImage(band, 0, 0, band.width, band.height, mx, by + bandH, w, bandH);
+      const time = t / 1000;
+      for (const L of layers) {
+        const span = h * 1.6;
+        const offY = scroll * L.speed;
+        const offX = reduce ? 0 : mouseX * L.speed * 60;
+        const offMY = reduce ? 0 : mouseY * L.speed * 40;
+        for (const s of L.stars) {
+          let y = (s.y - offY - offMY) % span;
+          if (y < 0) y += span;
+          if (y > h + 4) continue;
+          const x = (s.x + offX + w) % w;
+          const a = reduce ? s.a : s.a * (0.65 + 0.35 * Math.sin(time * s.tw + s.ph));
+          if (s.r > 1.6) {
+            ctx.globalAlpha = a * 0.6;
+            const gs = s.r * 7;
+            ctx.drawImage(glow, x - gs / 2, y - gs / 2, gs, gs);
+          }
+          ctx.globalAlpha = a;
+          ctx.fillStyle = `rgb(${s.tint})`;
+          if (s.r < 1) {
+            ctx.fillRect(x, y, s.r * 1.4, s.r * 1.4);
+          } else {
+            ctx.beginPath();
+            ctx.arc(x, y, s.r * 0.75, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+      if (!reduce) drawShooting(t);
+    }
+
+    // 流星：每 5–12 秒一顆，斜向劃過畫面上半部
+    function drawShooting(t) {
+      if (!shooting && t > nextShoot) {
+        const fromLeft = Math.random() < 0.5;
+        shooting = {
+          x: fromLeft ? rand(-50, w * 0.4) : rand(w * 0.6, w + 50),
+          y: rand(-20, h * 0.35),
+          vx: (fromLeft ? 1 : -1) * rand(9, 14),
+          vy: rand(3.5, 6),
+          life: 0,
+          max: rand(55, 80),
+        };
+      }
+      if (!shooting) return;
+      const s = shooting;
+      s.life += 1;
+      s.x += s.vx;
+      s.y += s.vy;
+      const fade = Math.sin((s.life / s.max) * Math.PI);
+      const tail = 14;
+      const grad = ctx.createLinearGradient(s.x, s.y, s.x - s.vx * tail, s.y - s.vy * tail);
+      grad.addColorStop(0, `rgba(255,255,255,${0.95 * fade})`);
+      grad.addColorStop(0.3, `rgba(200,215,255,${0.45 * fade})`);
+      grad.addColorStop(1, "rgba(200,215,255,0)");
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(s.x - s.vx * tail, s.y - s.vy * tail);
+      ctx.stroke();
+      if (s.life >= s.max) {
+        shooting = null;
+        nextShoot = t + rand(5000, 12000);
+      }
+    }
+
+    // 星雲與月亮：以 CSS transform 做較慢的視差（transform 不會觸發版面重排）
+    const nebulaA = document.querySelector(".nebula-a");
+    const nebulaB = document.querySelector(".nebula-b");
+    const moon = $("moon");
+    function parallaxDom() {
+      if (reduce) return;
+      const y = window.scrollY;
+      nebulaA.style.transform = `translate3d(${mouseX * 14}px, ${-y * 0.05 + mouseY * 10}px, 0)`;
+      nebulaB.style.transform = `translate3d(${mouseX * -18}px, ${-y * 0.09 + mouseY * -12}px, 0)`;
+      moon.style.transform = `translate3d(${mouseX * -8}px, ${-y * 0.35}px, 0)`;
+    }
+
+    function frame(t) {
+      if (!running) return;
+      draw(t);
+      parallaxDom();
+      requestAnimationFrame(frame);
+    }
+
+    function start() {
+      if (running || reduce) return;
+      running = true;
+      requestAnimationFrame(frame);
+    }
+
+    glow = makeGlow();
+    nextShoot = performance.now() + 2500;
+    resize();
+    canvas.parentElement.classList.add("ready");
+    let resizeTimer = null;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(resize, 150);
+    });
+    if (reduce) {
+      // 靜態星空：只在尺寸改變時重畫
+      return;
+    }
+    window.addEventListener("pointermove", (e) => {
+      mouseX = e.clientX / w - 0.5;
+      mouseY = e.clientY / h - 0.5;
+    }, { passive: true });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) running = false; else start();
+    });
+    start();
+  }
+
+  galaxy();
+  initMenu();
+  initScrollSpy();
+  initGuide();
+  loadInfo();
+  loadGuide();
+  loadStats();
+  setInterval(loadStats, 30000);
+  // 手冊數值（作物、釣魚機率等）：伺服器快取 60 秒，頁面每分鐘重新讀取，切回分頁時也立即更新
+  setInterval(loadGuide, 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) loadGuide(); });
+})();

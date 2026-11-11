@@ -1,0 +1,8 @@
+# 只需要 go.mod、go.sum、cmd、internal；其他（舊版 Python、說明檔、機密）不送進建置環境
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
+**/*_test.go
+**/testdata/

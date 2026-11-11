@@ -1,0 +1,32 @@
+# 分階段上線：讓 Go 版接手監控／管理網站（web）與介紹網站（site），Discord Bot（bot、music）繼續使用 Python 版。
+#
+# 這是 Python 專案 docker-compose.yml 的覆寫檔，兩個專案要放在同一層目錄（…/farmgmdiscordb-feature-exploration-update
+# 與 …/fmgonew）。在 Python 專案目錄執行：
+#
+#   docker compose -f docker-compose.yml -f ../fmgonew/deploy/docker-compose.go-web.yml up -d --build web site
+#
+# 改回 Python 版：docker compose up -d --build web site（不加這個覆寫檔）。
+#
+# 注意：
+# - 資料庫必須已是 Go 版對應的 Migration 版本（db.AlembicHead），否則 farmgm-web 會拒絕啟動（只檢查，不會升級）。
+#   有新 Migration 時一樣先備份，再用 Python 映像執行 alembic upgrade head。
+# - 背景結算仍由 .env 的 BACKGROUND_TASKS_RUNNER 決定（預設 web：由 Go 版網站執行，Python Bot 不執行）。
+# - 設定與機密沿用 .env（env_file），映像內沒有任何機密；Port 仍只綁定本機。
+services:
+  web:
+    build:
+      context: ../fmgonew
+      dockerfile: Dockerfile
+    image: farmgm-go:latest
+    command: ["farmgm-web"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/api/monitor/summary"]
+
+  site:
+    build:
+      context: ../fmgonew
+      dockerfile: Dockerfile
+    image: farmgm-go:latest
+    command: ["farmgm-site"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:24444/api/stats"]

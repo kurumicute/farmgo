@@ -1,0 +1,13 @@
+# 機密：設定一律放在 .env 或環境變數，不進版本控制
+.env
+.env.*
+!.env.example
+# 建置產物
+*.exe
+/farmgm-*
+# 編輯器與系統檔
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store

@@ -1,0 +1,24 @@
+# 讓 Go 版接手 Discord Bot（農場面板）。與 docker-compose.go-web.yml 一樣是 Python 專案 docker-compose.yml 的覆寫檔，
+# 兩個專案放在同一層目錄。可以和 go-web 覆寫檔一起使用，在 Python 專案目錄執行：
+#
+#   docker compose -f docker-compose.yml -f ../fmgonew/deploy/docker-compose.go-web.yml \
+#                  -f ../fmgonew/deploy/docker-compose.go-bot.yml up -d --build bot
+#
+# 改回 Python 版：不加這個覆寫檔再 up -d --build bot。
+#
+# 切換前一定要確認（需要使用者決定）：
+# - 音樂：Python 的 bot 服務在沒有 MUSIC_BOT_TOKEN 時把音樂（/play 等）放在農場 Bot 程序內。Go 版只有農場，
+#   切換後音樂必須改由獨立的音樂 Bot 執行：另外建立一個 Discord 應用程式、在 .env 設定 MUSIC_BOT_TOKEN，
+#   再以 docker compose --profile music up -d music 啟動 Python 的 app.music。
+# - 指令同步：Go 版同步時以整批覆寫只註冊 /farm 與 /help。農場 Bot 的應用程式上原本由內建音樂註冊的 /play 等指令會被移除
+#   （獨立音樂 Bot 是另一個應用程式，不受影響）。不想同步可設 DISCORD_SYNC_COMMANDS=false。
+# - 同一個 Token 只能有一個 Bot 程序：Python 與 Go 版的 bot 不能同時執行。
+# - 背景結算仍由 BACKGROUND_TASKS_RUNNER 決定（web／bot／none），整個系統只能有一個程序結算。
+# - 先在測試用 Discord 伺服器（DISCORD_DEV_GUILD_ID）實際操作過所有面板再切換正式環境。
+services:
+  bot:
+    build:
+      context: ../fmgonew
+      dockerfile: Dockerfile
+    image: farmgm-go:latest
+    command: ["farmgm-bot"]

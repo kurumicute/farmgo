@@ -1,0 +1,5 @@
+# Go 原始碼與文件一律以 LF 保存（Dockerfile、shell 也需要 LF）
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.webp binary

@@ -1,0 +1,932 @@
+{
+ "builds": [
+  {
+   "name": "main",
+   "day_offset": 0,
+   "seed": "1",
+   "text": "💰 **\\*\\*粗體\\*\\* @​everyone** 靠著一車農產品賺進 **900** 金，榮登昨日銷售冠軍！\n🌟 奇蹟！**小華** 收成了 **2** 個傳說品質、黃金作物的小麥，鄰居都跑來圍觀。\n🥷 驚！**小華** 一天被偷 **3** 次，主人表示要去買一隻狗。\n🧤 神偷 **\\*\\*粗體\\*\\* @​everyone** 昨天出手 **3** 次，手套都磨破了。\n-# 🌾 收成 40 個作物　💰 銷售 1,000 金　👨‍🌾 2 座農場有動靜"
+  },
+  {
+   "name": "second",
+   "day_offset": 3,
+   "seed": "",
+   "text": "💎 **A** 昨天在傳聞說的田裡挖到寶藏，進帳 **512** 金！\n💰 **B** 昨天豪賺 **1,234,567** 金，榮登昨日銷售冠軍！\n🥷 昨天發生 **4** 起偷菜事件，請大家看好自己的田。\n🧤 神偷 **某座農場** 昨天出手 **4** 次，手套都磨破了。\n-# 🌾 收成 0 個作物　💰 銷售 1,234,567 金　👨‍🌾 3 座農場有動靜"
+  },
+  {
+   "name": "second",
+   "day_offset": 3,
+   "seed": "7",
+   "text": "💎 **A** 昨天在傳聞說的田裡挖到寶藏，進帳 **512** 金！\n💰 **B** 昨天豪賺 **1,234,567** 金，榮登昨日銷售冠軍！\n🥷 昨天發生 **4** 起偷菜事件，請大家看好自己的田。\n🧤 神偷 **某座農場** 昨天出手 **4** 次，手套都磨破了。\n-# 🌾 收成 0 個作物　💰 銷售 1,234,567 金　👨‍🌾 3 座農場有動靜"
+  },
+  {
+   "name": "second",
+   "day_offset": 3,
+   "seed": "42",
+   "text": "💎 **A** 昨天在傳聞說的田裡挖到寶藏，進帳 **512** 金！\n💰 **B** 靠著一車農產品賺進 **1,234,567** 金，榮登昨日銷售冠軍！\n🥷 昨天發生 **4** 起偷菜事件，請大家看好自己的田。\n🧤 神偷 **某座農場** 昨天出手 **4** 次，手套都磨破了。\n-# 🌾 收成 0 個作物　💰 銷售 1,234,567 金　👨‍🌾 3 座農場有動靜"
+  },
+  {
+   "name": "third",
+   "day_offset": 0,
+   "seed": "0",
+   "text": "⚔️ 群組成員合力打倒了本週的遺跡守護者，本週遺跡探索每次多兩份獎勵！\n🛡️ 防守設施昨天擋下 **2** 次偷菜，最堅固的是 **甲** 的農場。\n🎣 **甲** 釣到一條 **1.2** 公斤的稀有魚「鱒」！\n🗺️ 傳聞：酒館老闆說 **甲** 的田裡有一張藏寶圖指著的位置，但他喝醉了。\n-# 🌾 收成 0 個作物　💰 銷售 0 金　👨‍🌾 2 座農場有動靜"
+  },
+  {
+   "name": "third",
+   "day_offset": 1,
+   "seed": "1",
+   "text": "⚔️ 群組成員合力打倒了本週的遺跡守護者，本週遺跡探索每次多兩份獎勵！\n🛡️ 防守設施昨天擋下 **2** 次偷菜，最堅固的是 **甲** 的農場。\n🎣 **甲** 釣到一條 **1.2** 公斤的稀有魚「鱒」！\n🗺️ 傳聞：酒館老闆說 **甲** 的田裡有一張藏寶圖指著的位置，但他喝醉了。\n-# 🌾 收成 0 個作物　💰 銷售 0 金　👨‍🌾 2 座農場有動靜"
+  },
+  {
+   "name": "third",
+   "day_offset": 2,
+   "seed": "2",
+   "text": "⚔️ 群組成員合力打倒了本週的遺跡守護者，本週遺跡探索每次多兩份獎勵！\n🛡️ 防守設施昨天擋下 **2** 次偷菜，最堅固的是 **甲** 的農場。\n🎣 **甲** 釣到一條 **1.2** 公斤的稀有魚「鱒」！\n🗺️ 傳聞：酒館老闆說 **甲** 的田裡有一張藏寶圖指著的位置，但他喝醉了。\n-# 🌾 收成 0 個作物　💰 銷售 0 金　👨‍🌾 2 座農場有動靜"
+  },
+  {
+   "name": "third",
+   "day_offset": 3,
+   "seed": "3",
+   "text": "⚔️ 群組成員合力打倒了本週的遺跡守護者，本週遺跡探索每次多兩份獎勵！\n🛡️ 防守設施昨天擋下 **2** 次偷菜，最堅固的是 **甲** 的農場。\n🎣 **甲** 釣到一條 **1.2** 公斤的稀有魚「鱒」！\n🗺️ 傳聞：酒館老闆說 **甲** 的田裡有一張藏寶圖指著的位置，但他喝醉了。\n-# 🌾 收成 0 個作物　💰 銷售 0 金　👨‍🌾 2 座農場有動靜"
+  },
+  {
+   "name": "third",
+   "day_offset": 4,
+   "seed": "4",
+   "text": "⚔️ 群組成員合力打倒了本週的遺跡守護者，本週遺跡探索每次多兩份獎勵！\n🛡️ 防守設施昨天擋下 **2** 次偷菜，最堅固的是 **甲** 的農場。\n🎣 **甲** 釣到一條 **1.2** 公斤的稀有魚「鱒」！\n🗺️ 傳聞：酒館老闆說 **甲** 的田裡有一張藏寶圖指著的位置，但他喝醉了。\n-# 🌾 收成 0 個作物　💰 銷售 0 金　👨‍🌾 2 座農場有動靜"
+  }
+ ],
+ "rumors": [
+  {
+   "group": 1,
+   "day_offset": 0,
+   "rumor": [
+    5,
+    false,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 1,
+   "rumor": [
+    5,
+    false,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 2,
+   "rumor": [
+    11,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 3,
+   "rumor": [
+    11,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 4,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 5,
+   "rumor": [
+    5,
+    false,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 6,
+   "rumor": [
+    11,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 7,
+   "rumor": [
+    5,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 8,
+   "rumor": [
+    3,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 9,
+   "rumor": [
+    11,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 10,
+   "rumor": [
+    5,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 11,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 12,
+   "rumor": [
+    3,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 13,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 14,
+   "rumor": [
+    5,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 15,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 16,
+   "rumor": [
+    3,
+    false,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 17,
+   "rumor": [
+    9,
+    false,
+    2
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 18,
+   "rumor": [
+    11,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 19,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 20,
+   "rumor": [
+    5,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 21,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 22,
+   "rumor": [
+    5,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 23,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 24,
+   "rumor": [
+    5,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 25,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 26,
+   "rumor": [
+    11,
+    false,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 27,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 28,
+   "rumor": [
+    11,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 29,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 30,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 31,
+   "rumor": [
+    9,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 32,
+   "rumor": [
+    3,
+    false,
+    2
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 33,
+   "rumor": [
+    3,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 34,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 35,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 36,
+   "rumor": [
+    11,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 1,
+   "day_offset": 37,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 38,
+   "rumor": null
+  },
+  {
+   "group": 1,
+   "day_offset": 39,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 0,
+   "rumor": [
+    5,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 1,
+   "rumor": [
+    9,
+    false,
+    2
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 2,
+   "rumor": [
+    11,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 3,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 4,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 5,
+   "rumor": [
+    9,
+    false,
+    0
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 6,
+   "rumor": [
+    5,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 7,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 8,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 9,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 10,
+   "rumor": [
+    11,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 11,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 12,
+   "rumor": [
+    3,
+    false,
+    2
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 13,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 14,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 15,
+   "rumor": [
+    11,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 16,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 17,
+   "rumor": [
+    11,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 18,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 19,
+   "rumor": [
+    3,
+    false,
+    0
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 20,
+   "rumor": [
+    5,
+    false,
+    1
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 21,
+   "rumor": [
+    5,
+    false,
+    2
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 22,
+   "rumor": [
+    3,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 23,
+   "rumor": [
+    9,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 24,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 25,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 26,
+   "rumor": [
+    9,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 27,
+   "rumor": [
+    3,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 28,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 29,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 30,
+   "rumor": [
+    3,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 31,
+   "rumor": [
+    9,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 32,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 33,
+   "rumor": [
+    3,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 34,
+   "rumor": [
+    3,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 35,
+   "rumor": [
+    11,
+    false,
+    2
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 36,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 37,
+   "rumor": null
+  },
+  {
+   "group": 7,
+   "day_offset": 38,
+   "rumor": [
+    5,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 7,
+   "day_offset": 39,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 0,
+   "rumor": [
+    11,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 1,
+   "rumor": [
+    3,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 2,
+   "rumor": [
+    9,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 3,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 4,
+   "rumor": [
+    9,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 5,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 6,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 7,
+   "rumor": [
+    9,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 8,
+   "rumor": [
+    9,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 9,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 10,
+   "rumor": [
+    9,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 11,
+   "rumor": [
+    9,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 12,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 13,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 14,
+   "rumor": [
+    9,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 15,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 16,
+   "rumor": [
+    9,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 17,
+   "rumor": [
+    3,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 18,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 19,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 20,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 21,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 22,
+   "rumor": [
+    5,
+    false,
+    0
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 23,
+   "rumor": [
+    5,
+    true,
+    1
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 24,
+   "rumor": [
+    9,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 25,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 26,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 27,
+   "rumor": [
+    9,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 28,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 29,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 30,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 31,
+   "rumor": [
+    3,
+    false,
+    1
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 32,
+   "rumor": [
+    11,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 33,
+   "rumor": [
+    11,
+    false,
+    2
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 34,
+   "rumor": [
+    9,
+    true,
+    0
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 35,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 36,
+   "rumor": null
+  },
+  {
+   "group": 123456789,
+   "day_offset": 37,
+   "rumor": [
+    11,
+    false,
+    2
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 38,
+   "rumor": [
+    9,
+    true,
+    2
+   ]
+  },
+  {
+   "group": 123456789,
+   "day_offset": 39,
+   "rumor": [
+    9,
+    true,
+    2
+   ]
+  }
+ ]
+}
