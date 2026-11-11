@@ -15,7 +15,7 @@
 | 2 | 資料庫核心、60 張表的模型、29 個 repositories | ✅ 完成 |
 | 3 | services（交易、鎖定、`_record` 交易紀錄不變式、一鍵操作；約 8,200 行 Python） | ✅ 完成（2026-11-10） |
 | 4 | 管理／監控 API、介紹網站（前端靜態檔原樣沿用） | ✅ 完成（2026-11-11）：監控 API 31 個端點、WebSocket、登入與管理 API 防護、管理 API 64 個端點、程式進入點、介紹網站 |
-| 5 | Discord 農場面板（含 Pillow 農田圖的改寫） | 🚧 第 1～8 批（基礎、農田圖片、所有面板頁面、discordgo 轉接層與 `cmd/farmgm-bot`）✅；剩真實 Discord 上的實機測試 |
+| 5 | Discord 農場面板（含 Pillow 農田圖的改寫）與音樂（Lavalink） | ✅ 完成；2026-11-12 正式環境已切換成 Go 版 |
 | 6 | CMD | ❌ 不移植（2026-11-10 決定；Python 的 `app/cli` 與 `test_cli.py` 不移植，CMD 相關的測試段落也不移植） |
 
 ## 整體進度與剩餘工作
@@ -52,6 +52,19 @@
   - **相容性（重要）**：Python 版不認得這四種代碼（`balance.RECIPES[code]`、`balance.GOODS[code]` 直接查表）。只要有玩家用 Go 版 Bot 做過新果醬，就**不能再切回 Python 版 Bot**（背包、販售、自動加工會出錯）；只換網站、Bot 仍是 Python 版時不受影響（新果醬只能在 Go 版 Bot 加工）。
 - **Redis（選用，`internal/cachebus`）**：網站與 Bot 是不同程序，遊戲目錄（作物、動物、魚種、品質設定）與新功能規則設定各自快取 10 秒。設定 `REDIS_URL` 時以 Redis Pub/Sub 通知：寫入目錄的交易**提交後**、管理員儲存或還原規則設定後發布一則通知，其他程序立即清空快取（自己發布的不重複處理；訂閱重新連上時也清空一次，避免斷線期間漏掉通知），快取保存時間從 10 秒拉長到 60 秒（只是漏掉通知時的安全網），減少資料庫查詢。Redis 只傳通知、不保存遊戲資料；沒有設定或連不上時照常啟動，回到每 10 秒重新讀取。`farmgm-web`、`farmgm-bot` 使用（介紹網站另有自己的回應快取，不需要）。部署：`deploy/docker-compose.redis.yml`（Redis 不開 Port、不寫磁碟、32 MB 上限）。依賴 `github.com/redis/go-redis/v9` v9.7.3（相容 Go 1.23；最新版要求 Go 1.26，所以固定這個版本）。測試讀 `FARMGM_TEST_REDIS_URL`（沒有設定時略過），也在 Linux 容器以 `-race` 跑過。
 - **手動測試用資料庫 `farmgm_play`**：`go test` 的初始化（`svctest`）為了讓測試不受季節與時間影響，會把 `farmgm_test` 的作物、魚的季節清空、生長時間改短，所以用 `farmgm_test` 手動測試時看不到四季。手動測試改用另外建立的 `farmgm_play`：以 Python 專案的 `alembic upgrade head`（用 Python 映像掛入目前的原始碼執行）從空資料庫建到 0038，季節、價格、生長時間與正式環境相同，`go test` 不會碰它。
+- **市場價格與商店種子隨季節變動**（`seasons.SellPrice`）：作物在非當季時市場售價 +30%（`OffSeasonSellPct = 130`，背包、販售、價格頁一致）；商店只販售當季可以種的種子，買非當季種子會被拒絕。測試：`services/go_features_test.go`、`bot/panel_go_features_test.go`。
+- **取消特定加工單**（`RanchService.CancelCraft`）：牧場加工頁新增「❌ 取消加工訂單」選單與確認按鈕，退回原料（檢查倉庫／素材空間），同一建築後面排隊的訂單往前遞補；以「取消加工訂單 #編號」寫入交易紀錄。不需要 Migration。
+- **偷菜名單隱藏全是空地的玩家**（`SocialService.StealPlayers`）。
+- **音樂改寫成 Go（`internal/music`）**：Lavalink v4（REST＋WebSocket，30 秒看門狗自動重連）、Spotify 連結解析、16 個斜線指令（名稱與參數與 Python 相同）、播放控制按鈕與佇列分頁；各伺服器音量與前綴沿用 `data/music_guild_settings.json`。設定 `LAVALINK_URI`、`LAVALINK_PASSWORD`；`MUSIC_ENABLED` 且沒有 `MUSIC_BOT_TOKEN` 時在農場 Bot 內執行。只支援斜線指令（前綴指令需要 Message Content 特權 Intent）。實機測試：`TestRealLavalink`（讀 `FARMGM_TEST_LAVALINK_URL`／`PASSWORD`）。
+
+## 正式環境切換（2026-11-12）
+
+- VPS `/opt/fmgonew` 為本專案（GitHub `kurumicute/farmgo`），在 `/opt/farmgm`（Python 專案）以覆寫檔啟動：
+  `docker compose -f docker-compose.yml -f ../fmgonew/deploy/docker-compose.go-web.yml -f ../fmgonew/deploy/docker-compose.go-bot.yml -f ../fmgonew/deploy/docker-compose.redis.yml up -d --wait redis web site bot`
+  **之後在 VPS 執行任何 `docker compose` 都要帶這四個 `-f`**，否則會被換回 Python 版。更新 Go 版：`cd /opt/fmgonew && git pull && docker build -t farmgm-go:latest .`，再執行上面的指令。
+- `.env` 沿用 VPS 原本的檔案；PostgreSQL 容器與資料卷 `farmgm_farmgm_pgdata` 沒有重建。切換前備份 `/opt/backup/pre_go_switch_20261111_235922.dump`（本機另存 `farmgm\backups\`）。
+- 切換後確認：玩家 50、農場 50、Migration 0038，交易紀錄持續增加；web、site、bot、redis 健康，介紹網站對外正常；Bot 同步 18 個全域指令，Lavalink 已連線。
+- 改回 Python：只要沒有玩家做過新果醬，在 `/opt/farmgm` 執行 `docker compose up -d --build web site bot`（不加覆寫檔），再 `docker compose stop redis`。
 
 ## 目錄結構
 
