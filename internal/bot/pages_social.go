@@ -185,8 +185,7 @@ func (p *Panel) buildSteal(_ context.Context, data any) (*ui.Embed, error) {
 }
 
 type stealFarmData struct {
-	view  services.StealFarmView
-	image []byte
+	view services.StealFarmView
 }
 
 func (p *Panel) loadStealFarm(ctx context.Context) (any, error) {
@@ -200,7 +199,7 @@ func (p *Panel) loadStealFarm(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return stealFarmData{v, p.farmImage(services.FarmStatus{Plots: v.Plots, Now: v.Now})}, nil
+	return stealFarmData{v}, nil
 }
 
 func (p *Panel) buildStealFarm(_ context.Context, data any) (*ui.Embed, error) {
@@ -251,7 +250,7 @@ func (p *Panel) buildStealFarm(_ context.Context, data any) (*ui.Embed, error) {
 	p.nav("重新整理", "steal_farm", btn{emoji: "🔄", row: 1})
 	p.nav("換一位玩家", "steal", btn{emoji: "👀", row: 1})
 	p.navBack(1)
-	p.attachImage(e, d.image)
+	p.attachImage(e, p.farmImage(services.FarmStatus{Plots: d.view.Plots, Now: d.view.Now})) // 圖片在交易外產生
 	return e, nil
 }
 

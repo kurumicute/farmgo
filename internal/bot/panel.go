@@ -39,12 +39,14 @@ const (
 
 // Picker 數量選擇（Python self.picker dict）：買、賣、兌換時顯示 1／5／10／全部／自訂。
 type Picker struct {
-	Key        string
-	Label      string
-	Verb       string // 按鈕前綴，預設「×」
-	Max        int
-	Presets    []int
-	Run        func(ctx context.Context, q int) (string, error)
+	Key     string
+	Label   string
+	Verb    string // 按鈕前綴，預設「×」
+	Max     int
+	Presets []int
+	Run     func(ctx context.Context, q int) (string, error)
+	// After 操作成功後附在結果後面的文字（例如購買後的持有數量）；在重新讀取頁面的同一筆交易中讀取，失敗時省略
+	After      func(ctx context.Context) string
 	Keep       bool // 完成後保留已選商品與數量按鈕（方便加購）
 	NoProgress bool // Python track_progress=False
 	Confirm    bool // 高價物品：只有一個確認按鈕
@@ -251,6 +253,12 @@ func (p *Panel) prepareRun(ctx context.Context, page string) prepared {
 // prepare 依序：每日簽到 → 自動機器＋讀取整頁（同一筆交易）。回傳頂端提示、頁面資料與讀取錯誤。
 // 機器與簽到各自是一筆交易，失敗不影響面板顯示；讀取失敗時仍回傳前兩步的提示（例如剛簽到的獎勵）。
 func (p *Panel) prepare(ctx context.Context, page string) prepared {
+	return p.prepareWith(ctx, page, nil)
+}
+
+// prepareWith 同 prepare；before 在讀取整頁的同一筆交易中、自動機器之前執行（操作後的附加讀取，與頁面共用讀取快取，
+// 讀到的是機器運作前的狀態，與原本各自一筆交易相同）。死結重試時會重新執行。
+func (p *Panel) prepareWith(ctx context.Context, page string, before func(ctx context.Context)) prepared {
 	res := prepared{page: page}
 	farmPage := page != "welcome"
 	if farmPage {
@@ -264,6 +272,12 @@ func (p *Panel) prepare(ctx context.Context, page string) prepared {
 	_, err := Call(ctx, p.cmds.Runner, "run_batch", func(ctx context.Context) (struct{}, error) {
 		machines = ""
 		return struct{}{}, p.svc().RunBatch(ctx, func(ctx context.Context) error {
+			if before != nil {
+				// SAVEPOINT：附加讀取失敗只回滾這一段，頁面照常讀取（原本是各自一筆交易，失敗不影響頁面）
+				if err := p.svc().Isolated(ctx, func(ctx context.Context) error { before(ctx); return nil }); err != nil {
+					logUnexpected(err, "操作後的附加讀取失敗", "player", p.playerID)
+				}
+			}
 			if farmPage {
 				machines = p.machinesNote(ctx)
 			}
@@ -294,21 +308,29 @@ func (p *Panel) welcomeNote(ctx context.Context) string {
 	return strings.Join(r.Lines, "\n")
 }
 
-// progressNote 操作後比較圖鑑與成就標記：新登記的圖鑑、新達成的成就；失敗時不影響操作結果。
-func (p *Panel) progressNote(ctx context.Context) string {
+// readProgressMarks 操作後讀取圖鑑與成就標記（與 applyProgress 比較操作前後）；失敗時回傳 nil，不影響操作結果。
+func (p *Panel) readProgressMarks(ctx context.Context) *services.ProgressMarks {
 	m, err := Call(ctx, p.cmds.Runner, "progress_marks", func(ctx context.Context) (services.ProgressMarks, error) {
 		return p.svc().ProgressMarks(ctx, p.playerID)
 	})
 	if err != nil {
 		logUnexpected(err, "圖鑑與成就標記讀取失敗", "player", p.playerID)
+		return nil
+	}
+	return &m
+}
+
+// applyProgress 比較圖鑑與成就標記：新登記的圖鑑、新達成的成就。
+func (p *Panel) applyProgress(m *services.ProgressMarks) string {
+	if m == nil {
 		return ""
 	}
 	old := p.marks
-	p.marks = &m
+	p.marks = m
 	if old == nil {
 		return ""
 	}
-	return progressDiff(*old, m)
+	return progressDiff(*old, *m)
 }
 
 // machinesNote 自動收割機／自動加工機在開啟或切換頁面時運作；失敗不影響面板顯示。
@@ -396,9 +418,10 @@ func (p *Panel) resetPageState() { p.sellKeys, p.fishSellIDs = nil, nil }
 type actOpts struct {
 	page       string // 完成後切換到的頁面（"" = 目前頁面）
 	keep       bool
-	prefix     string // 預設 "✅ "
-	noProgress bool   // Python track_progress=False：這個操作不可能讓圖鑑或成就有進展
-	plain      bool   // Python prefix=""：結果前面不加「✅ 」（賭場）
+	prefix     string                           // 預設 "✅ "
+	noProgress bool                             // Python track_progress=False：這個操作不可能讓圖鑑或成就有進展
+	after      func(ctx context.Context) string // Picker.After
+	plain      bool                             // Python prefix=""：結果前面不加「✅ 」（賭場）
 }
 
 // act 執行一個操作。成功時結果以 ✅ 顯示在頁面頂端並重新整理；失敗時改顯示獨立的錯誤畫面，只有錯誤原因與「返回」按鈕，
@@ -422,10 +445,24 @@ func (p *Panel) act(ctx context.Context, it ui.Interaction, work func(ctx contex
 		if werr != nil {
 			return nil
 		}
-		if target != "welcome" && !o.noProgress {
-			text += p.progressNote(ctx)
+		// 附加文字與圖鑑成就標記在重新讀取頁面的同一筆交易中讀取（原本各自一筆交易，讀的資料大多與頁面重複）
+		track := target != "welcome" && !o.noProgress
+		var after string
+		var marks *services.ProgressMarks
+		var before func(ctx context.Context)
+		if o.after != nil || track {
+			before = func(ctx context.Context) {
+				after, marks = "", nil
+				if o.after != nil {
+					after = o.after(ctx)
+				}
+				if track {
+					marks = p.readProgressMarks(ctx)
+				}
+			}
 		}
-		pre = p.prepare(ctx, target)
+		pre = p.prepareWith(ctx, target, before)
+		text += after + p.applyProgress(marks)
 		return nil
 	})
 	if werr != nil {
@@ -497,7 +534,13 @@ func (p *Panel) attachImage(e *ui.Embed, png []byte) {
 }
 
 // image 產生圖片；素材缺漏或拼圖失敗不能讓面板壞掉，退回純文字。
+// 動態圖片在組畫面（build）時才產生，不佔資料庫交易與 Runner 的名額；同時產生的張數以 CPU 核心數為上限，
+// 避免大量玩家同時操作時一次配置太多張畫布。
 func (p *Panel) image(what string, make func() ([]byte, error)) []byte {
+	if s := p.cmds.images; s != nil {
+		s <- struct{}{}
+		defer func() { <-s }()
+	}
 	png, err := make()
 	if err != nil {
 		slog.Error(what+"圖片產生失敗", "player", p.playerID, "error", err.Error())
@@ -588,13 +631,13 @@ func (p *Panel) quantityButtons(row int) {
 			continue
 		}
 		p.button(fmt.Sprintf("%s %d", verb, q), func(ctx context.Context, it ui.Interaction) error {
-			p.act(ctx, it, func(ctx context.Context) (string, error) { return pk.Run(ctx, q) }, actOpts{keep: pk.Keep, noProgress: pk.NoProgress})
+			p.act(ctx, it, func(ctx context.Context) (string, error) { return pk.Run(ctx, q) }, actOpts{keep: pk.Keep, noProgress: pk.NoProgress, after: pk.After})
 			return nil
 		}, btn{row: row, style: ui.Primary})
 	}
 	p.button("自訂數量…", func(ctx context.Context, it ui.Interaction) error {
 		return it.SendModal(ctx, quantityModal(pk.Label, "數量", pk.Max, func(ctx context.Context, mit ui.Interaction, q int) {
-			p.act(ctx, mit, func(ctx context.Context) (string, error) { return pk.Run(ctx, q) }, actOpts{keep: pk.Keep, noProgress: pk.NoProgress})
+			p.act(ctx, mit, func(ctx context.Context) (string, error) { return pk.Run(ctx, q) }, actOpts{keep: pk.Keep, noProgress: pk.NoProgress, after: pk.After})
 		}))
 	}, btn{emoji: "✏️", row: row})
 }

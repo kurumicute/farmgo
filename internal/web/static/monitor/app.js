@@ -263,7 +263,7 @@ if (typeof document !== "undefined") {
     animals: ["動物種類", "動物價格、生產週期、飼料與產品設定"],
     ranch: ["養殖與加工", "玩家飼養的動物、生產狀態與加工訂單"],
     fishing: ["釣魚管理", "釣魚數據、玩家釣魚紀錄、魚類與釣具管理、釣魚機率設定"],
-    features: ["新功能設定", "每日簽到、寵物、特賣與升級、成就的獎勵與數值（需管理員；儲存後 Bot 最晚 10 秒內套用）"],
+    features: ["新功能設定", "每日簽到、寵物、特賣與升級、成就、探險與地下菇房的數值（需管理員；儲存後 Bot 最晚 10 秒內套用）"],
     events: ["限時活動", "加成活動的效果、排程與啟用狀態"],
     community: ["任務與競賽", "群組任務進度、群組競賽排名與結算"],
     worldboss: ["世界 Boss", "群組後勤活動：建立與控制 Boss、補給與獎勵設定、捐獻與領獎紀錄"],
@@ -3997,8 +3997,299 @@ if (typeof document !== "undefined") {
     });
   }
 
+  // ----- 探險（Go 版新增）：區域、掉落池、特殊事件、獎勵類型機率、木屑與其他數值 -----
+  const clone = (v) => JSON.parse(JSON.stringify(v));
+  // 比較時忽略物件鍵的順序（伺服器回傳的 JSON 依字母排序）
+  const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === "object"
+    ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
+  const sameJSON = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
+  const intIn = (input, label, min, max) => {
+    const n = Number(input.value);
+    if (!Number.isInteger(n) || n < min || (max !== undefined && n > max)) {
+      throw new Error(`${label}必須是 ${fmtNum(min)}${max !== undefined ? `–${fmtNum(max)}` : " 以上"} 的整數。`);
+    }
+    return n;
+  };
+  const labeled = (text, input) => el("label", { className: "inline", text: `${text} ` }, [input]);
+  const miniTable = (heads, rows, emptyText) => el("div", { className: "table-wrap" }, [el("table", {}, [
+    el("thead", {}, [el("tr", {}, heads.map((t) => el("th", { text: t })))]),
+    el("tbody", {}, rows.length ? rows : [emptyRow(emptyText, heads.length)]),
+  ])]);
+
+  // 掉落池：物品、需要等級、權重、數量範圍；read() 回傳 [{item, min_level, weight, qty: [lo, hi]}]
+  function dropEditor(list, label) {
+    const meta = features.data.exploration;
+    const options = meta.drop_items.map((i) => [i.code, `${i.name}（${i.code}）`]);
+    let rows = clone(list || []);
+    let eds = [];
+    const box = el("div");
+    const snapshot = () => eds.map((e) => ({ item: e.item.value, min_level: Number(e.lv.value) || 1,
+      weight: Number(e.w.value) || 0, qty: [Number(e.q0.value) || 1, Number(e.q1.value) || 1] }));
+    const render = () => {
+      eds = rows.map((d) => ({ item: selectEl(null, options, d.item), lv: numInput(null, d.min_level, 1, 100),
+        w: numInput(null, d.weight, 0, 10000), q0: numInput(null, d.qty[0], 1, 999), q1: numInput(null, d.qty[1], 1, 999) }));
+      const totalW = rows.reduce((s, d) => s + (Number(d.weight) || 0), 0);
+      box.replaceChildren(miniTable(["物品", "需要等級", "權重", "數量（最少–最多）", "約佔（全部解鎖時）", ""], eds.map((e, i) => el("tr", {}, [
+        el("td", {}, [e.item]), el("td", {}, [e.lv]), el("td", {}, [e.w]),
+        el("td", {}, [el("div", { className: "controls" }, [e.q0, document.createTextNode("–"), e.q1])]),
+        td(totalW ? `${Math.round((rows[i].weight / totalW) * 1000) / 10}%` : "—"),
+        actionsTd([smallButton("移除", () => { rows = snapshot(); rows.splice(i, 1); render(); }, "danger")]),
+      ])), `${label}沒有物品（抽到時改給其他類型）`));
+      for (const e of eds) e.w.addEventListener("change", () => { rows = snapshot(); render(); });
+    };
+    render();
+    const add = smallButton(`新增${label}`, () => {
+      rows = snapshot();
+      if (rows.length >= 30) { setNote("fs-note", `${label}最多 30 項。`, "bad"); return; }
+      rows.push({ item: options[0][0], min_level: 1, weight: 1, qty: [1, 1] });
+      render();
+    });
+    const read = (areaName) => eds.map((e, i) => {
+      const where = `${areaName}「${label}」第 ${i + 1} 項`;
+      const qty = [intIn(e.q0, `${where}的最少數量`, 1, 999), intIn(e.q1, `${where}的最多數量`, 1, 999)];
+      if (qty[0] > qty[1]) throw new Error(`${where}的最少數量不可大於最多數量。`);
+      return { item: e.item.value, min_level: intIn(e.lv, `${where}的需要等級`, 1, 100),
+        weight: intIn(e.w, `${where}的權重`, 0, 10000), qty };
+    });
+    return { node: el("div", {}, [box, el("div", { className: "controls" }, [add])]), read };
+  }
+
+  // 特殊事件：名稱、說明、需要等級、權重、假幣範圍、額外抽獎（最多 5 次）
+  function eventEditor(list) {
+    const kinds = [["", "—"], ...features.data.exploration.bonus_kinds.map((k) => [k.code, k.name])];
+    let rows = clone(list || []);
+    let eds = [];
+    const box = el("div");
+    const snapshot = () => eds.map((e) => ({ code: e.code, name: e.name.value, description: e.desc.value,
+      min_level: Number(e.lv.value) || 1, weight: Number(e.w.value) || 0,
+      fake_coins: [Number(e.f0.value) || 0, Number(e.f1.value) || 0], bonus: e.bonus.map((s) => s.value).filter(Boolean) }));
+    const render = () => {
+      eds = rows.map((ev) => {
+        const desc = textInput(ev.description, 200);
+        desc.classList.add("reason-input");
+        return { code: ev.code, name: textInput(ev.name, 20), desc, lv: numInput(null, ev.min_level, 1, 100),
+          w: numInput(null, ev.weight, 0, 10000), f0: numInput(null, ev.fake_coins[0], 0, 999), f1: numInput(null, ev.fake_coins[1], 0, 999),
+          bonus: [0, 1, 2, 3, 4].map((i) => selectEl(null, kinds, ev.bonus[i] || "")) };
+      });
+      box.replaceChildren(miniTable(["名稱／說明", "需要等級", "權重", "假幣", "額外抽獎", ""], eds.map((e, i) => el("tr", {}, [
+        el("td", {}, [e.name, e.desc]), el("td", {}, [e.lv]), el("td", {}, [e.w]),
+        el("td", {}, [el("div", { className: "controls" }, [e.f0, document.createTextNode("–"), e.f1])]),
+        el("td", {}, [el("div", { className: "controls" }, e.bonus)]),
+        actionsTd([smallButton("移除", () => { rows = snapshot(); rows.splice(i, 1); render(); }, "danger")]),
+      ])), "沒有特殊事件（抽到「特殊事件」時改給普通素材）"));
+    };
+    render();
+    const add = smallButton("新增特殊事件", () => {
+      rows = snapshot();
+      if (rows.length >= 10) { setNote("fs-note", "特殊事件最多 10 個。", "bad"); return; }
+      let n = rows.length + 1;
+      while (rows.some((r) => r.code === `event_${n}`)) n += 1;
+      rows.push({ code: `event_${n}`, name: "✨ 新事件", description: "", min_level: 1, weight: 1, fake_coins: [0, 0], bonus: ["rare"] });
+      render();
+    });
+    const read = (areaName) => eds.map((e, i) => {
+      const where = `${areaName}第 ${i + 1} 個特殊事件`;
+      if (!e.name.value.trim()) throw new Error(`${where}的名稱不可空白。`);
+      const fake = [intIn(e.f0, `${where}的最少假幣`, 0, 999), intIn(e.f1, `${where}的最多假幣`, 0, 999)];
+      if (fake[0] > fake[1]) throw new Error(`${where}的最少假幣不可大於最多假幣。`);
+      return { code: e.code, name: e.name.value.trim(), description: e.desc.value.trim(),
+        min_level: intIn(e.lv, `${where}的需要等級`, 1, 100), weight: intIn(e.w, `${where}的權重`, 0, 10000),
+        fake_coins: fake, bonus: e.bonus.map((s) => s.value).filter(Boolean) };
+    });
+    return { node: el("div", {}, [box, el("div", { className: "controls" }, [add])]), read };
+  }
+
+  // 等級說明：每行「等級: 說明」
+  const notesText = (notes) => (notes || []).map((n) => `${n.level}: ${n.text}`).join("\n");
+  function parseNotes(text, areaName) {
+    return text.split("\n").map((l) => l.trim()).filter(Boolean).map((line, i) => {
+      const m = /^(\d+)\s*[:：]\s*(.+)$/.exec(line);
+      if (!m) throw new Error(`${areaName}的等級說明第 ${i + 1} 行格式不正確，請用「等級: 說明」。`);
+      return { level: Number(m[1]), text: m[2].trim() };
+    });
+  }
+
+  function areaEditor(meta, a) {
+    const name = textInput(a.name, 20);
+    const desc = textInput(a.description, 200);
+    desc.classList.add("reason-input");
+    const unlock = numInput(null, a.unlock_level, 1, 100);
+    const minutes = numInput(null, Math.round(a.duration_seconds / 60), 1, 7 * 24 * 60);
+    minutes.classList.add("wide-num");
+    const rolls = numInput(null, a.rolls, 1, 20);
+    const adv = numInput(null, a.advanced_level, 1, 101);
+    const s0 = numInput(null, a.sawdust[0], 0, 50);
+    const s1 = numInput(null, a.sawdust[1], 0, 50);
+    const notes = el("textarea");
+    notes.rows = Math.max(3, (a.level_notes || []).length + 1);
+    notes.value = notesText(a.level_notes);
+    notes.classList.add("reason-input");
+    const pools = {};
+    for (const k of features.data.exploration.pool_kinds) pools[k.code] = dropEditor(a.pools[k.code], k.name);
+    const events = eventEditor(a.events);
+    const node = el("details", { className: "subpanel" }, [
+      el("summary", {}, [el("strong", { text: `${meta.emoji} ${a.name}` }), document.createTextNode(meta.needs_ruins ? "（群組修好遺跡後的額外探索）" : "")]),
+      el("div", { className: "controls" }, [labeled("名稱", name), labeled("說明", desc)]),
+      el("div", { className: "controls" }, [
+        labeled("解鎖等級", unlock), labeled(meta.needs_ruins ? "冷卻（分鐘）" : "探險時間（分鐘）", minutes),
+        labeled("每次抽獎次數", rolls), labeled("高級探索等級（101 = 永不）", adv),
+      ]),
+      el("div", { className: "controls" }, [labeled("每次固定帶回木屑", s0), document.createTextNode("–"), s1]),
+      el("label", { className: "inline", text: "等級說明（介面顯示用，每行「等級: 說明」） " }, [notes]),
+      ...features.data.exploration.pool_kinds.flatMap((k) => [el("h4", { text: `掉落池：${k.name}` }), pools[k.code].node]),
+      el("h4", { text: "特殊事件" }),
+      events.node,
+    ]);
+    const read = () => {
+      const label = name.value.trim() || a.name;
+      if (!name.value.trim()) throw new Error(`${a.name}的名稱不可空白。`);
+      const sawdust = [intIn(s0, `${label}的最少木屑`, 0, 50), intIn(s1, `${label}的最多木屑`, 0, 50)];
+      if (sawdust[0] > sawdust[1]) throw new Error(`${label}的最少木屑不可大於最多木屑。`);
+      const out = { name: name.value.trim(), description: desc.value.trim(), unlock_level: intIn(unlock, `${label}的解鎖等級`, 1, 100),
+        duration_seconds: intIn(minutes, `${label}的時間`, 1, 7 * 24 * 60) * 60, rolls: intIn(rolls, `${label}的抽獎次數`, 1, 20),
+        advanced_level: intIn(adv, `${label}的高級探索等級`, 1, 101), sawdust, level_notes: parseNotes(notes.value, label),
+        pools: {}, events: events.read(label) };
+      for (const k of features.data.exploration.pool_kinds) out.pools[k.code] = pools[k.code].read(label);
+      return out;
+    };
+    return { node, read };
+  }
+
+  function explorationCard() {
+    const k = featureKey("exploration");
+    const c = k.current;
+    const meta = features.data.exploration;
+    const bag = numInput(null, c.material_bag_capacity, 1, 100000);
+    const fake = numInput(null, c.fake_coin_value, 1, 100000);
+    const r0 = numInput(null, c.ruins_extra_rolls[0], 0, 20);
+    const r1 = numInput(null, c.ruins_extra_rolls[1], 0, 20);
+    // 獎勵類型機率：以 % 輸入（小數兩位），送出時換成萬分比
+    const pctIn = (bp) => { const n = numInput(null, bp / 100, 0, 100); n.step = "0.01"; return n; };
+    const bpEd = { normal: {}, advanced: {} };
+    const sums = { normal: el("strong"), advanced: el("strong") };
+    const updateSums = () => {
+      for (const key of ["normal", "advanced"]) {
+        const s = Object.values(bpEd[key]).reduce((t, n) => t + Math.round(Number(n.value) * 100), 0);
+        sums[key].textContent = `${s / 100}%`;
+        sums[key].className = s === 10000 ? "" : "is-error";
+      }
+    };
+    const typeRows = meta.reward_types.map((t) => {
+      bpEd.normal[t.code] = pctIn(c.reward_types.normal[t.code]);
+      bpEd.advanced[t.code] = pctIn(c.reward_types.advanced[t.code]);
+      bpEd.normal[t.code].addEventListener("input", updateSums);
+      bpEd.advanced[t.code].addEventListener("input", updateSums);
+      return el("tr", {}, [td(t.name), el("td", {}, [bpEd.normal[t.code]]), el("td", {}, [bpEd.advanced[t.code]])]);
+    });
+    typeRows.push(el("tr", {}, [td("合計（必須 100%）"), el("td", {}, [sums.normal]), el("td", {}, [sums.advanced])]));
+    updateSums();
+    const areas = meta.areas.map((m) => ({ code: m.code, ed: areaEditor(m, c.areas[m.code]) }));
+    const body = el("div", {}, [
+      el("div", { className: "controls" }, [labeled("素材背包上限", bag), labeled("1 個假幣 = 金幣", fake),
+        labeled("遺跡每次額外多抽", r0), document.createTextNode("–"), r1, document.createTextNode(" 份")]),
+      el("h4", { text: "🎲 每次抽獎的類型機率（%）" }),
+      miniTable(["類型", "普通探索", "高級探索"], typeRows, ""),
+      el("p", { className: "muted small", text: "抽到的類型在該區域、該等級沒有可掉落的物品時，依序改給稀有素材 → 普通素材，不會落空。" }),
+      el("h4", { text: "🗺️ 區域" }),
+      ...areas.map((a) => a.ed.node),
+      el("p", { className: "muted small", text: "權重是同一個掉落池裡的相對機率（只計算玩家等級已達「需要等級」的項目）。區域代碼、emoji、素材種類與機器固定；同一物品可以在不同等級各列一筆來提高機率。改探險時間只影響之後出發的探險。" }),
+    ]);
+    return featureCard("exploration", "⛰️ 山洞冒險與古代遺跡的所有數值：區域、掉落、特殊事件、機率、木屑、背包上限與假幣匯率", body, () => {
+      const reward = { normal: {}, advanced: {} };
+      for (const key of ["normal", "advanced"]) {
+        let sum = 0;
+        for (const t of meta.reward_types) {
+          const bp = Math.round(Number(bpEd[key][t.code].value) * 100);
+          if (!Number.isFinite(bp) || bp < 0 || bp > 10000) throw new Error(`${t.name}的機率必須是 0–100%。`);
+          reward[key][t.code] = bp;
+          sum += bp;
+        }
+        if (sum !== 10000) throw new Error(`${key === "normal" ? "普通" : "高級"}探索的類型機率合計必須是 100%（目前 ${sum / 100}%）。`);
+      }
+      const extra = [intIn(r0, "遺跡額外抽獎（最少）", 0, 20), intIn(r1, "遺跡額外抽獎（最多）", 0, 20)];
+      if (extra[0] > extra[1]) throw new Error("遺跡額外抽獎的最少份數不可大於最多份數。");
+      const value = { material_bag_capacity: intIn(bag, "素材背包上限", 1, 100000), fake_coin_value: intIn(fake, "假幣兌換金額", 1, 100000),
+        ruins_extra_rolls: extra, reward_types: reward, areas: {} };
+      for (const a of areas) value.areas[a.code] = a.ed.read();
+      const pctList = (m) => meta.reward_types.map((t) => `${t.name} ${m[t.code] / 100}%`).join("、");
+      const diff = [
+        diffRow("素材背包上限", fmtNum(c.material_bag_capacity), fmtNum(value.material_bag_capacity)),
+        diffRow("假幣匯率", `${fmtNum(c.fake_coin_value)} 金`, `${fmtNum(value.fake_coin_value)} 金`),
+        diffRow("遺跡額外抽獎", c.ruins_extra_rolls.join("–"), value.ruins_extra_rolls.join("–")),
+        diffRow("普通探索機率", pctList(c.reward_types.normal), pctList(value.reward_types.normal)),
+        diffRow("高級探索機率", pctList(c.reward_types.advanced), pctList(value.reward_types.advanced)),
+      ];
+      const fields = [["name", "名稱", (v) => v], ["description", "說明", (v) => v || "（空白）"],
+        ["unlock_level", "解鎖等級", (v) => `Lv.${v}`], ["duration_seconds", "時間", (v) => fmtDuration(v)],
+        ["rolls", "抽獎次數", String], ["advanced_level", "高級探索", (v) => `Lv.${v}`], ["sawdust", "木屑", (v) => `${v[0]}–${v[1]} 個`]];
+      for (const m of meta.areas) {
+        const before = c.areas[m.code];
+        const after = value.areas[m.code];
+        for (const [f, label, show] of fields) {
+          if (!sameJSON(before[f], after[f])) diff.push([`${m.emoji} ${before.name} ${label}`, show(before[f]), show(after[f])]);
+        }
+        if (!sameJSON(before.level_notes, after.level_notes)) diff.push([`${m.emoji} ${before.name} 等級說明`, `${before.level_notes.length} 條`, `${after.level_notes.length} 條（已修改）`]);
+        for (const kd of meta.pool_kinds) {
+          if (!sameJSON(before.pools[kd.code], after.pools[kd.code])) {
+            diff.push([`${m.emoji} ${before.name} ${kd.name}`, `${before.pools[kd.code].length} 項`, `${after.pools[kd.code].length} 項（已修改）`]);
+          }
+        }
+        if (!sameJSON(before.events, after.events)) diff.push([`${m.emoji} ${before.name} 特殊事件`, `${before.events.length} 個`, `${after.events.length} 個（已修改）`]);
+      }
+      return [value, diff.filter(Boolean)];
+    });
+  }
+
+  // ----- 地下菇房（Go 版新增）：開放等級、生長時間、收成朵數、稀有機率、養分對應的作物 -----
+  function mushroomCard() {
+    const k = featureKey("mushroom");
+    const c = k.current;
+    const meta = features.data.mushroom;
+    const unlock = numInput(null, c.unlock_level, 1, 100);
+    const minutes = numInput(null, Math.round(c.grow_seconds / 60), 1, 7 * 24 * 60);
+    minutes.classList.add("wide-num");
+    const yieldIn = numInput(null, c.yield_per_bed, 1, 20);
+    const rare = c.rare_pct.map((p) => numInput(null, p, 0, 100));
+    const guarantee = el("input");
+    guarantee.type = "checkbox";
+    guarantee.checked = c.full_guarantee;
+    const nutrientOf = {};
+    for (const n of meta.nutrients) for (const code of c.nutrient_crops[n.code] || []) nutrientOf[code] = n.code;
+    const defaultName = meta.nutrients.find((n) => n.code === meta.default_nutrient).name;
+    const options = [["", `（未指定：算${defaultName}）`], ...meta.nutrients.map((n) => [n.code, `${n.name} → ${n.common_name}／✨${n.rare_name}`])];
+    const known = new Set(meta.crops.map((cr) => cr.code));
+    const cropEds = meta.crops.map((cr) => ({ cr, sel: selectEl(null, options, nutrientOf[cr.code] || "") }));
+    const body = el("div", {}, [
+      el("div", { className: "controls" }, [labeled("開放等級", unlock), labeled("每批生長（分鐘）", minutes), labeled("每床每批收成（朵）", yieldIn)]),
+      el("p", { className: "muted small", text: `菇床固定 ${meta.bed_count} 個（圖片版面），每床每批最多投入 ${meta.max_sawdust} 個木屑。改生長時間會立即套用到正在生長的菇床。` }),
+      el("h4", { text: "🪵 投入木屑時，每朵是稀有菇的機率（%）" }),
+      miniTable(rare.map((_, i) => `${i} 個`), [el("tr", {}, rare.map((r) => el("td", {}, [r])))], ""),
+      el("label", { className: "check" }, [guarantee, document.createTextNode(` 投入滿 ${meta.max_sawdust} 個時保證至少一半是稀有菇`)]),
+      el("h4", { text: "🌱 養分：上方農田的作物 → 長出的菇" }),
+      miniTable(["作物", "狀態", "養分"], cropEds.map(({ cr, sel }) => el("tr", {}, [td(`${cr.name}（${cr.code}）`), td(cr.active ? "開放中" : "已停用"), el("td", {}, [sel])])), "沒有作物"),
+      el("p", { className: "muted small", text: "每一朵菇在收成當下依各養分的農田格數加權擲骰；完全沒有作物時算穀物養分。菇與料理的售價在程式內固定。" }),
+    ]);
+    return featureCard("mushroom", "🍄 地下菇房：開放等級、生長時間、收成量、木屑的稀有機率與養分對應的作物", body, () => {
+      const crops = {};
+      for (const n of meta.nutrients) crops[n.code] = (c.nutrient_crops[n.code] || []).filter((code) => !known.has(code)); // 保留已刪除作物的設定
+      for (const { cr, sel } of cropEds) if (sel.value) crops[sel.value].push(cr.code);
+      const value = { unlock_level: intIn(unlock, "開放等級", 1, 100), grow_seconds: intIn(minutes, "生長時間", 1, 7 * 24 * 60) * 60,
+        yield_per_bed: intIn(yieldIn, "每床收成朵數", 1, 20), rare_pct: rare.map((r, i) => intIn(r, `投入 ${i} 個木屑的稀有機率`, 0, 100)),
+        full_guarantee: guarantee.checked, nutrient_crops: crops };
+      const cropText = (m) => meta.nutrients.map((n) => `${n.name}：${(m[n.code] || []).length} 種`).join("、");
+      return [value, [
+        diffRow("開放等級", `Lv.${c.unlock_level}`, `Lv.${value.unlock_level}`),
+        diffRow("生長時間", fmtDuration(c.grow_seconds), fmtDuration(value.grow_seconds)),
+        diffRow("每床收成", `${c.yield_per_bed} 朵`, `${value.yield_per_bed} 朵`),
+        diffRow("稀有機率", c.rare_pct.map((p) => `${p}%`).join(" / "), value.rare_pct.map((p) => `${p}%`).join(" / ")),
+        diffRow("投滿保證一半稀有", c.full_guarantee ? "是" : "否", value.full_guarantee ? "是" : "否"),
+        sameJSON(c.nutrient_crops, value.nutrient_crops) ? null : ["養分對應的作物", cropText(c.nutrient_crops), `${cropText(value.nutrient_crops)}（已修改）`],
+      ].filter(Boolean)];
+    });
+  }
+
   function renderFeatureSettings() {
-    $("fs-body").replaceChildren(checkinCard(), petsCard(), specialShopCard(), achievementsCard());
+    $("fs-body").replaceChildren(checkinCard(), petsCard(), specialShopCard(), achievementsCard(), explorationCard(), mushroomCard());
   }
 
   async function loadFeatureSettings(force = false) {

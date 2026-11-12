@@ -66,6 +66,8 @@ type GameService struct {
 	PetRng func() float64
 	// 農場傳聞挖寶（是否挖到、寶藏金額）；和防守判定分開，測試可直接指定
 	RumorRng func() float64
+	// 地下菇房的擲骰（Go 版新增）；測試可直接指定
+	MushroomRng func() float64
 
 	contextGroupID *int64
 }
@@ -82,6 +84,7 @@ func NewGameService(d *db.DB, opt Options) *GameService {
 		Pick:        rand.IntN,
 		PetRng:      rand.Float64,
 		RumorRng:    rand.Float64,
+		MushroomRng: rand.Float64,
 	}
 	if s.clock == nil {
 		s.clock = clock.System{}
@@ -200,6 +203,33 @@ func (s *GameService) RunBatch(ctx context.Context, fn func(ctx context.Context)
 	})
 }
 
+var errIsolatedFailed = errors.New("共用交易中的附加讀取失敗，已回滾這一段。")
+
+// Isolated 在共用交易（RunBatch）中以 SAVEPOINT 執行 fn：fn 失敗（包含 fn 自己吃掉錯誤）時只回滾這一段，
+// 共用交易繼續可用，例如操作後的附加讀取失敗不影響頁面讀取。不在共用交易中時直接執行。
+func (s *GameService) Isolated(ctx context.Context, fn func(ctx context.Context) error) error {
+	b := s.currentBatch(ctx)
+	if b == nil {
+		return fn(ctx)
+	}
+	if b.failed {
+		return errors.New("共用交易中先前的操作已失敗，不能繼續使用。")
+	}
+	err := b.tx.Savepoint(ctx, func() error {
+		if err := fn(ctx); err != nil {
+			return err
+		}
+		if b.failed {
+			return errIsolatedFailed
+		}
+		return nil
+	})
+	if err != nil {
+		b.failed = false // 已回滾到 SAVEPOINT，交易狀態可靠
+	}
+	return err
+}
+
 // isIntegrity 違反資料庫完整性限制（SQLSTATE 類別 23，對應 SQLAlchemy IntegrityError）。
 func isIntegrity(err error) bool {
 	var pg *pgconn.PgError
@@ -315,7 +345,7 @@ func (s *GameService) ensureMaterialSpace(ctx context.Context, t *db.Tx, farm *m
 	if err != nil {
 		return err
 	}
-	capacity := exploration.MaterialBagCapacity
+	capacity := exploration.BagCapacity()
 	if incoming > 0 && used+incoming > capacity {
 		return gameerr.New(gameerr.WarehouseFull, "素材背包空間不足：目前 %d/%d，需要再放入 %d 個。", used, capacity, incoming)
 	}

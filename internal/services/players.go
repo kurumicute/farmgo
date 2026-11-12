@@ -480,17 +480,23 @@ func (s *GameService) status(ctx context.Context, t *db.Tx, farm *models.Farm, p
 	}, nil
 }
 
+type statusKey struct{ playerID int64 }
+
+// GetFarmStatus 農場狀態。面板讀取整頁的共用交易中，同一位玩家只查一次（db.ReadMemo，有寫入就清空）；
+// 回傳的切片與 map 唯讀。
 func (s *GameService) GetFarmStatus(ctx context.Context, playerID int64) (FarmStatus, error) {
 	return inTx(ctx, s, func(t *db.Tx) (FarmStatus, error) {
-		farm, err := s.farmOf(ctx, t, playerID)
-		if err != nil {
-			return FarmStatus{}, err
-		}
-		p, err := players.Get(ctx, t, farm.PlayerID, false)
-		if err != nil {
-			return FarmStatus{}, err
-		}
-		return s.status(ctx, t, farm, p.DisplayName)
+		return db.ReadMemo(t, statusKey{playerID}, func() (FarmStatus, error) {
+			farm, err := s.farmOf(ctx, t, playerID)
+			if err != nil {
+				return FarmStatus{}, err
+			}
+			p, err := players.Get(ctx, t, farm.PlayerID, false)
+			if err != nil {
+				return FarmStatus{}, err
+			}
+			return s.status(ctx, t, farm, p.DisplayName)
+		})
 	})
 }
 

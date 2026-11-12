@@ -54,6 +54,16 @@
 - **手動測試用資料庫 `farmgm_play`**：`go test` 的初始化（`svctest`）為了讓測試不受季節與時間影響，會把 `farmgm_test` 的作物、魚的季節清空、生長時間改短，所以用 `farmgm_test` 手動測試時看不到四季。手動測試改用另外建立的 `farmgm_play`：以 Python 專案的 `alembic upgrade head`（用 Python 映像掛入目前的原始碼執行）從空資料庫建到 0038，季節、價格、生長時間與正式環境相同，`go test` 不會碰它。
 - **市場價格與商店種子隨季節變動**（`seasons.SellPrice`）：作物在非當季時市場售價 +30%（`OffSeasonSellPct = 130`，背包、販售、價格頁一致）；商店只販售當季可以種的種子，買非當季種子會被拒絕。測試：`services/go_features_test.go`、`bot/panel_go_features_test.go`。
 - **取消特定加工單**（`RanchService.CancelCraft`）：牧場加工頁新增「❌ 取消加工訂單」選單與確認按鈕，退回原料（檢查倉庫／素材空間），同一建築後面排隊的訂單往前遞補；以「取消加工訂單 #編號」寫入交易紀錄。不需要 Migration。
+- **地下菇房（2026-11-12，`game/mushroom`、`services/mushroom.go`、`bot/pages_cellar.go`、`farmimage/cellar.go`）**：農場 **Lv.4** 開放，不用建造（已經 Lv.4 以上的第一次打開就能用）；入口在「🌱 農田」頁的「🍄 地下菇房」（總覽的按鈕已滿 25 個）。4 個菇床不用種植、不用澆水，每 24 小時長好一批（每床 2 朵），收成後立即開始下一批。**長什麼菇由上方農田目前種的作物（養分）決定**：穀物（小麥、玉米，以及不在名單上的作物／沒有作物）→ 香菇 200／✨靈芝 520；蔬菜（胡蘿蔔、番茄、南瓜）→ 洋菇 230／✨松露 700；水果（草莓、葡萄、西瓜、琥珀瓜、月光花）→ 金針菇 260／✨發光菇 900。每一朵依各養分的農田格數加權擲骰，收成當下才擲。**木屑**（新素材 `sawdust`，放素材背包）每次探險（含古代遺跡）在原本掉落之外固定帶回：古老森林 3–4 個，草原、礦坑、遺跡 2–3 個；每床每批最多投入 4 個，稀有機率 0／1／2／3／4 個 = 5／15／25／35／50%，投滿 4 個時保證一半以上是稀有菇；收成後木屑歸零。倉庫放不下時依菇床編號收成放得下的部分。菇類可以直接賣，也可以在**烘焙坊**做成料理：香菇麵包 560、洋菇濃湯 620、金針菇煎餅 680（菇 ×2＋麵粉 ×1）、靈芝養生糕 1,350、松露麵包 1,800、發光菇派 2,300（菇 ×2＋麵粉 ×2），售價約為原料的 1.2 倍。
+  - **不需要 Migration**：菇床狀態存在 `farm_tools`（`tool_code = mushroom_cellar`）的 `settings` JSON；投入木屑記為 `craft_start`、收成記為 `craft_collect`（每種菇一筆，會登記圖鑑）。圖片底圖與 6 種菇的素材取自專案根目錄的 `b.png`、`a.png`（縮小後放在 `farmimage/farm/mushroom/`）。
+  - **相容性**：與新果醬相同，Python 版不認得這些菇、料理與木屑代碼；有玩家取得後就不能再切回 Python 版 Bot。
+  - 測試：`game/mushroom`（養分對應、稀有機率隨木屑增加、投滿保證一半稀有、設定讀寫）、`services/mushroom_test.go`（Lv.3 鎖定、Lv.4 自動建立、投入上限、依作物擲骰、倉庫不足部分收成、販售、烘焙坊料理、探險帶回木屑）、`bot/panel_go_features_test.go`（從農田頁進入、投入木屑、收成）、`farmimage/cellar_test.go`。原本的探險測試改為預期多一項木屑。
+- **管理網站可調整探險與地下菇房（2026-11-12，`game/exploration/config.go`、`game/mushroom/config.go`）**：「新功能設定」新增「探險」與「地下菇房」兩項，存在既有的 `feature_settings`（key `exploration`、`mushroom`，**不需要 Migration**），儲存後網站立即生效、Bot 最晚 10 秒內套用，每次儲存寫管理操作紀錄。
+  - 探險可調整：各區域（草原、森林、礦坑、古代遺跡）的名稱、說明、解鎖等級、探險／冷卻時間、每次抽獎次數、高級探索等級、等級說明、每次帶回的木屑數量、四種掉落池（物品、需要等級、權重、數量範圍）、特殊事件（名稱、說明、需要等級、權重、假幣、額外抽獎），以及普通／高級探索的獎勵類型機率（合計必須 100%）、遺跡額外抽獎份數、素材背包上限、假幣匯率。區域代碼與 emoji、素材種類、機器與培育配方固定。
+  - 地下菇房可調整：開放等級、每批生長時間（立即套用到正在生長的菇床）、每床每批收成朵數、投入 0–4 個木屑的稀有機率、投滿是否保證一半稀有、各養分對應的作物。菇床數（圖片版面）、每床木屑上限與菇／料理售價固定。
+  - 沒有自訂設定時直接用原本的程式常數，行為與調整前完全相同；`exploration.Current()`／`mushroom.Current()` 依 `featurecfg.Version()` 快取解析結果。遊戲、Discord 說明頁（山洞、菇房的等級與時間）與介紹網站都讀目前設定。
+  - 介紹網站：手冊新增「🍄 地下菇房」（養分與作物、稀有機率、各區域帶回的木屑）、農場卡片與速查表一列；山洞的區域表加上木屑。
+  - 測試：`game/exploration/config_test.go`、`game/mushroom/config_test.go`（預設值來回、設定生效與還原、驗證錯誤）、`services/progress_admin_test.go` 的 `TestExplorationAndMushroomSettings`。也以本機 `farmgm_play` 實際啟動網站，在管理網站儲存兩項設定並確認介紹網站跟著更新（之後已還原）。
 - **偷菜名單隱藏全是空地的玩家**（`SocialService.StealPlayers`）。
 - **音樂改寫成 Go（`internal/music`）**：Lavalink v4（REST＋WebSocket，30 秒看門狗自動重連）、Spotify 連結解析、16 個斜線指令（名稱與參數與 Python 相同）、播放控制按鈕與佇列分頁；各伺服器音量與前綴沿用 `data/music_guild_settings.json`。設定 `LAVALINK_URI`、`LAVALINK_PASSWORD`；`MUSIC_ENABLED` 且沒有 `MUSIC_BOT_TOKEN` 時在農場 Bot 內執行。只支援斜線指令（前綴指令需要 Message Content 特權 Intent）。實機測試：`TestRealLavalink`（讀 `FARMGM_TEST_LAVALINK_URL`／`PASSWORD`）。
 
@@ -304,6 +314,16 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 - **減色**：`quantize.go` 移植 Pillow 12.3 的 `QuantOctree.c`（FASTOCTREE）與 `Quant.c` 的 RGBA 前處理（原始碼取自 GitHub python-pillow/Pillow 12.3.x 分支）。減色後**每個像素的顏色與 Pillow 相同**（9 種情況全部相同）；唯一差異是調色盤的順序：C 的 `qsort` 不穩定，次數相同的格子順序依平台而定，Go 用穩定排序。所以 PNG 位元組不同，解碼後的畫面相同。檔案大小與 Python 相近（Go 的 zlib 最高壓縮略小一點）。
 - 一開始用自己的中位切割減色時，64 色農田圖比 Python 大約 55%（102 KB 對 66 KB），而且賭場圖無法比原檔小；改為移植 FASTOCTREE 後兩者都與 Python 相同，因此最後沒有保留中位切割。
 - PNG 以 `image/png` 的 `BestCompression` 編碼（Python 的場景圖用 `optimize=True`）。快取規則相同：預先產生的圖、寵物組合、場景圖第一次轉換後快取，之後回傳同一份位元組。
+- **效能優化（2026-11-12，Go 版與 Python 不同之處，畫面像素不變）**：
+  - 每次重新產生、不快取的動態農田圖與建築畫面改用 `DefaultCompression`（檔案約大 3%）；會快取的圖仍用 `BestCompression`。
+  - `memo` 同一張圖同時只產生一次，其他請求等待結果（原本冷啟動時大量玩家同時開同一頁會各自壓縮一次）；失敗不快取，產生時 panic 也會讓等待中的請求收到錯誤。
+  - 動態圖片改在組畫面（`build`）時產生，不在讀取資料的交易與 `Runner` 名額內；同時產生圖片的數量以 CPU 核心數為上限（`Commands.images`）。
+  - 壓測結果見 `效能比較.md` 的「優化結果」。
+- **減少查詢次數（2026-11-12，Go 版與 Python 不同之處，結果相同）**：
+  - 一鍵操作中土地的更新（種植、澆水、清除）也延後到整批送出（`farms.plotWrite`），交易紀錄的合併寫入因此生效。
+  - 購買後的持有數量（`Picker.After`）與操作後的圖鑑成就比較，改在重新讀取頁面的同一筆交易中、自動機器之前讀取，以 SAVEPOINT 隔離（`GameService.Isolated`，失敗不影響頁面）；`GetFarmStatus`、`GetBackpack` 在共用交易中只讀一次。購買後讀取持有數量失敗時改為省略那一行（Python 會讓整個操作顯示錯誤，但購買其實已完成）。
+  - 不加鎖的 `ListPlots`（只用於顯示）改從作物目錄快取取得作物。
+  - 每一步的 SQL 次數由 `internal/bot/querycount_test.go` 檢查上限。
 - 錯誤：素材缺漏時回傳 error（Python 丟出 OSError），由面板退回純文字。
 - 修正過程中發現的錯誤：manifest 的 `barn_slots` 一開始少了 json tag（Go 的 JSON 比對不忽略底線），畜舍數變成 0；已由逐像素比對發現並修正。
 
@@ -436,14 +456,16 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 
 ## 附錄：檔案清單與 SHA-256
 
-共 268 列（不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
+共 300 列（2026-11-12 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
 
 | 檔案 | SHA-256 |
 | --- | --- |
 | `.dockerignore` | `9673bd4ad874d1f1c456084c962705ff7c7aba5fbcf90ca3a5057e9ae465b51b` |
+| `.gitattributes` | `63ca547940a6eb8d6d98f5cdaf558d8b1ca507683405a68162bcc98a0399bafc` |
+| `.gitignore` | `c2b204ac32c9bad7b0b006eca2ad8d28528de75c27968ac39ed3fab0f69b5a65` |
 | `Dockerfile` | `4270ab723221f778fa88450725719b39c5a0d527aa997068b1ceb2dc9f92cff1` |
-| `README.md` | `04180da01a977fdfeb977f74b1be383b70e2e8784bfbe8fb8951474b50a092be` |
-| `cmd/farmgm-bot/main.go` | `b5443b8918171061fdd4c85916dab5c8daf5ee103491b96c2b92deba1283c856` |
+| `README.md` | `bafddcc808daea410b89b70e62fefd0b7a2fb9965feb7e57966da79225141064` |
+| `cmd/farmgm-bot/main.go` | `f022462d9640374d3a3aae0fe9114ad23aa368b3dc783e1e14c25f831d6182ba` |
 | `cmd/farmgm-bot/main_test.go` | `857646c725d083c0075aade2272e386f86ac915f61e37c75bb3c9e8849b9ccc6` |
 | `cmd/farmgm-hash-password/echo_linux.go` | `c5bf2bd0fe6941167625dd003fdabf2a4225cbe1b784f00a50dbd6994d0a53a0` |
 | `cmd/farmgm-hash-password/echo_other.go` | `46c82871cd3164f40583a5a855fd1a6a189597c58508d8997d340ed0bff0594c` |
@@ -454,7 +476,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `cmd/farmgm-site/main_test.go` | `33876694f04134175628c59d76dc2f75b73bf4f950d1ccd9d2bd45849bd3f1d6` |
 | `cmd/farmgm-web/main.go` | `eb24567e4ae00fbd3a4c5f92777481631f57a46a01ae198efd58a033cd486ff9` |
 | `cmd/farmgm-web/main_test.go` | `e0307c4968dd7ccb9147632e7bc8a11ca91d81b36b073dc3fa47871a4661f1e0` |
-| `deploy/docker-compose.go-bot.yml` | `375ad21228ba7862f468134677780cb9d2fbb68d3b3801171c21fff8654f7bbb` |
+| `deploy/docker-compose.go-bot.yml` | `7b2a3564635d9f3d850d4ab66187bb85987c2970951ece4eace2bca7ba617cc7` |
 | `deploy/docker-compose.go-web.yml` | `cf2be41ec525a8c9749f6fb0a0d270ddd11df46d6f22e68632de8abb725ae670` |
 | `deploy/docker-compose.redis.yml` | `882004a889b94771454968991767d7edc26b9f882eb6948c6f885f49e69360c7` |
 | `example.png` | `4e5518d164aa819abcbec3f33e62731e93c1591781957cf65fcae54f69d58938` |
@@ -462,48 +484,58 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `go.sum` | `57fff2606d2e1ed7ed9f91d4933e6be9a516a7f713d459f85cf6c3c46153e3ed` |
 | `internal/auth/auth.go` | `55bc1edd9db87504cf98860cc91194cee22f0fe6f3a1efcba35e5907c4b88605` |
 | `internal/auth/auth_test.go` | `5fceb18103f2cb1ec8ced5bf79854cccaedbd732fac5de4fb8e0f1bd507c192b` |
-| `internal/bot/commands.go` | `ba61dfbe2108dfdca5bf42e374467abccdad6913cac715ed367345bb54c139e4` |
-| `internal/bot/discordio/bot.go` | `231e625c59aa854e64805ecf7101253ea09fe97d87c08270989b7ed9e2da17f7` |
+| `internal/bot/commands.go` | `763ce129d6c160ce0ffe6364140280dbcad44c2be60fe584772b68a301d035c0` |
+| `internal/bot/discordio/bot.go` | `958153fbd2017b367cf4d9bfee9f0842de7d31103994d6c7174d5962c6e5b0a0` |
 | `internal/bot/discordio/bot_test.go` | `19fc4e759501aa7e9d9010094f710e0eea340aad16981b7ee7b13eef6731de7c` |
-| `internal/bot/discordio/discordio_test.go` | `703b9812c86ffc314900b937a3d3c8f29f6ac6b0937fa055555fc310e4ca3087` |
+| `internal/bot/discordio/discordio_test.go` | `7bc593556d6bd7ae71c0cd2251d6d2aa3dbd0f7ead31f880c5baf335c746655f` |
 | `internal/bot/discordio/interaction.go` | `bd23896158938f25316df85a41f7f8cc2719599e4814a61a303201447b78cdd4` |
-| `internal/bot/discordio/wire.go` | `e803fe72b281eab30661d9ffab2c3c46b75ae7b4e3a72554227f53c1f33bc729` |
-| `internal/bot/farmimage/farm/（281 個檔案）` | `19b3ae5591767e4b3ef70762cef1ecfaeb159cb81f1901d29603351081dee70f` |
-| `internal/bot/farmimage/farmimage.go` | `db2e8998d4b9ceb86ac8453f5272d8070e32c718852c0073b500db9498b20e2a` |
+| `internal/bot/discordio/music.go` | `6677c41d1848917e7718d67384739753069bdb3f57d82d17464414229184a1ea` |
+| `internal/bot/discordio/wire.go` | `77678a836b80bd6fb95faafd2fdc82661eba818da178d750942ba1d1ef12d04b` |
+| `internal/bot/farmimage/cellar.go` | `e10745fcd7fe90db8c12fb2b266eae249859c983720f98671afead9a46766e42` |
+| `internal/bot/farmimage/cellar_test.go` | `99925428cc76f070969820f22ff1fb25823847f234dee6bdd0a8d132456135e0` |
+| `internal/bot/farmimage/farm/` | `de9d375844af35beb35815d70181189b5fd7a275819b822f846860c52eae33c8` |
+| `internal/bot/farmimage/farmimage.go` | `5fcb21b503daeedbf381ad2bf2a3b25c775892adeebf376ed82a9561ff0b645a` |
 | `internal/bot/farmimage/farmimage_test.go` | `9480b8963ecd1b09955b2dcf8bcf27a858e35ba6adbddac968a3195b40954a20` |
+| `internal/bot/farmimage/memo_test.go` | `268df8771eb003325caa13707a788b02faf7601b3b33fe1a2bc31b45c28a6463` |
 | `internal/bot/farmimage/pillow.go` | `47755d2852d9e0649decab39b8cfdee7d2ed3ab7ac0a1676ca2b118f85fb420a` |
-| `internal/bot/farmimage/quantize.go` | `5e737cc20a94f46868766b6b6dc886d2b602fc4450886a8586e5ec6120d7073e` |
+| `internal/bot/farmimage/quantize.go` | `d625e299ea9b28c0575da204e2dc58ed0f3fc5f83c878cf69d01fbdae77126f1` |
 | `internal/bot/format.go` | `5728b3ef05e3adb34049ed07573e9e59db70b3e3caa9d8fc897a1e7b0a2f8d29` |
 | `internal/bot/latency/latency.go` | `22b590b542029a0f8ff74b33c71e4fad3ddfa537aa1e1f4fcb6ef77867685b0d` |
 | `internal/bot/latency/latency_test.go` | `dd8f6b4595bcbd3a147f84410d74893bb1a87d39b16472a0e717ec8f002dd78a` |
 | `internal/bot/pages_boss.go` | `3a47be7d88598ca6ad95b4ac19db5fc8d7747bf472cff15d158831e065476e97` |
-| `internal/bot/pages_cave.go` | `849cb42dc07285da20f11426f189148c8bffe7b2bc0461d56e2b38dbb8839820` |
+| `internal/bot/pages_cave.go` | `1f353ef815d859f2a96c3d28e1694eca9baed43768823bba601afdd47f5b631a` |
+| `internal/bot/pages_cellar.go` | `3d10b021a490c6833bcd53a7fade5ec03fe2160458efa079ecaead9d4a7c11b0` |
 | `internal/bot/pages_fishing.go` | `9aae084b3f95e58b717a1b63568eec68c4e4215d657b5a0512d2fcc49c105950` |
-| `internal/bot/pages_main.go` | `10a89f0ed78d0e3d9ade94374ad574ad7f1955f83ca81661ad53985ee951dc6b` |
+| `internal/bot/pages_main.go` | `f9c2fccfd50c93fb49dd09235e43a51aeb6a026824af274ff34165cd1c8c5d9e` |
 | `internal/bot/pages_progress.go` | `98df67e3305d39cfb962625ba745f912a607d136dd112c098dba20c68036a739` |
-| `internal/bot/pages_ranch.go` | `8534ad1155ea95f53b7e648b9caf0e651dbe8a75b3c9021117aa3f7817186309` |
-| `internal/bot/pages_shop.go` | `2647b7ebd34aeaa171709ec6ab53b1cc8e17c3af631a687141ade17f8c3c331c` |
-| `internal/bot/pages_social.go` | `e6d6e9ccdbb7abacec517ba7f2d1fae350b95b040127ef8fa6b71e6a456e2338` |
-| `internal/bot/panel.go` | `154c40635b2ad8d992f2fef1b47def1bd7abc44c90f257b7b7a19f718fb93ec7` |
+| `internal/bot/pages_ranch.go` | `70b02a437496aafbe016d67a790bcfc1e7df6a2a2c8c542feacf589e635c4817` |
+| `internal/bot/pages_shop.go` | `f397aa7474fc704bdcf4055cfc175292331398e6c102643161c4432c92dcf119` |
+| `internal/bot/pages_social.go` | `0214ea03a784de2dc76313581597585a965dd3eff21a7ff5024b68557b3100f5` |
+| `internal/bot/panel.go` | `6552f0c7575e7ec11fe5d65be95fcb792c5778b1b402233e32fadfb6d34b57b8` |
 | `internal/bot/panel_boss_test.go` | `6192b5d578654b227ad685479629206a1bbc17d5bfe4ef6c87f43f3bf4d821d5` |
 | `internal/bot/panel_fishing_test.go` | `1d1e60f880aad39d6c7d29c1619cd953f7bca4f1708db412a4bb1e37d5c07b66` |
+| `internal/bot/panel_go_features_test.go` | `f26d836fd9c2d549ebbe11cba82d6b96239433d7bea8abb9e573270a9ed02c39` |
 | `internal/bot/panel_progress_test.go` | `f2b834cd3f0f1faaa97a44e86b5dd116f90a32010738ad113ba918e4e4ac5bd0` |
 | `internal/bot/panel_ranch_test.go` | `0470101d92ec3db571e6569c6ae5bc5496f1afe1e6ee60db2ca69bfefc15f9b2` |
 | `internal/bot/panel_shop_test.go` | `5a59caec9abe42e6a0c01a8612757d8728bb9146a8b9b487ef9b75efa0b19551` |
 | `internal/bot/panel_social_test.go` | `1c38e7a0b003c01d2c5ab151ad7d04fa44b1c09414bea59d0b0d46b5230a48c0` |
 | `internal/bot/panel_test.go` | `6f2df7038bb9e5b30ac385cbd6b8c993194780660717856465f3c118fa84a54a` |
+| `internal/bot/querycount_test.go` | `92d9d9017ea2bb0c3bfd821ce54eafbdaeca24d201e1a12877742ae2c7cedf7d` |
 | `internal/bot/render/render.go` | `3ae595db2c272fff5578b2977e68c8a0950f9797c85b4c87ca58a5bc6476a1ca` |
 | `internal/bot/render/render_test.go` | `6ede2961d1547a3b6fe7538bdf6f3c9a41118f5446b9156aa377e2b437871fb8` |
 | `internal/bot/runner.go` | `bb15b19e49d19344906ce84bd520ed94cadaa1dde0afa15292f58c6138cce907` |
 | `internal/bot/runner_test.go` | `615c7b85dd2d538d5cffdb9e6a392fb2a236d5fbced66896742498f27ea00973` |
-| `internal/bot/ui/ui.go` | `01e67ad6f2efa13af8ebdddf3012cca43f8a29f244b4babb8e3458811e1aaf50` |
+| `internal/bot/stress_cpu_other_test.go` | `78522fc600e79e09ea6054fc2f5b78ce2994ea89392a2aa8812c1f3069b6d134` |
+| `internal/bot/stress_cpu_windows_test.go` | `e2b3c8c04414cfcea83bb195f204174de8fdbf75c1de14f377a351e7cf548225` |
+| `internal/bot/stress_test.go` | `7a5f8b902db4ca9309f5e9c614eb4abb073f0639c5a4fbcf2e56a8d12424baa9` |
+| `internal/bot/ui/ui.go` | `b28896ca48f68425ccab28404f85b908bc572119d67affe2256419a0aa9b96e4` |
 | `internal/bot/ui/ui_test.go` | `15949b62a68d3ff0c16ca8bf88ef51518f095632471836514c1d606475f680f1` |
 | `internal/bot/ui/uitest/uitest.go` | `35c9b49a14d7f2573911a4b8cd0b4667418c1e49a7d9436f1fbbb2477613bed1` |
 | `internal/bot/ui/view.go` | `03a49adb45e886fbb12744c3795783481198f9a361829b905ef2ac4bf2d482f2` |
 | `internal/cachebus/cachebus.go` | `6d5d4b825383dc1d20509d859e7ad5cf6b9f7f9aa2cfc82899c655646193053a` |
 | `internal/cachebus/cachebus_test.go` | `b33d1ad0c0783797170a18aba19508056bc9229745c6ee3ab600c8d345d2a1da` |
 | `internal/clock/clock.go` | `0017235591ecf1d508aecc3c361e4d7c4a51258fea9c78d7e1049e61e8a4c7be` |
-| `internal/config/config.go` | `092bcee1a3a9dbbe3c30a2fbdd9ac09dcd3b37b318f292c44e3fdde983959030` |
+| `internal/config/config.go` | `41cf3d24d28f9c41f752fb26cbef35d626ea97e0624d4cfdd708bf77a9dae88d` |
 | `internal/config/config_test.go` | `1b6ad60f0ea2703b97ed3afdaf171d4fbbb6c9058e587734a54e4435d3c49989` |
 | `internal/db/catalog.go` | `911a747fb253112b8f2363225e2dad82997330ed40a407edabe39f26a11c5d57` |
 | `internal/db/check.go` | `66792de251bc2dcb6b4f3c443e917f321d09af4740726c3d498f4c562ff04d0d` |
@@ -518,18 +550,20 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/db/models/worldboss.go` | `1f2db2b61d9e2e8db289a7bc1ce0a83a27556475c599307f57750125de51acd7` |
 | `internal/db/sqlutil.go` | `f7dcffee8eea287b7a0c182547300fcf6917f9ba7cb8e4d9e86eb3be2f3496b0` |
 | `internal/db/txcache.go` | `9979cd0bf7e3275bcc55139caee976ee08e7ca2d61b24b2390c75ed9e4120965` |
-| `internal/dbtest/dbtest.go` | `94e96f6fb2d1fe97e0e1f4b73791e3e90de04505e133d0d5460c08c07877fd17` |
+| `internal/dbtest/dbtest.go` | `7260a57156d25c6266ee774d38051c349f7cdf86add1f92b8d87aa33bd6c64d6` |
 | `internal/dbtest/reset.go` | `5ab0cfb74e6411b3c6455b110943649d060e3fd48739db80ca6b908b8cfcd0d6` |
 | `internal/dbtest/reset_test.go` | `db536239c940c4a4a00a0f8d75be184c8083ef52c2e77851bf14b2f86972260c` |
 | `internal/dbtest/sqlcounter.go` | `beb71ca22e3ee4dae728622aa5718563b57638bdb03eb28cdf3de29fcbabb6b2` |
 | `internal/game/achievements/achievements.go` | `4cb417b71c2d223f5046d13bbf86c4d078d563f62c57e773d1833c2b8cf41b2d` |
 | `internal/game/achievements/achievements_test.go` | `49fd0bc8c0d0931e80727bc58d6765bf066acdcaa8a532264bcce47062d2de00` |
-| `internal/game/balance/balance.go` | `f42e24b72163942ca119bd8cabbede29efb5d0ae658665c1367a34b60147ae5f` |
+| `internal/game/balance/balance.go` | `09999b7c898394366957a42debda986f2d814342dc3ba45c23083780b7a9c352` |
 | `internal/game/checkin/checkin.go` | `7f48d4457a07a7cea8f8ca487c385bd9a8719e833345cb8236ed76506e740d17` |
 | `internal/game/checkin/checkin_test.go` | `0ca089b008745912db964774e892ac603c79494cda262f90196b07c23d72c860` |
 | `internal/game/events/events.go` | `74a1ec9ec051beee22911273766377de756dbe22ccf64e9a687d3c3d7647a870` |
 | `internal/game/events/events_test.go` | `06a236f059e6ed8c5896225e683fabf0865d738f7ae7afcaef752d7b1ac6ee70` |
-| `internal/game/exploration/exploration.go` | `20a11a1abd64fea3cb82bcdc4a4e5c0d5de66ade3d06ae1f26b1eee9e0dd6fbb` |
+| `internal/game/exploration/config.go` | `b17a06906169d5245c102bd8e999be7fe94e5f2a21070de5a45c74acb7b10259` |
+| `internal/game/exploration/config_test.go` | `d4c0e93e51686fda42fe5bc53dc61a2ba1203ee7479dbcf189030a63d45cfb87` |
+| `internal/game/exploration/exploration.go` | `80e0b04f11c568c6900cf0c658e3d8166c92e9c445c545db0cb12e1d638c25a3` |
 | `internal/game/exploration/exploration_test.go` | `92c45a2caf2192c93bab90a1b9e3c66d2d1d2b709983cc7856d52bfe744a6c5e` |
 | `internal/game/featurecfg/featurecfg.go` | `9df670e9c365358bf783f89ea724663a69053f6390cb846ad8c80af317b28c80` |
 | `internal/game/fishing/fishing.go` | `919745950c8e31f4849dc55e09b634427552a0826eb4bcd5431f95dac5b03eca` |
@@ -538,6 +572,10 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/game/gameerr/errors.go` | `a1a295c2f0e0f9ac1b431f18eea6594cf663607864234d3cae3911c234a72264` |
 | `internal/game/genetics/genetics.go` | `aa93e03a5506fcff159323541c4de833eac8fb8fac75d5c5e604d240a19a9dd1` |
 | `internal/game/genetics/genetics_test.go` | `6d5915b5412a42e2f6941200ffa827c026b175ff24f361dce19d659433192eca` |
+| `internal/game/mushroom/config.go` | `f0e38fc0d82368f0b0d3da8b1cfa7ca281490ae5c9dd2dea7fdd56e4e1fac0b1` |
+| `internal/game/mushroom/config_test.go` | `7b7c8d91c598802069508db4c51b57c40af59f29d89bc88fbad5ecdec48ddd7c` |
+| `internal/game/mushroom/mushroom.go` | `eef8004f2801bd1cb80b6533a2fbcd347164f864f25bac56baa5baa2c14d9c0a` |
+| `internal/game/mushroom/mushroom_test.go` | `b1ad19c7a8b70e338d9b29ee91359fbd5af38fa797cf4dff6ff864e72b04b788` |
 | `internal/game/news/news.go` | `0ed4d661bd9147bb528a30ead5bca82b628129d92ffba6134dd9eef8d5ab3fea` |
 | `internal/game/news/news_test.go` | `560577fc7d61efc97ab45f69444a995d5177258a2277f890d6ce3b600a894a15` |
 | `internal/game/news/pyrandom.go` | `d42860357a6401ee709b1dc6a98c40c21d81be1428f9776b8ffb91e1130a82fe` |
@@ -550,12 +588,22 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/game/ruins/ruins_test.go` | `cd832a43e62d3d3263eb281a0718362780b62714f932f54e5d7f24bad6daf3c9` |
 | `internal/game/rules/rules.go` | `71b54495ec4113dbfc6922ceec74fa8275d738f8fe4e2d0becd5f42c969bbc8c` |
 | `internal/game/rules/rules_test.go` | `15a50ff32878f023b6ef40aba46da086e51defd5ad01d0b2e95dc1a8c7af76e2` |
-| `internal/game/seasons/seasons.go` | `f1640cba890a95e0b12dcd4d819437971c970e5439e2ae114855bf0c728c22eb` |
+| `internal/game/seasons/seasons.go` | `6f1d57e7d00a32cd3204044359c9f30909e9ad8196b7979ee7e771f5a72a64ec` |
 | `internal/game/seasons/seasons_test.go` | `0969bac440644fd687fe7d97ee07858c258aea572611bc18881cffff7de2db8d` |
 | `internal/game/specialshop/specialshop.go` | `2fec3d9bb244583b748a884e9c8566837bed59ba9d889323b10d241ce3e88120` |
 | `internal/game/specialshop/specialshop_test.go` | `b7dbccb2994dfdb8f2a49731b417eaa79c6249edad3a45fd0d480d2e81276590` |
 | `internal/game/worldboss/worldboss.go` | `bf48640f807809086b67a7788de6cf194c4192bb2f711adaf182f5324c5523dc` |
 | `internal/game/worldboss/worldboss_test.go` | `ecf564a6af0ad5184b6787a03e4a06651374fc86316473e216dbc78a22bcaec2` |
+| `internal/music/commands.go` | `247f82de1ca87ae5428c1becdbd69e369f0d8711c519cc07ed3ad64af4eeeeae` |
+| `internal/music/format.go` | `e13108c2306f10d9d5b194aa5c618ceb7c9183650485d6ac1e47b6a5e8636ba0` |
+| `internal/music/lavalink.go` | `834cd5936b581f5ed92929a1e6d7e1fb8e4951695621f7673b1371d8e48723d4` |
+| `internal/music/lavalink_test.go` | `2b2e8b7b77edde00e74fc8cbc1f22d1918e7f6b4f1e27dc6ee6bd805f8f665dc` |
+| `internal/music/music.go` | `0db721a7b213663a2dedaeb1ac58cd7eb4cfa71fed9f49d8dfc89a05cd7a4251` |
+| `internal/music/music_test.go` | `c3ddb2175800cf276672ac41a76f35b0804a06f7f8562e0a74dbba35e7e597e2` |
+| `internal/music/spotify.go` | `e9fd065a5162df93269849e5a7eadd033f1d1e90fa4364e444563cf532a60a42` |
+| `internal/music/stress_cpu_other_test.go` | `f9ed9dafd9c7f33ca0fab9dec10376a4c1141ccff461741f154bcee8f4f0646d` |
+| `internal/music/stress_cpu_windows_test.go` | `f732255002c997712229f6159e351cb104fb6c09581b9191f14ea9ad6c9412ff` |
+| `internal/music/stress_test.go` | `46dad0c6fd8fbdcffae29906be78f05f8996d43da0869cadd1ceea4e5ba2cee3` |
 | `internal/numfmt/numfmt.go` | `792645f7d8b56d8dd1650b4daff3d696bce1a7af2c6c6fc4a8982fa0cdfe5202` |
 | `internal/repositories/animals/animals.go` | `12d48b0012c10a7905e4090480a7e7328e885fb18686d2b492b685c724c6c2fc` |
 | `internal/repositories/animals/animals_test.go` | `60a62222f56db2a60d505504255c9f86d1754daa10cd58058b307be00c986b0a` |
@@ -575,7 +623,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/repositories/exploration/exploration.go` | `c22416f9a8816a417de89f5783e2edbdc3eae68024e266339270346e90674f8b` |
 | `internal/repositories/exploration/exploration_test.go` | `bacae59f6bccfed9a353d54291d170c89562ff5e40514cba449002650afffbfb` |
 | `internal/repositories/exploration/helpers_test.go` | `ec9daecb81de6491aea7860246cc4117255b5a0bbed99087d8c70c861fad8981` |
-| `internal/repositories/farms/farms.go` | `713cb599999984e1f1884beff6499742e72e507508528b0087c99cb14a5c0ac1` |
+| `internal/repositories/farms/farms.go` | `e267ee60ce1903890d34548c3c0f777db17d75c58b02130699f3a637782abbd2` |
 | `internal/repositories/farms/farms_test.go` | `f49ceaa960d2e1804f4168099669dda45ef268f264b69a27ce762a0a0b95c2da` |
 | `internal/repositories/farmstats/farmstats.go` | `347da44c9f1bdbe89d192cf511f2757a6a4569773ddf0a2191c3ffed599f7b44` |
 | `internal/repositories/farmstats/farmstats_test.go` | `41231774dfee33d665c13670d392d8371ef41724650ff7193a550707552ce430` |
@@ -627,18 +675,18 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/activity.go` | `23e413d6e742b94fe8aff2ceab67d5b9df7395efee71439ed52547665b33e7b2` |
 | `internal/services/admin.go` | `f84034bf22e6e33b997bc2a97f5e4ac10b7ffe9dafb6a556fed80a01eea9d48e` |
 | `internal/services/admin_test.go` | `d38f2678a219857f1f69494a95d732b3477908988beb5e369ae3dc7a2e04df47` |
-| `internal/services/backpack.go` | `32510c0ed70a02a876b702e980796da9975998a44ace860f4ef689ab5e8c8da7` |
-| `internal/services/batch_test.go` | `5bcb9d8ea871e4416533fa75b72eaa5c442dbabd25fe51d01754a35e7e57c10c` |
+| `internal/services/backpack.go` | `11797ba512b97010b77afb9b3bcd76bbf14d78890ff962b9ec93fed8914fc178` |
+| `internal/services/batch_test.go` | `9e04362497997f348edce7bade3a8d600e5f4a8521e2f34322bf6ff343b1bd49` |
 | `internal/services/bulk_test.go` | `ade087afbcc3a03971a4841506208e2b9d049a32410dbf2ce0d313d20670d231` |
-| `internal/services/catalog_seasons_test.go` | `8e85b77848375bf6c2dc5ecf5d913fe861c2c9b9137751649322432efcf79556` |
+| `internal/services/catalog_seasons_test.go` | `15103cb7e8a7eec205de723be1670ff34bf0aa8687f5213c67fac13b225ccb23` |
 | `internal/services/community.go` | `17a8ad9f38168b633a8f095e84a968b723dde561820ab8f8446997e6c1261239` |
 | `internal/services/community_test.go` | `fab57c9a96c7cab7bef3ceaa413cecf0ace86b9089f9a6256aaa5f1d77317eb2` |
-| `internal/services/crops.go` | `96c9b3ebd2cfcd0dfec2f14108b8bd2dc1618ca20e6b61caae45c9728c850fcf` |
+| `internal/services/crops.go` | `b7b0c4e324ede0ee4a2d279b945cbc6953ef97a9e0e5230333bae561fe60a92e` |
 | `internal/services/database_test.go` | `19a27f3a0a5fa4548a5f46499c0340b769ca0a3f79941989b8c58b3ccb1c3a30` |
 | `internal/services/defense_test.go` | `c9f4a17d675c9535aed15d6f10d79190d722c9f103d17dacfecd7536d51954cb` |
-| `internal/services/dto.go` | `b97c6906a83e762c09980bfb0cbc0e19cb45d321304aa211787eeeeb287886fc` |
-| `internal/services/exploration.go` | `4d0dea31cbae1af37bb69d88f604fa763f5b8e70f37a9b823ae0d99b19e5d75f` |
-| `internal/services/exploration_test.go` | `eddce6e36572bf4131ee3aa84513b7ce8d0ecab06229f9c401ac2fe90c6b9623` |
+| `internal/services/dto.go` | `6e5422848b61e831f761eba53b04c5b6a1d00deb2db60059ab8f2b65d6d11b1d` |
+| `internal/services/exploration.go` | `ea3697a792f642dab675b5f12d4af83fb54ab2c48152f17a97757367c788d2a5` |
+| `internal/services/exploration_test.go` | `76e30a1f089ba1e13c2a15f01d7859f8cbb7cc98550f69c440d1e25e7edeee0a` |
 | `internal/services/farmstats_test.go` | `a15446358f01b77a334540f6511072af77a2c0681298e0479957c3118c89d819` |
 | `internal/services/feedback_test.go` | `a9554d2d3afd0e0d815cafa637231c329695a9b5f3ead025cc20f23ddc5febb1` |
 | `internal/services/fishing.go` | `cb722313aaac083ee873a2cc58a01bb9dd2bb7185d9bc146fc7a794155cd983f` |
@@ -648,6 +696,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/gamble_test.go` | `88a175c8b93c4d5d390bfbd1c48f66737dddfd199dc7d0ed7159e5217d21715e` |
 | `internal/services/game_service_test.go` | `ebe58b8ce791700cef4423267b183cf1aa42560ce128daeabf5623f93bff3478` |
 | `internal/services/genetics_test.go` | `2e50fe222ddbcce44620c4f727c6d21190ce1016b1b64c8cbd3d434849c884bc` |
+| `internal/services/go_features_test.go` | `407577575e29ad0d105a3462f972ab01c3ae3e69acdd771ca123667c621a8cd9` |
 | `internal/services/group_test.go` | `d3ef99ebc8ac4ec2929755c137f76a8f2d2840e9765861badb2e06107acb3f3a` |
 | `internal/services/helpers_test.go` | `51bdcba9ae26e2bffc8ac309dadcdc8f4ae05880bb4ad7a8565227c87888165c` |
 | `internal/services/items.go` | `2ba822ebe09c4ca3a86b32118354ccf3e0823890fac9a0d1bec133248e261cf3` |
@@ -658,40 +707,43 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/monitor_more.go` | `295e3a6404296592391953e903fc48d9996abf7e015184a8ef6994b554761461` |
 | `internal/services/monitor_more2.go` | `9bcf88fce251713494c1d377204e4b29b682653037582a7b0fe50d725e77beb2` |
 | `internal/services/monitor_test.go` | `9490a74814411c190cbd075b5bfc181f4c3d63aaf1b862320b653fd5453eb5d9` |
+| `internal/services/mushroom.go` | `63b4a53f641897b832c2ef2fb53e2e332b90658512fd7174ff5f428a7b2f3de5` |
+| `internal/services/mushroom_test.go` | `54ecd06992061843c036e439b1c80f33f499e39d50885357f0e371414bad22b7` |
 | `internal/services/news.go` | `f3ab1d22c1b940dc00f6cac9209b192f3f0d57c9f01aae3ee788a7a3c449d7b2` |
 | `internal/services/news_test.go` | `5914ac31c9b81dfcc389854c20493863c7020e45b428b76b33116fc924c41b25` |
 | `internal/services/ordered.go` | `24ab9b4f5a9d0146fd4e36e5bbc55f6d8b96d0af61817c5a4c8b96ecc6558df3` |
-| `internal/services/perf_test.go` | `10acb48b887f3ff7322f23e5b94d89f6a0b90329b86af30857a14b850447fa98` |
+| `internal/services/perf_test.go` | `9c6939c77bc3728f3d14f7b1527ebb7b50376f3c670d2d1aea97e5cf66c76852` |
 | `internal/services/pets_test.go` | `e76226dc5f9e29202606aba4ca93dfef6f7efdd25e8191fc0d629ba1b42ac311` |
-| `internal/services/players.go` | `da8f5628ab8a7a02803413e51c23e545c352e790cd5055389c9b7db12a9efed2` |
+| `internal/services/players.go` | `c8071cb54eb672932a79f51ca7f2fa3d932088a82c4da487c914af87a8d335ea` |
 | `internal/services/progress.go` | `a61fd6eb32cfcc3d782d19e8f747a27848e285db4c6f2a8ff624e45d98001db0` |
-| `internal/services/progress_admin.go` | `9b23af291d6fccc06630a171c80a2ba9a9219ebef7bc4343a35dcf85b943a66d` |
-| `internal/services/progress_admin_test.go` | `f8312a8f405b74691e9200cf11e514c80bb8f411889cec670b56c191e66a3d67` |
+| `internal/services/progress_admin.go` | `98e392bef3c45d5b88d5bc72404f1e934bef873b52884a1201ce65450bd28dde` |
+| `internal/services/progress_admin_test.go` | `6bc6b8631edfef7354978fae36f9118c6a64cef3e3ce697ed6e87b4001c77e0e` |
 | `internal/services/progress_test.go` | `072d70c7260831baff1c3c061e701360238c6d6683d350e62b5dd1c935bf15e1` |
-| `internal/services/ranch.go` | `e135c975717a3e547b8146ce81ed1fa646cc96b340e00856bae0e40f12c362a7` |
+| `internal/services/ranch.go` | `d39ad1328e04237a10c2a20531156431c705e8ef411a80053ba6dcf9575884e3` |
 | `internal/services/ranch_test.go` | `1876e456d3a126ab5d523b7dd5c9b9b96d4911206136af75ac1a21632803bd5e` |
 | `internal/services/ranking.go` | `72de8253cab387d6ea8ac7b09cfe9b8d069536e0eab788714c6219ef9cf0bda5` |
 | `internal/services/ranking_test.go` | `0701621de69f1f78ef54108dc123efa9c5f917f9875463da86f74801f01b8c94` |
 | `internal/services/retry.go` | `ba146e2ae2ceca83016f2af28ee78a44af39f946325459e372dc994c267c5385` |
-| `internal/services/ruins_test.go` | `2c9a4fd2052a8f7a290f5801ebaa658b80d7468855dfa958764c8aee80fddd01` |
-| `internal/services/service.go` | `92abc0e77c0edbda556ed24fd05e57c50f66864511442327d3fd42cf8a4d0f2a` |
-| `internal/services/site.go` | `ef7b404d7cf2610386540feef1abfeef1b097427f02c0aa0a083091095d008d0` |
-| `internal/services/social.go` | `63fbdd7308607be76c43b2a96e84686b79a60c0a1fcfad6e17211896d6ed1a43` |
-| `internal/services/social_test.go` | `2a74306d1d8320e5cf6eeaed1bceaca36586e3f328032bf0cf394a09713e761d` |
+| `internal/services/ruins_test.go` | `80565e5b64a40c7d283bb7ecfaad5cafd3c4a1ac34853a216d38d609618d40d6` |
+| `internal/services/service.go` | `30693964ff2d89c4187725116e07096e15e8cd4ee68538d194c5d7e718cbda82` |
+| `internal/services/site.go` | `e54433ab8a11996507590ed1676af3fc7eab35b927481f4e5c59afe34345a64e` |
+| `internal/services/social.go` | `442eaddccd817ba20e2c124d47c8006b964edff48c98130ed45de5c7de448558` |
+| `internal/services/social_test.go` | `471f7584ba54e4daefb31e199a153811c27a3248226c0deb8184af2b70f0ca1d` |
+| `internal/services/stress_test.go` | `a4aa847f169673c1d8af3656a9508f25c226415f50f465f141f546e025ec2e8f` |
 | `internal/services/svctest/svctest.go` | `d58382c0713634a9fca6c58f84b672a5d8d6c754351bf243dd1d7a22fa447c80` |
 | `internal/services/worldboss.go` | `64580541ae38af915b001302afd750107a898ebf6ffa9cef818207972267d3b0` |
 | `internal/services/worldboss_test.go` | `0cb066ae06856a2f6b8897941840c426d91e452e8ee3bd560e3016aaf7a5f72d` |
 | `internal/site/site.go` | `c8392737e05a0edcd3f41dbd5cf60a15ec53cbe0af2b885e6a00661bacf8f787` |
 | `internal/site/site_test.go` | `5415f7ffd2741499b7281f407ec370072f575e58ecd9683378644f1ae180a5f7` |
 | `internal/site/static/favicon.svg` | `bba4123b033483f9ca309a1031c36a6459679843def75245bca83d74575bc292` |
-| `internal/site/static/index.html` | `0eb8cd067f469c85c8ce2c62b43c81ebe26a1f826af5b86641c579373fff58ee` |
+| `internal/site/static/index.html` | `10cd946ce21442c39aecba87871b3ecda354c44b9d3623a1e21b15ec03092bbe` |
 | `internal/site/static/site.css` | `b6542200f867362330ba84dbb417878761f75a886b3af7c18681a2300d2b4ee7` |
-| `internal/site/static/site.js` | `2d27d2f8ec7833eb16e4d44a5c90cc3c4693792e172607dec6035fc89f8b507b` |
+| `internal/site/static/site.js` | `de5674c210c28234f38dfc7003e811309ec3410f389414c88cc0712515452559` |
 | `internal/web/admin.go` | `fff4ac767c289753fdbe578ecfd142d6a345498e7f5dced26b14c3f41ed1c050` |
 | `internal/web/admin_boss.go` | `a588cb805d2739bcaa5fefc6cb5c5abc7d066d70bc6abdb14ba94efa2513924f` |
 | `internal/web/admin_boss_test.go` | `749a86128ae3d09ad2b41ab37cd127a35e56cd5b4ec6bed8edd98649f35e9919` |
 | `internal/web/admin_catalog.go` | `140c32bfc5f42765d2f8d0b4b0c84284fd932263160c918a290cdaedb2ea17a8` |
-| `internal/web/admin_players.go` | `c75794773406ae663690fc50e1926e9c811ae29b0c3603efa248db83e113dfbc` |
+| `internal/web/admin_players.go` | `386cf4b667a7ee598a7f0ccb4b36cc296bbd373a8929464baf5f23718d3ad97b` |
 | `internal/web/admin_test.go` | `b5f15ff103662029a1aee46b47e51477b5b00bf15598674a217a9b9ce3bd13c8` |
 | `internal/web/auth.go` | `ba5da1c32cb1f97eb075f1f140646a0cc7e43b27e9902e3e046bb6406a0b387f` |
 | `internal/web/auth_test.go` | `415a195330d07f74b0b4c9d686b7029e577c22afcec83d35e106ecf89faa6573` |
@@ -704,7 +756,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/web/respond.go` | `869011e0448845d1d9106ff5d2ecaaf8c815d043a9b5e84b51c24f33d364d67b` |
 | `internal/web/schema.go` | `f0b0107ada37ebd88f1b71f73c1d9f3c2c48afcc69eae25203c24bffaf41b6a3` |
 | `internal/web/static/monitor/app.css` | `1ea9816a5f7f3b24d2b05704e6624ef2c60be627d593845f1e9fa7e53188ed5a` |
-| `internal/web/static/monitor/app.js` | `da4148cb46aa9ecdfc872f5cb9253592f745bdd7019de89171957078364bf474` |
-| `internal/web/static/monitor/index.html` | `c28e67cff414b49de7e7abcd2d7b03e817c149333d238febe22b0d57f1a7edd1` |
+| `internal/web/static/monitor/app.js` | `c1841d03a2b521c9f7f1f8a08b2e61e0e43c8addb01c70bde91ad0d1e4125f10` |
+| `internal/web/static/monitor/index.html` | `900ccf024e89c1a89ab3c92b742bb5a6240e19cadd5993a7b2fd7f45711e5428` |
 | `internal/web/web.go` | `71d98d479b92b727acb3ce499ebd7983e6c1ed6755a1bc8eca51fc68bf5f556b` |
 | `internal/web/ws.go` | `dda2e1fd64b2f7f6adb5d31c531feebfb0e0956b3ea5a2ed7e93863c39bd8b9c` |

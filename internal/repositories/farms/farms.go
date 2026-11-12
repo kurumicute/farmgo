@@ -8,8 +8,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
+	croprepo "farmgm/internal/repositories/crops"
 )
 
 // Create 建立農場。
@@ -57,7 +60,13 @@ func ListPlots(ctx context.Context, t *db.Tx, farmID int64, forUpdate bool) ([]P
 		}
 	}
 	var crops map[int64]*models.CropType
-	if need {
+	if need && !forUpdate {
+		// 不加鎖的讀取只用來顯示（作物代碼與名稱）：用遊戲目錄快取，省一次查詢；快取裡找不到（例如剛新增的作物）才查資料庫
+		if crops, err = cropsFromCatalog(ctx, t, plots); err != nil {
+			return nil, err
+		}
+	}
+	if need && crops == nil {
 		rows, err := db.QueryStructs[models.CropType](ctx, t,
 			"SELECT * FROM crop_types WHERE id IN (SELECT crop_type_id FROM farm_plots WHERE farm_id = $1)", farmID)
 		if err != nil {
@@ -76,6 +85,25 @@ func ListPlots(ctx context.Context, t *db.Tx, farmID int64, forUpdate bool) ([]P
 		}
 	}
 	return out, nil
+}
+
+// cropsFromCatalog 從遊戲目錄快取（crops.ListAll）找出土地上的作物；有任何一種找不到時回傳 nil（呼叫端改查資料庫）。
+// 回傳的作物與目錄快取共用，唯讀。
+func cropsFromCatalog(ctx context.Context, t *db.Tx, plots []models.FarmPlot) (map[int64]*models.CropType, error) {
+	all, err := croprepo.ListAll(ctx, t, false)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]*models.CropType, len(all))
+	for i := range all {
+		byID[all[i].ID] = &all[i]
+	}
+	for _, p := range plots {
+		if p.CropTypeID != nil && byID[*p.CropTypeID] == nil {
+			return nil, nil
+		}
+	}
+	return byID, nil
 }
 
 // GetPlot 取得一格土地（forUpdate 預設 false）。
@@ -113,9 +141,41 @@ func AddPlots(ctx context.Context, t *db.Tx, farmID int64, count int) ([]int, er
 	return numbers, nil
 }
 
+// plotWrites 一鍵操作中累積的土地更新（種植、澆水、清除）；離開 Bulk 或下一次查詢前以一個 pgx.Batch 依序送出。
+type plotWrites struct {
+	sqls []string
+	args [][]any
+}
+
+func (p *plotWrites) Flush(ctx context.Context, t *db.Tx) error {
+	if len(p.sqls) == 0 {
+		return nil
+	}
+	b := &pgx.Batch{}
+	for i, sql := range p.sqls {
+		b.Queue(sql, p.args[i]...)
+	}
+	return t.SendBatchNoFlush(ctx, b)
+}
+
+type plotWritesKey struct{}
+
+// plotWrite 更新一格土地。只改這格土地，不依賴尚未送出的庫存、圖鑑、交易紀錄（Python 只改 ORM 屬性，提交前才寫入），
+// 所以不先送出其他延後寫入；一鍵操作中再延後到整批一起送出（原本每格的 UPDATE 都會讓前一格的交易紀錄單獨送出，
+// 合併寫入無效）。之後的任何查詢都會先送出，讀到的一定是更新後的內容。
+func plotWrite(ctx context.Context, t *db.Tx, sql string, args ...any) error {
+	if p, ok := db.Deferred(t, plotWritesKey{}, func() *plotWrites { return &plotWrites{} }); ok {
+		p.sqls = append(p.sqls, sql)
+		p.args = append(p.args, args)
+		return nil
+	}
+	_, err := t.ExecNoFlush(ctx, sql, args...)
+	return err
+}
+
 // Plant 種下作物（Python 預設 quality="normal"、mutation="none"）；planting_no 遞增。
 func Plant(ctx context.Context, t *db.Tx, plot *models.FarmPlot, cropTypeID int64, quantity int, now time.Time, quality, mutation string) error {
-	if _, err := t.Exec(ctx, `
+	if err := plotWrite(ctx, t, `
 		UPDATE farm_plots SET crop_type_id = $2, quality = $3, mutation = $4, planted_at = $5, watered_at = NULL,
 		       ready_at = NULL, remaining_quantity = $6, fertilized = false, planting_no = planting_no + 1, updated_at = now()
 		WHERE id = $1`, plot.ID, cropTypeID, quality, mutation, now, quantity); err != nil {
@@ -133,7 +193,7 @@ func Plant(ctx context.Context, t *db.Tx, plot *models.FarmPlot, cropTypeID int6
 
 // Water 澆水並設定成熟時間。
 func Water(ctx context.Context, t *db.Tx, plot *models.FarmPlot, now, readyAt time.Time) error {
-	if _, err := t.Exec(ctx, "UPDATE farm_plots SET watered_at = $2, ready_at = $3, updated_at = now() WHERE id = $1",
+	if err := plotWrite(ctx, t, "UPDATE farm_plots SET watered_at = $2, ready_at = $3, updated_at = now() WHERE id = $1",
 		plot.ID, now, readyAt); err != nil {
 		return err
 	}
@@ -143,9 +203,7 @@ func Water(ctx context.Context, t *db.Tx, plot *models.FarmPlot, now, readyAt ti
 
 // Clear 清空土地。
 func Clear(ctx context.Context, t *db.Tx, plot *models.FarmPlot) error {
-	// 不先送出延後寫入：只改這格土地，不依賴尚未送出的庫存、圖鑑、交易紀錄（Python 只改 ORM 屬性，提交前才寫入）。
-	// 否則一鍵收成每格都會先送出累積的寫入，無法合併。
-	if _, err := t.ExecNoFlush(ctx, `
+	if err := plotWrite(ctx, t, `
 		UPDATE farm_plots SET crop_type_id = NULL, quality = NULL, mutation = NULL, planted_at = NULL, watered_at = NULL,
 		       ready_at = NULL, remaining_quantity = NULL, fertilized = false, updated_at = now()
 		WHERE id = $1`, plot.ID); err != nil {

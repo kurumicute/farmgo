@@ -50,7 +50,6 @@ type animalsData struct {
 	types    []services.AnimalTypeView
 	workshop services.WorkshopStatus
 	pets     []services.PetView
-	image    []byte
 }
 
 func (p *Panel) loadAnimals(ctx context.Context) (any, error) {
@@ -72,7 +71,6 @@ func (p *Panel) loadAnimals(ctx context.Context) (any, error) {
 	if d.pets, err = svc.PetStatus(ctx, pid); err != nil {
 		return nil, err
 	}
-	d.image = p.yardImage(d.workshop, d.animals)
 	return d, nil
 }
 
@@ -241,7 +239,7 @@ func (p *Panel) buildAnimals(_ context.Context, data any) (*ui.Embed, error) {
 		}, btn{emoji: "🕊️", row: 4, style: ui.Danger})
 	}
 	p.navBack(4)
-	p.attachImage(e, d.image)
+	p.attachImage(e, p.yardImage(d.workshop, d.animals)) // 圖片在交易外產生
 	return e, nil
 }
 
@@ -258,9 +256,9 @@ func parseAnimalNo(s string) (int, error) {
 // ======================================================================
 
 type petsData struct {
-	pets  []services.PetView
-	gold  int
-	image []byte
+	pets   []services.PetView
+	gold   int
+	status services.FarmStatus // 圖片在組畫面時（交易外）產生
 }
 
 func (p *Panel) loadPets(ctx context.Context) (any, error) {
@@ -272,7 +270,7 @@ func (p *Panel) loadPets(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return petsData{list, status.Gold, p.farmImage(status)}, nil
+	return petsData{list, status.Gold, status}, nil
 }
 
 func (p *Panel) buildPets(_ context.Context, data any) (*ui.Embed, error) {
@@ -349,7 +347,7 @@ func (p *Panel) buildPets(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	p.nav("回動物", "animals", btn{emoji: "🐔", row: 1})
 	p.navBack(1)
-	p.attachImage(e, d.image)
+	p.attachImage(e, p.farmImage(d.status)) // 圖片在交易外產生
 	return e, nil
 }
 
@@ -361,7 +359,7 @@ type craftData struct {
 	workshop services.WorkshopStatus
 	recipes  []services.RecipeView
 	orders   []services.OrderView
-	image    []byte
+	animals  []services.AnimalView // 建築畫面在組畫面時（交易外）產生
 }
 
 // loadWorkshop 加工與建造頁共用：設施、配方與建築畫面（orders 只有加工頁需要）。
@@ -380,11 +378,9 @@ func (p *Panel) loadWorkshop(ctx context.Context, orders bool) (craftData, error
 			return d, err
 		}
 	}
-	list, err := svc.ListAnimals(ctx, pid)
-	if err != nil {
+	if d.animals, err = svc.ListAnimals(ctx, pid); err != nil {
 		return d, err
 	}
-	d.image = p.yardImage(d.workshop, list)
 	return d, nil
 }
 
@@ -545,7 +541,7 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 	p.nav("機器", "machines", btn{emoji: "🔧", row: 2})
 	p.cancelCraftControls(d.orders)
 	p.navBack(4)
-	p.attachImage(e, d.image)
+	p.attachImage(e, p.yardImage(d.workshop, d.animals)) // 圖片在交易外產生
 	return e, nil
 }
 
@@ -589,7 +585,7 @@ func (p *Panel) buildBuild(_ context.Context, data any) (*ui.Embed, error) {
 	}, 0, "")
 	p.nav("回加工", "craft", btn{emoji: "↩️", row: 1})
 	p.navBack(1)
-	p.attachImage(e, d.image)
+	p.attachImage(e, p.yardImage(d.workshop, d.animals)) // 圖片在交易外產生
 	return e, nil
 }
 

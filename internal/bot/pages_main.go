@@ -15,6 +15,7 @@ import (
 	"farmgm/internal/config"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/exploration"
+	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/pets"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/services"
@@ -26,6 +27,7 @@ func (p *Panel) registerPages() {
 		"welcome":         {func(context.Context) (any, error) { return nil, nil }, p.buildWelcome},
 		"main":            {p.loadMain, p.buildMain},
 		"plots":           {p.loadPlots, p.buildPlots},
+		"cellar":          {p.loadCellar, p.buildCellar},
 		"backpack":        {p.loadBackpack, p.buildBackpack},
 		"shop":            {p.loadShop, p.buildShop},
 		"prices":          {p.loadPrices, p.buildPrices},
@@ -131,7 +133,6 @@ func (p *Panel) buildWelcome(_ context.Context, _ any) (*ui.Embed, error) {
 
 type mainData struct {
 	status  services.FarmStatus
-	image   []byte
 	animals services.AnimalStatus
 	orders  []services.OrderView
 	home    *services.HomeGroup
@@ -149,7 +150,6 @@ func (p *Panel) loadMain(ctx context.Context) (any, error) {
 	if d.home, err = svc.GetHomeGroup(ctx, pid); err != nil {
 		return nil, err
 	}
-	d.image = p.farmImage(d.status)
 	if d.animals, err = svc.AnimalStatus(ctx, pid); err != nil {
 		return nil, err
 	}
@@ -202,7 +202,7 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	if p.AvatarURL != "" {
 		e.Thumbnail = p.AvatarURL
 	}
-	p.attachImage(e, d.image)
+	p.attachImage(e, p.farmImage(d.status)) // 圖片在交易外產生
 	e.AddField("📦 倉庫", fmt.Sprintf("%d/%d\n%s", s.WarehouseUsed, s.WarehouseCapacity, bar(s.WarehouseUsed, s.WarehouseCapacity, 8)), true)
 	home := "未設定"
 	if d.home != nil {
@@ -385,7 +385,6 @@ func (p *Panel) clearAll(ctx context.Context, it ui.Interaction) error {
 
 type plotsData struct {
 	status   services.FarmStatus
-	image    []byte
 	backpack services.Backpack
 	crops    []services.CropInfo
 }
@@ -397,7 +396,6 @@ func (p *Panel) loadPlots(ctx context.Context) (any, error) {
 	if d.status, err = svc.GetFarmStatus(ctx, pid); err != nil {
 		return nil, err
 	}
-	d.image = p.farmImage(d.status)
 	if d.backpack, err = svc.GetBackpack(ctx, pid); err != nil {
 		return nil, err
 	}
@@ -436,7 +434,7 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 		Section{Title: "農田", Lines: plotLines},
 		"📊 "+summaryCounts(s.Plots),
 	), Footer: "選作物會種滿所有空地（種子不夠時自動購買）；種下後記得澆水。"}
-	p.attachImage(e, d.image)
+	p.attachImage(e, p.farmImage(d.status)) // 圖片在交易外產生
 	if empty := countState(s.Plots, rules.PlotEmpty); empty > 0 {
 		var options []option
 		for _, c := range d.crops {
@@ -512,6 +510,7 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 			return nil
 		}, btn{emoji: "🪱", row: 3})
 	}
+	p.nav("地下菇房", "cellar", btn{emoji: "🍄", row: 4, style: ui.Primary})
 	p.navBack(4)
 	return e, nil
 }
@@ -615,7 +614,7 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 	p.nav("魚簍", "fish_basket", btn{emoji: "🎣", row: 1})
 	if coins := lineQty(bp.Materials, exploration.FakeCoin); coins > 0 {
 		p.button(fmt.Sprintf("兌換假幣（持有 %d）", coins), func(ctx context.Context, it ui.Interaction) error {
-			p.picker = &Picker{Key: "fake_coin", Label: fmt.Sprintf("💱 兌換假幣（1 個 = %d 金）", exploration.FakeCoinValue),
+			p.picker = &Picker{Key: "fake_coin", Label: fmt.Sprintf("💱 兌換假幣（1 個 = %d 金）", exploration.FakeCoinRate()),
 				Verb: "換", Max: coins, Presets: []int{1, 5, 10},
 				Run: p.callQty("exchange_fake_coins", func(ctx context.Context, q int) (services.ActionResult, error) {
 					return p.svc().ExchangeFakeCoins(ctx, p.playerID, q)
@@ -625,7 +624,7 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 		}, btn{emoji: "💱", row: 1, style: ui.Success})
 		if p.picker != nil && p.picker.Key == "fake_coin" {
 			p.picker.Max = coins
-			e.AddField("💱 兌換假幣", fmt.Sprintf("持有 **%d** 個，1 個 = **%d** 金\n👇 選擇兌換數量", coins, exploration.FakeCoinValue), false)
+			e.AddField("💱 兌換假幣", fmt.Sprintf("持有 **%d** 個，1 個 = **%d** 金\n👇 選擇兌換數量", coins, exploration.FakeCoinRate()), false)
 			p.quantityButtons(2)
 		}
 	}
@@ -680,9 +679,11 @@ func HelpEmbed() *ui.Embed {
 		"商店的「傳說扒手手套」可以不受每日限制，偷所有人的所有成熟農田。"+
 		"稻草人、警戒犬、防盜圍欄能阻止別人偷你的菜，巡查券可以查是誰來偷。",
 		balance.StealPlotsPerVictimPerDay, balance.StealThievesPerVictimPerDay, balance.StealMaxPerAction), false)
-	e.AddField("⛰️ 山洞冒險", "總覽「⛰️ 山洞」探索青青草原（Lv.1）、古老森林（Lv.5）、神秘礦坑（Lv.10），分別探險 8／16／24 小時，"+
-		"一次只能去一個區域，回來後領取獎勵才能再出發；可取得素材、稀有種子與假幣（背包兌換，1 個 = 100 金）。"+
-		"素材可在「🔧 機器」製作種子製造機、自動收割機、自動加工機與稀有作物培育器。", false)
+	e.AddField("🍄 地下菇房", fmt.Sprintf("農場 Lv.%d 開放，從「🌱 農田」→「🍄 地下菇房」進入，不用建造。"+
+		"地下菇房的養分由上方農田所種下的作物決定；菇床不用種植、不用澆水，約 %s長好一批。"+
+		"投入探險帶回的🪵木屑提高稀有菇機率（投滿 %d 個保證一半以上是稀有菇）。菇可以直接賣，或在烘焙坊做成料理。",
+		mushroom.Unlock(), mushroom.GrowHoursText(), mushroom.MaxSawdust), false)
+	e.AddField("⛰️ 山洞冒險", caveHelpText(), false)
 	e.AddField("🎣 釣魚", "總覽「🎣 釣魚」→ 先到「🛒 釣具商店」買魚竿、魚線、魚餌（商店也有「🎣 釣具商店」分頁）→「開始釣魚」。"+
 		"魚上鉤後在時限內按「拉竿」，再依 💬 提示收線／放線／等待，魚竄向一邊要壓同方向；"+
 		"每條魚要成功拉幾下（普通 2–4、稀有 3–5、史詩 4–6、傳說 5–7），魚竄向一邊時只有壓同方向才算，"+
@@ -700,4 +701,25 @@ func HelpEmbed() *ui.Embed {
 		"/nowplaying 顯示控制面板（暫停、跳過、循環、音量）、/queue 看清單；完整說明請用 **/music**。", false)
 	e.AddField("💬 官方群組", "問題回報、建議與活動公告都在官方群組："+config.OfficialGuildURL, false)
 	return e
+}
+
+// caveHelpText 說明頁的山洞冒險（區域等級與時間、假幣匯率依管理網站目前的探險設定）。
+func caveHelpText() string {
+	var names, hours []string
+	for _, code := range exploration.AreaOrder {
+		a := exploration.AreaOf(code)
+		if a.NeedsRuins {
+			continue
+		}
+		names = append(names, fmt.Sprintf("%s（Lv.%d）", a.Name, a.UnlockLevel))
+		if a.DurationSeconds%3600 == 0 {
+			hours = append(hours, fmt.Sprintf("%d", a.DurationSeconds/3600))
+		} else {
+			hours = append(hours, fmt.Sprintf("%.1f", float64(a.DurationSeconds)/3600))
+		}
+	}
+	return fmt.Sprintf("總覽「⛰️ 山洞」探索%s，分別探險 %s 小時，"+
+		"一次只能去一個區域，回來後領取獎勵才能再出發；可取得素材、🪵木屑、稀有種子與假幣（背包兌換，1 個 = %d 金）。"+
+		"素材可在「🔧 機器」製作種子製造機、自動收割機、自動加工機與稀有作物培育器。",
+		strings.Join(names, "、"), strings.Join(hours, "／"), exploration.FakeCoinRate())
 }

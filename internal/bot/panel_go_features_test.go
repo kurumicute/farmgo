@@ -59,3 +59,34 @@ func TestShopListsOnlyInSeasonSeedsAndPricesShowSeason(t *testing.T) {
 	p.goPage("prices")
 	contains(t, p.Text, fmt.Sprintf("📈 非當季售價 +%d%%", seasons.OffSeasonSellPct-100), "非當季的作物售價")
 }
+
+func TestCellarPageFromPlots(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "玩家")
+	pid := p.panel.playerID
+	e.exec("UPDATE farms SET level = 3 WHERE player_id = $1", pid)
+	p.goPage("plots")
+	p.click("地下菇房")
+	contains(t, p.Text, "🔒 地下菇房在農場 **Lv.4** 開放", "地下菇房的養分由上方農田所種下的作物決定")
+
+	e.exec("UPDATE farms SET level = 4 WHERE player_id = $1", pid)
+	p.goPage("cellar")
+	contains(t, p.Text, "地下菇房的養分由上方農田所種下的作物決定", "🪵 #4", "持有木屑 **0** 個")
+	if !p.button("收成（0 床）").Disabled {
+		t.Fatal("沒有可收成的菇床時收成按鈕應停用")
+	}
+	if len(p.panel.files) != 1 { // 菇房圖片
+		t.Fatal(len(p.panel.files))
+	}
+	e.setInventory(pid, "sawdust", 5)
+	p.goPage("cellar")
+	p.choose("投入木屑", "2:3")
+	contains(t, p.Text, "#2 +3（3/4）")
+	p.click("木屑全部補滿")
+	contains(t, p.Text, "#1 +2（2/4）")
+	e.clock.Advance(24 * 3600)
+	p.goPage("cellar")
+	p.click("收成（4 床）")
+	contains(t, p.Text, "收成 4 個菇床", "香菇")
+	e.checkLedger()
+}

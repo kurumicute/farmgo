@@ -320,7 +320,7 @@ func tripView(log *models.ExplorationLog, now time.Time) *TripView {
 	if log == nil {
 		return nil
 	}
-	area := exploration.Areas[log.AreaCode]
+	area := exploration.AreaOf(log.AreaCode)
 	next := log.NextAvailableAt
 	remaining := rules.RemainingSeconds(&next, now)
 	return &TripView{log.AreaCode, area.Name, area.Emoji, log.ExploredAt, log.NextAvailableAt, remaining, remaining == 0}
@@ -351,7 +351,7 @@ func (x *ExplorationService) ExplorationOverview(ctx context.Context, playerID i
 		}
 		trip := tripView(active, now)
 		codes := []string{exploration.FakeCoin}
-		for _, a := range exploration.Areas {
+		for _, a := range exploration.Current().Areas {
 			for _, pool := range a.Pools {
 				for _, d := range pool {
 					codes = append(codes, d.Item)
@@ -371,7 +371,7 @@ func (x *ExplorationService) ExplorationOverview(ctx context.Context, playerID i
 		}
 		ov := ExplorationOverview{PlayerName: player.DisplayName, Level: farm.Level, Trip: trip, Now: now}
 		for _, code := range exploration.AreaOrder {
-			area := exploration.Areas[code]
+			area := exploration.AreaOf(code)
 			row, hasRow := counts[code]
 			unlocked := farm.Level >= area.UnlockLevel && (ruinsOpen || !area.NeedsRuins)
 			pool := func(kind string) []string {
@@ -421,11 +421,11 @@ func (x *ExplorationService) Explore(ctx context.Context, playerID int64, areaKe
 	if code == "" {
 		names := make([]string, len(exploration.AreaOrder))
 		for i, c := range exploration.AreaOrder {
-			names[i] = exploration.Areas[c].Name
+			names[i] = exploration.AreaOf(c).Name
 		}
 		return ExploreOutcome{}, gameerr.NotFoundf("沒有「%s」這個探索區域。可探索區域：%s", areaKey, strings.Join(names, "、"))
 	}
-	area := exploration.Areas[code]
+	area := exploration.AreaOf(code)
 	if area.NeedsRuins {
 		r, err := x.ExploreRuins(ctx, playerID)
 		if err != nil {
@@ -447,7 +447,7 @@ func (x *ExplorationService) Explore(ctx context.Context, playerID int64, areaKe
 			return ExploreTrip{}, err
 		}
 		if active != nil {
-			busy := exploration.Areas[active.AreaCode].Name
+			busy := exploration.AreaOf(active.AreaCode).Name
 			if !now.Before(active.NextAvailableAt) {
 				return ExploreTrip{}, gameerr.Validationf("你從%s探險回來了，請先領取上一次的探險獎勵再出發。", busy)
 			}
@@ -456,6 +456,7 @@ func (x *ExplorationService) Explore(ctx context.Context, playerID int64, areaKe
 			return ExploreTrip{}, gameerr.Validationf("你正在%s探險，還需要 %s才會回來；一次只能去一個區域。", busy, left)
 		}
 		res := exploration.Explore(code, farm.Level, x.exploreRng, 0)
+		exploration.RollSawdust(res, x.exploreRng) // Go 版新增：每次探險另外帶回木屑
 		until := now.Add(time.Duration(area.DurationSeconds) * time.Second)
 		row, err := explrepo.GetCooldown(ctx, t, farm.ID, code, true)
 		if err != nil {
@@ -481,7 +482,7 @@ func (x *ExplorationService) Explore(ctx context.Context, playerID int64, areaKe
 // ExploreRuins 探索古代遺跡（所屬群組修好後的額外探索）：不受一次一趟限制，立即拿到獎勵，冷卻 1 天。
 // 掉落用古老森林模板再多抽 1–2 份；本週守護者已被打倒時再多抽 DefeatBonusRolls 份，並對守護者造成傷害。
 func (x *ExplorationService) ExploreRuins(ctx context.Context, playerID int64) (ExploreReward, error) {
-	area := exploration.Areas["ruins"]
+	area := exploration.AreaOf("ruins")
 	return inTx(ctx, x.GameService, func(t *db.Tx) (ExploreReward, error) {
 		group, _, err := homeGroupOf(ctx, t, playerID)
 		if err != nil {
@@ -523,9 +524,11 @@ func (x *ExplorationService) ExploreRuins(ctx context.Context, playerID int64) (
 		if g != nil && g.DefeatedAt != nil {
 			bonus = ruins.DefeatBonusRolls
 		}
-		low, high := exploration.RuinsExtraRolls[0], exploration.RuinsExtraRolls[1]
+		span := exploration.RuinsExtra()
+		low, high := span[0], span[1]
 		extra := low + min(high-low, int(x.exploreRng()*float64(high-low+1)))
 		res := exploration.Explore("ruins", farm.Level, x.exploreRng, extra+bonus)
+		exploration.RollSawdust(res, x.exploreRng)
 		until := now.Add(time.Duration(area.DurationSeconds) * time.Second)
 		if _, err := explrepo.SetCooldown(ctx, t, row, farm.ID, "ruins", now, until); err != nil {
 			return ExploreReward{}, err
@@ -565,7 +568,7 @@ func (x *ExplorationService) ClaimExploration(ctx context.Context, playerID int6
 		if now.Before(log.NextAvailableAt) {
 			next := log.NextAvailableAt
 			left := rules.FormatDuration(rules.RemainingSeconds(&next, now))
-			return ExploreReward{}, gameerr.Validationf("還在%s探險中，%s後才會回來。", exploration.Areas[log.AreaCode].Name, left)
+			return ExploreReward{}, gameerr.Validationf("還在%s探險中，%s後才會回來。", exploration.AreaOf(log.AreaCode).Name, left)
 		}
 		orders, err := explrepo.RewardOrders(ctx, t, []int64{log.ID})
 		if err != nil {
@@ -579,7 +582,7 @@ func (x *ExplorationService) ClaimExploration(ctx context.Context, playerID int6
 // order 為 rewards 的鍵順序。
 func (x *ExplorationService) grantLog(ctx context.Context, t *db.Tx, farm *models.Farm, log *models.ExplorationLog,
 	order []string, now time.Time) (ExploreReward, error) {
-	area := exploration.Areas[log.AreaCode]
+	area := exploration.AreaOf(log.AreaCode)
 	items := log.Rewards
 	total, materials := 0, 0
 	for _, c := range order {
@@ -686,7 +689,7 @@ func (x *ExplorationService) ExplorationLogs(ctx context.Context, playerID int64
 		}
 		out := []ExplorationLogView{}
 		for _, l := range logs {
-			area := exploration.Areas[l.AreaCode]
+			area := exploration.AreaOf(l.AreaCode)
 			v := ExplorationLogView{Area: l.AreaCode, AreaName: area.Name, Emoji: area.Emoji, Advanced: l.Advanced,
 				Level: l.FarmLevel, Rewards: []NamedQty{}, Events: slices.Clone(l.Events), ExploredAt: l.ExploredAt,
 				NextAvailableAt: l.NextAvailableAt, ClaimedAt: l.ClaimedAt}
@@ -1128,7 +1131,7 @@ func (x *ExplorationService) ExchangeFakeCoins(ctx context.Context, playerID int
 			}
 			return ActionResult{}, gameerr.New(gameerr.InsufficientItems, "%s不足：想兌換 %d 個，背包只有 %d 個。", name, quantity, have)
 		}
-		gold := quantity * exploration.FakeCoinValue
+		gold := quantity * exploration.FakeCoinRate()
 		farm.Gold += gold
 		if err := x.saveFarm(ctx, t, farm, db.C("gold", farm.Gold)); err != nil {
 			return ActionResult{}, err

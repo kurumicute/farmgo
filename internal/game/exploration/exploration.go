@@ -29,7 +29,7 @@ type Material struct {
 
 // MaterialOrder 素材顯示順序（Python MATERIALS 的 dict 順序）。
 var MaterialOrder = []string{
-	"wood", "stone", "copper_ore", "iron_ore", "resin", "herb", "gear", "crystal", "ancient_core", "machine_core", "fake_coin",
+	"wood", "stone", "copper_ore", "iron_ore", "resin", "herb", "gear", "crystal", "ancient_core", "machine_core", Sawdust, "fake_coin",
 }
 
 var Materials = map[string]Material{
@@ -43,7 +43,28 @@ var Materials = map[string]Material{
 	"crystal":      {"水晶", "稀有", "稀有作物培育"},
 	"ancient_core": {"古木核心", "極稀有", "高級機器製作"},
 	"machine_core": {"機械核心", "極稀有", "高級機器製作"},
+	Sawdust:        {"木屑", "普通", "地下菇房"}, // Go 版新增（2026-11-12）
 	"fake_coin":    {"假幣", "特殊", "兌換金幣"},
+}
+
+// Sawdust 木屑：每次探險（含古代遺跡）在原本的掉落之外固定再帶回 SawdustDrop 個，投入地下菇房提高稀有菇機率（Go 版新增）。
+const Sawdust = "sawdust"
+
+// SawdustDrop 各區域每次探險帶回的木屑數量 [low, high]：古老森林最多，其他區域差不多。
+var SawdustDrop = map[string][2]int{
+	"grassland": {2, 3},
+	"forest":    {3, 4},
+	"mine":      {2, 3},
+	"ruins":     {2, 3},
+}
+
+// RollSawdust 依區域抽木屑數量並加進探索結果（在 Explore 之後呼叫，不影響原本掉落的抽籤順序）。
+func RollSawdust(r *Result, rng Rng) {
+	d, ok := Current().SawdustDrop[r.Area]
+	if !ok {
+		return
+	}
+	r.Add(Sawdust, d[0]+min(d[1]-d[0], int(rng()*float64(d[1]-d[0]+1))))
 }
 
 const (
@@ -387,6 +408,9 @@ func PossibleItems(area Area, level *int) map[string]bool {
 			items[d.Item] = true
 		}
 	}
+	if d, ok := Current().SawdustDrop[area.Code]; ok && d[1] > 0 { // 每次探險固定帶回木屑
+		items[Sawdust] = true
+	}
 	for _, e := range area.Events {
 		if lv >= e.MinLevel && e.FakeCoins[1] > 0 {
 			items[FakeCoin] = true
@@ -481,11 +505,12 @@ func rollItem(area Area, kind string, level int, rng Rng, result *Result) {
 
 // Explore 產生一次探索的全部獎勵（不檢查解鎖與是否正在探險，由服務層驗證）。extraRolls：額外多抽幾份（守護者獎勵）。
 func Explore(areaCode string, level int, rng Rng, extraRolls int) *Result {
-	area := Areas[areaCode]
+	cfg := Current()
+	area := cfg.Areas[areaCode]
 	advanced := IsAdvanced(area, level)
-	bp := RewardTypeBP["normal"]
+	bp := cfg.RewardTypeBP["normal"]
 	if advanced {
-		bp = RewardTypeBP["advanced"]
+		bp = cfg.RewardTypeBP["advanced"]
 	}
 	result := NewResult(areaCode, advanced)
 	for i := 0; i < area.Rolls+max(0, extraRolls); i++ {

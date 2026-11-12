@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	featureKeyRe = regexp.MustCompile(`^(checkin|pets|special_shop|achievements)$`)
+	featureKeyRe = regexp.MustCompile(`^(checkin|pets|special_shop|achievements|exploration|mushroom)$`)
 	petCodeRe    = regexp.MustCompile(`^(cat|dog)$`)
 	codexItemRe  = regexp.MustCompile(`^[a-z][a-z0-9_]{1,63}$`)
 )

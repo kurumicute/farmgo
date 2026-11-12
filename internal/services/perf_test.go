@@ -78,6 +78,54 @@ func TestHarvestAllMergesWritesAndKeepsEveryRecord(t *testing.T) {
 	}
 }
 
+// 種滿與全部澆水：土地更新與交易紀錄延後到整批送出（Go 版新增：原本每格的 UPDATE farm_plots 會先送出前一格的
+// 交易紀錄，合併無效；2026-11-12 面板壓測），結果與逐格寫入相同。
+func TestPlantAllAndWaterAllMergeWrites(t *testing.T) {
+	e := setup(t)
+	pid := e.player()
+	gold := 1_000_000
+	must[FarmValues](t)(e.a.SetFarmValues(e.ctx, "test", pid, &gold, nil))
+	if missing := 16 - len(e.status(pid).Plots); missing > 0 {
+		must[PlotsAdded](t)(e.a.AddPlots(e.ctx, "test", pid, missing))
+	}
+	for _, step := range []struct {
+		name string
+		run  func() ActionResult
+	}{
+		{"plant", func() ActionResult { return e.ok(e.a.PlantAll(e.ctx, pid, "wheat")) }},
+		{"water", func() ActionResult { return e.ok(e.a.WaterAll(e.ctx, pid)) }},
+	} {
+		dbtest.SQL.Start(t)
+		step.run()
+		dbtest.SQL.Stop()
+		// 16 格原本各 16 條；合併後只剩迴圈第一格讀取設定前送出的部分與最後整批（pgx.Batch 算一條）
+		for _, prefix := range []string{"UPDATE farm_plots", "INSERT INTO game_transactions"} {
+			if n := dbtest.SQL.Count(prefix); n > 3 {
+				t.Errorf("%s：%s 執行 %d 次", step.name, prefix, n)
+			}
+		}
+		var desc []string
+		repotestQuery(t, e, fmt.Sprintf("SELECT description FROM game_transactions WHERE event_type = '%s' ORDER BY id", step.name), &desc)
+		if len(desc) != 16 {
+			t.Fatal(step.name, len(desc))
+		}
+		if step.name == "plant" { // 交易紀錄的順序與逐格寫入相同
+			for i, d := range desc {
+				if !strings.Contains(d, fmt.Sprintf("第 %d 格", i+1)) {
+					t.Fatal(i, d)
+				}
+			}
+		}
+	}
+	if n := e.scalar(`SELECT count(*) FROM farm_plots p JOIN farms f ON f.id = p.farm_id JOIN crop_types c ON c.id = p.crop_type_id
+		WHERE f.player_id = $1 AND c.code = 'wheat' AND p.planting_no = 1 AND p.watered_at IS NOT NULL AND p.ready_at IS NOT NULL`, pid); n != 16 {
+		t.Fatal(n)
+	}
+	if c := e.statsCheck(); c.FarmStatsMismatches != 0 || c.FarmDailyStatsMismatches != 0 {
+		t.Fatalf("%+v", c)
+	}
+}
+
 // 有進行中的任務時交易紀錄要逐筆寫（計分需要 ID）；任務進度與貢獻都要正確。
 func TestQuestScoringStillGetsTransactionIDs(t *testing.T) {
 	e := setup(t)

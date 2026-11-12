@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"farmgm/internal/dbtest"
 	"farmgm/internal/game/gameerr"
 )
 
@@ -95,6 +96,87 @@ func TestBatchSwallowedErrorIsNotCommitted(t *testing.T) {
 	if e.gold(pid) != gold {
 		t.Fatal(e.gold(pid), gold)
 	}
+}
+
+// Isolated（Go 版新增）：共用交易中的附加讀取失敗只回滾那一段，之前與之後的操作照常提交。
+func TestBatchIsolatedFailureKeepsBatchUsable(t *testing.T) {
+	e := setup(t)
+	pid := e.player()
+	gold := e.gold(pid)
+	err := e.s.RunBatch(e.ctx, func(ctx context.Context) error {
+		if _, err := e.s.BuySeeds(ctx, pid, "wheat", 1); err != nil {
+			return err
+		}
+		// fn 自己吃掉錯誤：沒有 Isolated 時整筆交易會作廢（TestBatchSwallowedErrorIsNotCommitted）
+		ierr := e.s.Isolated(ctx, func(ctx context.Context) error {
+			if _, err := e.s.BuySeeds(ctx, pid, "wheat", 1); err != nil { // 這一段的寫入要回滾
+				return err
+			}
+			_, _ = e.s.HarvestCrop(ctx, pid, 1) // 空地：交易中才發現的錯誤
+			return nil
+		})
+		if ierr == nil {
+			t.Error("Isolated 應回傳錯誤")
+		}
+		_, err := e.s.GetFarmStatus(ctx, pid) // 之後仍可使用共用交易
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := e.gold(pid); got != gold-must[CropInfo](t)(marketCrop(e, "wheat")).SeedPrice { // 只有第一次購買
+		t.Fatal(got, gold)
+	}
+	// 不在共用交易中：直接執行
+	if err := e.s.Isolated(e.ctx, func(context.Context) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 共用交易中農場狀態與背包只讀一次（Go 版新增，db.ReadMemo）；中間有寫入時重新讀取，讀到寫入後的內容。
+func TestBatchStatusAndBackpackReadOnceUntilWrite(t *testing.T) {
+	e := setup(t)
+	pid := e.player()
+	if err := e.s.RunBatch(e.ctx, func(ctx context.Context) error {
+		first := must[FarmStatus](t)(e.s.GetFarmStatus(ctx, pid))
+		must[Backpack](t)(e.s.GetBackpack(ctx, pid))
+		dbtest.SQL.Start(t)
+		again := must[FarmStatus](t)(e.s.GetFarmStatus(ctx, pid))
+		must[Backpack](t)(e.s.GetBackpack(ctx, pid))
+		if n := len(dbtest.SQL.Stop()); n != 0 || again.Gold != first.Gold {
+			t.Errorf("第二次讀取執行了 %d 條 SQL", n)
+		}
+		if _, err := e.s.BuySeeds(ctx, pid, "wheat", 2); err != nil {
+			return err
+		}
+		after := must[FarmStatus](t)(e.s.GetFarmStatus(ctx, pid))
+		bp := must[Backpack](t)(e.s.GetBackpack(ctx, pid))
+		if after.Gold >= first.Gold || lineQuantity(bp.Seeds, "wheat") != 2 {
+			t.Errorf("寫入後應重新讀取：金幣 %d → %d，種子 %d", first.Gold, after.Gold, lineQuantity(bp.Seeds, "wheat"))
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func lineQuantity(lines []BackpackLine, code string) int {
+	for _, l := range lines {
+		if l.Code == code {
+			return l.Quantity
+		}
+	}
+	return 0
+}
+
+func marketCrop(e *env, code string) (CropInfo, error) {
+	list, err := e.s.GetMarketPrices(e.ctx)
+	for _, c := range list {
+		if c.Code == code {
+			return c, err
+		}
+	}
+	return CropInfo{}, err
 }
 
 func TestBatchRetriesWholeFunctionOnDeadlock(t *testing.T) {

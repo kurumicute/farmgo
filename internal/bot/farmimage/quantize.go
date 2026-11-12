@@ -223,12 +223,27 @@ func quantize(img *image.NRGBA, n int) *image.Paletted {
 	return out
 }
 
-var encoder = png.Encoder{CompressionLevel: png.BestCompression}
+var (
+	// encoder 只產生一次就快取的圖（預先產生的圖、寵物組合、場景圖）：用最高壓縮，檔案最小。
+	encoder = png.Encoder{CompressionLevel: png.BestCompression}
+	// dynamicEncoder 每次互動都重新產生的圖（動態農田、建築畫面）：最高壓縮約佔 Bot CPU 的 4 成，
+	// 預設等級的 CPU 少約 1/3、檔案只大約 3%（2026-11-12 面板壓測，見「效能比較.md」）。畫面像素相同。
+	dynamicEncoder = png.Encoder{CompressionLevel: png.DefaultCompression}
+)
 
-// encodePalette 減到 n 色並編碼成 PNG。
+// encodePalette 減到 n 色並以最高壓縮編碼成 PNG（結果會被快取的圖）。
 func encodePalette(img *image.NRGBA, n int) ([]byte, error) {
+	return encodeWith(&encoder, img, n)
+}
+
+// encodePaletteDynamic 減到 n 色並以預設壓縮編碼成 PNG（每次重新產生、不快取的圖）。
+func encodePaletteDynamic(img *image.NRGBA, n int) ([]byte, error) {
+	return encodeWith(&dynamicEncoder, img, n)
+}
+
+func encodeWith(enc *png.Encoder, img *image.NRGBA, n int) ([]byte, error) {
 	var buf bytes.Buffer
-	if err := encoder.Encode(&buf, quantize(img, n)); err != nil {
+	if err := enc.Encode(&buf, quantize(img, n)); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

@@ -211,7 +211,8 @@ func TestExploreRecordsLogTransactionAndInventory(t *testing.T) {
 	e := setup(t)
 	pid := e.explorer()
 	must[ExploreOutcome](t)(e.x.Explore(e.ctx, pid, "grassland"))
-	if e.scalar(`SELECT count(*) FROM exploration_logs WHERE rewards::text = '{"wood": 6}' AND claimed_at IS NULL`) != 1 ||
+	// Go 版新增：每次探險另外帶回木屑（亂數 0 → 草原最少 2 個），排在原本的掉落後面
+	if e.scalar(`SELECT count(*) FROM exploration_logs WHERE rewards::text = '{"wood": 6, "sawdust": 2}' AND claimed_at IS NULL`) != 1 ||
 		e.scalar("SELECT count(*) FROM game_transactions WHERE event_type = 'explore'") != 0 {
 		t.Fatal("獎勵應在出發時決定、還沒放進背包")
 	}
@@ -224,15 +225,16 @@ func TestExploreRecordsLogTransactionAndInventory(t *testing.T) {
 		e.clock.Now()) != 1 {
 		t.Fatal("領取時間不對")
 	}
-	if e.scalar(`SELECT count(*) FROM game_transactions WHERE event_type = 'explore' AND quantity = 6 AND gold_delta = 0
-		AND description LIKE '%木材 ×6%'`) != 1 {
+	if e.scalar(`SELECT count(*) FROM game_transactions WHERE event_type = 'explore' AND quantity = 8 AND gold_delta = 0
+		AND description LIKE '%木材 ×6、木屑 ×2%'`) != 1 {
 		t.Fatal("交易紀錄不對")
 	}
 	logs := must[[]ExplorationLogView](t)(e.x.ExplorationLogs(e.ctx, pid, 10))
-	if len(logs[0].Rewards) != 1 || logs[0].Rewards[0] != (NamedQty{"木材", 6}) || logs[0].AreaName != "青青草原" {
+	if len(logs[0].Rewards) != 2 || logs[0].Rewards[0] != (NamedQty{"木材", 6}) || logs[0].Rewards[1] != (NamedQty{"木屑", 2}) ||
+		logs[0].AreaName != "青青草原" {
 		t.Fatalf("%+v", logs[0])
 	}
-	if len(r.Items) != 1 || r.Items[0] != (ExploreItem{"wood", "木材", 6, "普通"}) {
+	if len(r.Items) != 2 || r.Items[0] != (ExploreItem{"wood", "木材", 6, "普通"}) || r.Items[1] != (ExploreItem{"sawdust", "木屑", 2, "普通"}) {
 		t.Fatalf("%+v", r.Items)
 	}
 }
@@ -276,7 +278,7 @@ func TestMaterialsGoToMaterialBagNotWarehouse(t *testing.T) {
 	e.give(pid, "wheat", 3)  // 倉庫全滿
 	e.trip(pid, "grassland") // 素材放素材背包，倉庫滿了也能領
 	bp := must[Backpack](t)(e.s.GetBackpack(e.ctx, pid))
-	if bp.Used != 3 || bp.MaterialUsed != 6 || bp.MaterialCapacity != exploration.MaterialBagCapacity ||
+	if bp.Used != 3 || bp.MaterialUsed != 8 || bp.MaterialCapacity != exploration.MaterialBagCapacity ||
 		e.status(pid).WarehouseUsed != 3 {
 		t.Fatalf("%+v", bp)
 	}

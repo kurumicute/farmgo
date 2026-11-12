@@ -179,6 +179,23 @@
     if (g.progress) renderProgress(g.progress);
     if (g.special_shop) renderSpecialShop(g.special_shop);
     if (g.pets) renderPets(g.pets);
+    if (g.mushroom) renderMushroom(g.mushroom);
+  }
+
+  // 地下菇房：開放等級、生長時間、養分對應的作物與菇、木屑的稀有機率與各區域帶回的木屑（管理網站可調整）
+  function renderMushroom(m) {
+    setText("g-cellar-level", `Lv.${m.unlock_level}`);
+    setText("c-cellar-level", `Lv.${m.unlock_level}`);
+    setText("g-cellar-beds", String(m.beds));
+    setText("g-cellar-grow", duration(m.grow_seconds));
+    setText("g-cellar-yield", String(m.yield_per_bed));
+    setText("g-cellar-max-sawdust", String(m.max_sawdust));
+    fillRows("g-cellar-nutrients", m.nutrients.map((n) => [n.name,
+      `${n.crops.length ? n.crops.join("、") : "（無）"}${n.default ? "（沒有作物或其他作物時也算）" : ""}`,
+      `${n.common}（${num.format(n.common_price)}）`, `✨ ${n.rare}（${num.format(n.rare_price)}）`]));
+    fillRows("g-cellar-rare", m.rare.map((r) => [`${r.sawdust} 個`,
+      r.guaranteed ? `保證 ${r.guaranteed} 朵稀有，其餘 ${r.pct}%` : `${r.pct}%`]));
+    fillRows("g-cellar-sawdust", m.sawdust_drop.map((d) => [d.area, d.max ? `${d.min}–${d.max} 個` : "不會帶回"]));
   }
 
   // 寵物：領養與升級價格、每級加成（固定規則）
@@ -336,7 +353,8 @@
       a.needs_ruins ? `額外探索，每 ${duration(a.duration_seconds)}一次` : duration(a.duration_seconds),
       `${a.rolls} 次`, lv(a.advanced_level),
       [names(a.common, a.unlock_level), a.rare.length ? `稀有：${names(a.rare, a.unlock_level)}` : "",
-        a.seeds.length ? `種子：${names(a.seeds, a.unlock_level)}` : ""].filter(Boolean).join("；")]));
+        a.seeds.length ? `種子：${names(a.seeds, a.unlock_level)}` : "",
+        a.sawdust && a.sawdust[1] ? `每次固定帶回木屑 ${a.sawdust[0]}–${a.sawdust[1]} 個` : ""].filter(Boolean).join("；")]));
     fillRows("g-reward-types", x.reward_types.normal.map((t, i) =>
       [t.name, pct(t.chance_pct), pct(x.reward_types.advanced[i].chance_pct)]));
     fillRows("g-area-events", x.areas.map((a) => [`${a.emoji} ${a.name}`,

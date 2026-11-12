@@ -29,13 +29,18 @@ import (
 
 // ---------- 背包 ----------
 
+type backpackKey struct{ playerID int64 }
+
+// GetBackpack 完整背包。面板讀取整頁的共用交易中，同一位玩家只查一次（db.ReadMemo，有寫入就清空）；回傳的切片唯讀。
 func (s *GameService) GetBackpack(ctx context.Context, playerID int64) (Backpack, error) {
 	return inTx(ctx, s, func(t *db.Tx) (Backpack, error) {
-		farm, err := s.farmOf(ctx, t, playerID)
-		if err != nil {
-			return Backpack{}, err
-		}
-		return BuildBackpack(ctx, t, farm, s.now())
+		return db.ReadMemo(t, backpackKey{playerID}, func() (Backpack, error) {
+			farm, err := s.farmOf(ctx, t, playerID)
+			if err != nil {
+				return Backpack{}, err
+			}
+			return BuildBackpack(ctx, t, farm, s.now())
+		})
 	})
 }
 
@@ -65,7 +70,7 @@ func BuildBackpack(ctx context.Context, t *db.Tx, farm *models.Farm, now time.Ti
 		return Backpack{}, err
 	}
 	bp := Backpack{PlayerID: farm.PlayerID, Capacity: farm.WarehouseCapacity, Now: now,
-		MaterialCapacity: exploration.MaterialBagCapacity}
+		MaterialCapacity: exploration.BagCapacity()}
 	for _, c := range cropList {
 		if n := quantities[rules.SeedItemCode(c.Code)]; n != 0 {
 			bp.Seeds = append(bp.Seeds, line(c.Code, c.Name+"種子", n, c.SeedPrice, ""))
@@ -155,7 +160,7 @@ func BuildBackpack(ctx context.Context, t *db.Tx, farm *models.Farm, now time.Ti
 			m := exploration.Materials[code]
 			price := 0
 			if code == exploration.FakeCoin {
-				price = exploration.FakeCoinValue
+				price = exploration.FakeCoinRate()
 			}
 			bp.Materials = append(bp.Materials, line(code, m.Name, n, price, m.Rarity+"・"+m.Usage))
 		}

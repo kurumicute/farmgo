@@ -13,8 +13,10 @@ import (
 	"farmgm/internal/game/achievements"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/checkin"
+	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/featurecfg"
 	"farmgm/internal/game/gameerr"
+	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/pets"
 	"farmgm/internal/game/specialshop"
 	"farmgm/internal/repositories/featuresettings"
@@ -193,11 +195,15 @@ func TestFeatureSettingsView(t *testing.T) {
 			t.Fatal(k.Key)
 		}
 	}
-	if strings.Join(keys, ",") != "checkin,pets,special_shop,achievements" {
+	if strings.Join(keys, ",") != "checkin,pets,special_shop,achievements,exploration,mushroom" {
 		t.Fatal(keys)
 	}
 	if len(view.Achievements) != len(achievements.BaseAchievements) || len(view.Items) != len(balance.Items) {
 		t.Fatal(len(view.Achievements), len(view.Items))
+	}
+	if len(view.Exploration.Areas) != len(exploration.AreaOrder) || len(view.Exploration.DropItems) == 0 ||
+		len(view.Mushroom.Nutrients) != len(mushroom.NutrientOrder) || len(view.Mushroom.Crops) == 0 {
+		t.Fatal(view.Exploration, view.Mushroom)
 	}
 	for _, it := range view.Items {
 		if _, ok := balance.Items[it.Code]; !ok {
@@ -345,5 +351,50 @@ func TestPlayerWeeklyPurchasesReset(t *testing.T) {
 	}
 	if n := must[int](t)(e.a.ResetWeeklyPurchases(e.ctx, "root", pid)); n != 0 {
 		t.Fatal(n)
+	}
+}
+
+// Go 版新增：探險與地下菇房的設定存到 feature_settings 後立即生效，還原後回到預設值。
+func TestExplorationAndMushroomSettings(t *testing.T) {
+	e := setup(t)
+	t.Cleanup(featurecfg.Reset)
+	cfg, err := featurecfg.DeepCopy(featurecfg.Defaults(exploration.ConfigKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg["fake_coin_value"] = 300
+	cfg["areas"].(map[string]any)["forest"].(map[string]any)["unlock_level"] = 3
+	if _, err := e.a.UpdateFeatureSettings(e.ctx, "root", exploration.ConfigKey, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if exploration.FakeCoinRate() != 300 || exploration.AreaOf("forest").UnlockLevel != 3 {
+		t.Fatal(exploration.FakeCoinRate(), exploration.AreaOf("forest").UnlockLevel)
+	}
+	bad, _ := featurecfg.DeepCopy(cfg)
+	bad["reward_types"].(map[string]any)["normal"].(map[string]any)["event"] = 0
+	if _, err := e.a.UpdateFeatureSettings(e.ctx, "root", exploration.ConfigKey, bad); !gameerr.Is(err, gameerr.Validation) {
+		t.Fatal("機率合計不是 100% 應該失敗", err)
+	}
+	m, _ := featurecfg.DeepCopy(featurecfg.Defaults(mushroom.ConfigKey))
+	m["unlock_level"] = 1
+	if _, err := e.a.UpdateFeatureSettings(e.ctx, "root", mushroom.ConfigKey, m); err != nil {
+		t.Fatal(err)
+	}
+	if mushroom.Unlock() != 1 {
+		t.Fatal(mushroom.Unlock())
+	}
+	view := must[FeatureSettingsView](t)(e.a.FeatureSettings(e.ctx))
+	for _, k := range view.Keys {
+		if (k.Key == exploration.ConfigKey || k.Key == mushroom.ConfigKey) && (k.IsDefault || k.UpdatedBy == nil) {
+			t.Fatal(k.Key)
+		}
+	}
+	for _, key := range []string{exploration.ConfigKey, mushroom.ConfigKey} {
+		if _, err := e.a.ResetFeatureSettings(e.ctx, "root", key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if exploration.FakeCoinRate() != exploration.FakeCoinValue || mushroom.Unlock() != mushroom.UnlockLevel {
+		t.Fatal("還原後沒有回到預設值")
 	}
 }

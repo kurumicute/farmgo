@@ -87,8 +87,20 @@ func (p *Panel) loadShop(ctx context.Context) (any, error) {
 	return d, nil
 }
 
-// heldAfter 購買後重新讀取持有數量，讓玩家確定真的買到了。
-func (p *Panel) heldAfter(ctx context.Context, key string) (string, error) {
+// heldAfter 購買後重新讀取持有數量，讓玩家確定真的買到了（Picker.After：在重新讀取商店頁的同一筆交易中執行，
+// 背包與農場狀態與頁面共用讀取快取）。讀取失敗時省略（購買已經完成）。
+func (p *Panel) heldAfter(key string) func(ctx context.Context) string {
+	return func(ctx context.Context) string {
+		held, err := p.readHeld(ctx, key)
+		if err != nil {
+			logUnexpected(err, "購買後讀取持有數量失敗", "player", p.playerID)
+			return ""
+		}
+		return "\n" + held
+	}
+}
+
+func (p *Panel) readHeld(ctx context.Context, key string) (string, error) {
 	bp, err := Call(ctx, p.cmds.Runner, "get_backpack", func(ctx context.Context) (services.Backpack, error) {
 		return p.svc().GetBackpack(ctx, p.playerID)
 	})
@@ -109,18 +121,11 @@ func (p *Panel) heldAfter(ctx context.Context, key string) (string, error) {
 	return fmt.Sprintf("🎒 現在持有 **%d**　💰 剩餘金幣 **%s**", n, money(st.Gold)), nil
 }
 
-// buyRun 購買後附上持有數量（Python buy_seed／buy_item）。
-func (p *Panel) buyRun(key, name string, buy func(ctx context.Context, q int) (services.ActionResult, error)) func(ctx context.Context, q int) (string, error) {
+// buyRun 購買（Python buy_seed／buy_item）；持有數量由 Picker.After（heldAfter）附上。
+func (p *Panel) buyRun(name string, buy func(ctx context.Context, q int) (services.ActionResult, error)) func(ctx context.Context, q int) (string, error) {
 	return func(ctx context.Context, q int) (string, error) {
 		r, err := Call(ctx, p.cmds.Runner, name, func(ctx context.Context) (services.ActionResult, error) { return buy(ctx, q) })
-		if err != nil {
-			return "", err
-		}
-		held, err := p.heldAfter(ctx, key)
-		if err != nil {
-			return "", err
-		}
-		return r.Message + "\n" + held, nil
+		return r.Message, err
 	}
 }
 
@@ -239,7 +244,8 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 			p.picker = &Picker{Key: key, Label: fmt.Sprintf("%s %s種子", cropEmoji(code), crop.Name),
 				PriceText: fmt.Sprintf("每顆 %d 金", crop.SeedPrice), Verb: "買", Max: tradeMax(d.gold, crop.SeedPrice),
 				Presets: []int{1, 5, 10}, Keep: true, NoProgress: true,
-				Run: p.buyRun(key, "buy_seeds", func(ctx context.Context, q int) (services.ActionResult, error) {
+				After: p.heldAfter(key),
+				Run: p.buyRun("buy_seeds", func(ctx context.Context, q int) (services.ActionResult, error) {
 					return p.svc().BuySeeds(ctx, p.playerID, code, q)
 				})}
 		default:
@@ -256,7 +262,8 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 			} else {
 				p.picker = &Picker{Key: key, Label: label, PriceText: fmt.Sprintf("每個 %d 金", item.Price), Verb: "買",
 					Max: tradeMax(d.gold, item.Price), Presets: []int{1, 5, 10}, Keep: true, NoProgress: true,
-					Run: p.buyRun(key, "buy_item", func(ctx context.Context, q int) (services.ActionResult, error) {
+					After: p.heldAfter(key),
+					Run: p.buyRun("buy_item", func(ctx context.Context, q int) (services.ActionResult, error) {
 						return p.svc().BuyItem(ctx, p.playerID, code, q)
 					})}
 			}

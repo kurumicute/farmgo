@@ -25,6 +25,7 @@ import (
 	eventrules "farmgm/internal/game/events"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/fishing"
+	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/news"
 	"farmgm/internal/game/pets"
 	"farmgm/internal/game/ranking"
@@ -202,6 +203,7 @@ func buildGuide(ctx context.Context, t *db.Tx, now time.Time) (*OrderedMap, erro
 	g.Set("progress", buildProgress())
 	g.Set("special_shop", buildSpecialShop(activeCrops, now))
 	g.Set("pets", buildPets(activeCrops))
+	g.Set("mushroom", buildMushroom(names))
 
 	qualities := []map[string]any{}
 	for _, code := range balance.QualityOrder {
@@ -350,13 +352,13 @@ func buildExploration(names map[string]string) map[string]any {
 	typePct := func(key string) []nameChance {
 		out := []nameChance{}
 		for _, tp := range exploration.RewardTypes {
-			out = append(out, nameChance{exploration.RewardTypeLabels[tp], bpPct(exploration.RewardTypeBP[key][tp])})
+			out = append(out, nameChance{exploration.RewardTypeLabels[tp], bpPct(exploration.Current().RewardTypeBP[key][tp])})
 		}
 		return out
 	}
 	areas := []map[string]any{}
 	for _, code := range exploration.AreaOrder {
-		a := exploration.Areas[code]
+		a := exploration.AreaOf(code)
 		evs := []nameLevel{}
 		for _, e := range a.Events {
 			evs = append(evs, nameLevel{e.Name, e.MinLevel})
@@ -364,7 +366,8 @@ func buildExploration(names map[string]string) map[string]any {
 		areas = append(areas, map[string]any{"emoji": a.Emoji, "name": a.Name, "description": a.Description,
 			"unlock_level": a.UnlockLevel, "duration_seconds": a.DurationSeconds, "rolls": a.Rolls,
 			"advanced_level": a.AdvancedLevel, "needs_ruins": a.NeedsRuins, "common": items(a, "common"),
-			"rare": items(a, "rare"), "seeds": items(a, "seed"), "events": evs})
+			"rare": items(a, "rare"), "seeds": items(a, "seed"), "events": evs,
+			"sawdust": []int{exploration.Current().SawdustDrop[code][0], exploration.Current().SawdustDrop[code][1]}})
 	}
 	materials := []map[string]any{}
 	for _, code := range exploration.MaterialOrder {
@@ -397,8 +400,8 @@ func buildExploration(names map[string]string) map[string]any {
 	}
 	return map[string]any{
 		"max_level":             balance.InitialLevel + (balance.MaxPlots-balance.InitialPlots)/balance.UpgradePlotsAdded,
-		"fake_coin_value":       exploration.FakeCoinValue,
-		"material_bag_capacity": exploration.MaterialBagCapacity,
+		"fake_coin_value":       exploration.FakeCoinRate(),
+		"material_bag_capacity": exploration.BagCapacity(),
 		"reward_types":          map[string]any{"normal": typePct("normal"), "advanced": typePct("advanced")},
 		"areas":                 areas, "materials": materials, "machines": machines,
 		"seed_maker_ratio": exploration.SeedMakerRatio, "incubator": incubator,
@@ -408,7 +411,7 @@ func buildExploration(names map[string]string) map[string]any {
 
 // buildRuins 古代遺跡（群組修復）、遺跡守護者與額外探索的規則（固定數值，沒有任何群組資料）。
 func buildRuins(itemNames map[string]string) map[string]any {
-	area := exploration.Areas["ruins"]
+	area := exploration.AreaOf("ruins")
 	stages := []map[string]any{}
 	for _, st := range ruins.Stages {
 		mats := []siteNameQty{}
@@ -428,7 +431,7 @@ func buildRuins(itemNames map[string]string) map[string]any {
 	return map[string]any{
 		"stages": stages, "title": ruins.Title, "unlock_level": area.UnlockLevel,
 		"cooldown_seconds": area.DurationSeconds, "rolls": area.Rolls,
-		"extra_rolls": []int{exploration.RuinsExtraRolls[0], exploration.RuinsExtraRolls[1]},
+		"extra_rolls": []int{exploration.RuinsExtra()[0], exploration.RuinsExtra()[1]},
 		"guardian": map[string]any{"name": ruins.GuardianName, "hp_base": ruins.GuardianHPBase,
 			"hp_per_member": ruins.GuardianHPPerMember, "hp_max": ruins.GuardianHPMax, "damage": damage,
 			"expedition_damage": ruins.ExpeditionDamage, "bonus_rolls": ruins.DefeatBonusRolls},
@@ -744,4 +747,33 @@ func buildSpecialShop(activeCrops []models.CropType, now time.Time) map[string]a
 			"ends_at": specialshop.WeekEndsAt(start).In(clock.TaipeiTZ).Format(time.RFC3339), "offers": offers},
 		"titles": titles,
 	}
+}
+
+// buildMushroom 地下菇房（Go 版新增）：開放等級、生長時間、養分對應的作物與菇、木屑的稀有機率、菇與料理的售價。
+func buildMushroom(names map[string]string) map[string]any {
+	cfg := mushroom.Current()
+	nutrients := []map[string]any{}
+	for _, code := range mushroom.NutrientOrder {
+		n := mushroom.Nutrients[code]
+		crops := []string{}
+		for _, c := range cfg.NutrientCrops[code] {
+			crops = append(crops, nameOr(names, c))
+		}
+		nutrients = append(nutrients, map[string]any{"name": n.Name, "crops": crops, "default": code == mushroom.DefaultNutrient,
+			"common": mushroom.SpeciesName(n.Common), "common_price": balance.Goods[n.Common].SellPrice,
+			"rare": mushroom.SpeciesName(n.Rare), "rare_price": balance.Goods[n.Rare].SellPrice})
+	}
+	rare := []map[string]any{}
+	for i, p := range cfg.RarePct {
+		rare = append(rare, map[string]any{"sawdust": i, "pct": p, "guaranteed": mushroom.GuaranteedRare(i, cfg.YieldPerBed)})
+	}
+	sawdust := []map[string]any{}
+	for _, code := range exploration.AreaOrder {
+		a := exploration.AreaOf(code)
+		d := exploration.Current().SawdustDrop[code]
+		sawdust = append(sawdust, map[string]any{"area": a.Emoji + " " + a.Name, "min": d[0], "max": d[1]})
+	}
+	return map[string]any{"unlock_level": cfg.UnlockLevel, "beds": mushroom.BedCount, "grow_seconds": cfg.GrowSeconds,
+		"yield_per_bed": cfg.YieldPerBed, "max_sawdust": mushroom.MaxSawdust, "nutrients": nutrients, "rare": rare,
+		"sawdust_drop": sawdust}
 }

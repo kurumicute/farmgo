@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -52,7 +53,11 @@ func Open(t testing.TB) *db.DB {
 			errMsg = EnvVar + " 未設定或資料庫名稱不是以 _test 結尾"
 			return
 		}
-		d, err := db.Open(context.Background(), u, db.PoolOptions{MaxConns: 20, Tracer: SQL})
+		maxConns := 20 // 壓力測試可用 FARMGM_TEST_DB_MAX_CONNS 調整
+		if n, err := strconv.Atoi(os.Getenv("FARMGM_TEST_DB_MAX_CONNS")); err == nil && n > 0 {
+			maxConns = n
+		}
+		d, err := db.Open(context.Background(), u, db.PoolOptions{MaxConns: maxConns, Tracer: SQL})
 		if err != nil {
 			errMsg = err.Error()
 			return

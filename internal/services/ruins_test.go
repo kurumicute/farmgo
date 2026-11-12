@@ -147,7 +147,8 @@ func TestRuinsAreaRequiresOwnGroupRepaired(t *testing.T) {
 	must[ExploreOutcome](t)(e.x.Explore(e.ctx, a, "grassland")) // 一般探險進行中，遺跡照樣可以額外探索
 	r := must[ExploreOutcome](t)(e.x.Explore(e.ctx, a, "古代遺跡")).Reward
 	if !r.Instant || r.AreaName != "古代遺跡" || r.ExtraRolls != 1 || r.BonusRolls != 0 ||
-		len(r.Items) != 1 || r.Items[0] != (ExploreItem{"wood", "木材", 15, "普通"}) { // 森林模板 4 份 + 多 1 份
+		len(r.Items) != 2 || r.Items[0] != (ExploreItem{"wood", "木材", 15, "普通"}) || // 森林模板 4 份 + 多 1 份
+		r.Items[1] != (ExploreItem{"sawdust", "木屑", 2, "普通"}) { // Go 版新增：另外帶回木屑
 		t.Fatalf("%+v", r)
 	}
 	if e.have(a, "wood") != 15 { // 立即放進背包

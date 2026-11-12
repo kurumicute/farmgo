@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -151,6 +152,7 @@ func ResetCache() {
 	fileCache = map[string][]byte{}
 	petCache = map[string][]byte{}
 	sceneMemo = map[string][]byte{}
+	cellarMemo = map[string][]byte{}
 }
 
 func getManifest() (*manifest, error) {
@@ -209,24 +211,49 @@ func img(rel string) (*image.NRGBA, error) {
 	return out, nil
 }
 
-func memo(cache *map[string][]byte, key string, make func() ([]byte, error)) ([]byte, error) {
+// memoCall 產生中的快取項目：同時要同一張圖的其他請求等它完成，不重複產生。
+type memoCall struct {
+	done chan struct{}
+	v    []byte
+	err  error
+}
+
+var (
+	inflight        = map[string]*memoCall{}
+	errMemoPanicked = errors.New("圖片產生失敗（panic）")
+)
+
+// memo 以 key 快取產生結果。同一張圖同時只產生一次：冷啟動時大量玩家同時開同一頁，原本每個請求都各自壓縮一次
+// （2026-11-12 面板壓測：500 人同時操作時約佔 Bot CPU 的 4 成）。失敗不快取，下一次重新產生。
+func memo(cache *map[string][]byte, key string, produce func() ([]byte, error)) ([]byte, error) {
 	mu.Lock()
 	if v, ok := (*cache)[key]; ok {
 		mu.Unlock()
 		return v, nil
 	}
+	k := fmt.Sprintf("%p\x00%s", cache, key)
+	if c, ok := inflight[k]; ok {
+		mu.Unlock()
+		<-c.done
+		return c.v, c.err
+	}
+	c := &memoCall{done: make(chan struct{}), err: errMemoPanicked}
+	inflight[k] = c
 	mu.Unlock()
-	v, err := make()
-	if err != nil {
-		return nil, err
+	defer func() { // produce panic 時等待中的請求也會收到錯誤，不會永遠卡住
+		mu.Lock()
+		delete(inflight, k)
+		if c.err == nil {
+			(*cache)[key] = c.v
+		}
+		mu.Unlock()
+		close(c.done)
+	}()
+	c.v, c.err = produce()
+	if c.err != nil {
+		c.v = nil
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	if old, ok := (*cache)[key]; ok { // 同時產生時沿用先完成的那份（回傳同一份位元組）
-		return old, nil
-	}
-	(*cache)[key] = v
-	return v, nil
+	return c.v, c.err
 }
 
 // FilePNG 預先產生的農田圖／底圖（素材檔為 256 色）轉成 PanelColors 色後快取；每個檔案只轉一次。
@@ -545,7 +572,7 @@ func FarmPNG(plots []Plot, pets map[string]int) ([]byte, error) {
 	if cached != nil {
 		return cached()
 	}
-	return encodePalette(canvas, PanelColors)
+	return encodePaletteDynamic(canvas, PanelColors)
 }
 
 // FarmPNGFromStatus 農田圖片。
@@ -762,7 +789,7 @@ func YardPNG(ws services.WorkshopStatus, animals []services.AnimalView) ([]byte,
 	if canvas == nil {
 		return FilePNG(base) // 沒有動物、機器都閒置：直接用底圖
 	}
-	return encodePalette(canvas, PanelColors)
+	return encodePaletteDynamic(canvas, PanelColors)
 }
 
 // ---------- 固定場景 ----------

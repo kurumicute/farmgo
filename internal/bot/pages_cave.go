@@ -231,7 +231,7 @@ func (p *Panel) buildCaveArea(_ context.Context, data any) (*ui.Embed, error) {
 }
 
 func (p *Panel) explore(ctx context.Context, code string) (string, error) {
-	if exploration.Areas[code].NeedsRuins { // 古代遺跡：立即拿到獎勵，直接顯示探索結果
+	if exploration.AreaOf(code).NeedsRuins { // 古代遺跡：立即拿到獎勵，直接顯示探索結果
 		r, err := Call(ctx, p.cmds.Runner, "explore_ruins", func(ctx context.Context) (services.ExploreReward, error) {
 			return p.svc().ExploreRuins(ctx, p.playerID)
 		})

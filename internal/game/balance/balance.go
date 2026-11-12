@@ -297,7 +297,8 @@ type Recipe struct {
 	Aliases    []string
 }
 
-var RecipeOrder = []string{"flour", "bread", "strawberry_jam", "tomato_jam", "grape_jam", "pumpkin_jam", "watermelon_jam"}
+var RecipeOrder = []string{"flour", "bread", "strawberry_jam", "tomato_jam", "grape_jam", "pumpkin_jam", "watermelon_jam",
+	"shiitake_bread", "mushroom_soup", "enoki_pancake", "lingzhi_cake", "truffle_bread", "glowcap_pie"}
 
 var Recipes = map[string]Recipe{
 	"flour":          {"麵粉", "mill", map[string]int{"wheat": 3}, []string{"wheat"}, "flour", 1, 30 * 60, []string{"麵粉"}},
@@ -308,6 +309,13 @@ var Recipes = map[string]Recipe{
 	"grape_jam":      {"葡萄果醬", "jam_workshop", map[string]int{"grape": 3}, []string{"grape"}, "grape_jam", 1, 75 * 60, []string{"葡萄果醬", "葡萄醬"}},
 	"pumpkin_jam":    {"南瓜果醬", "jam_workshop", map[string]int{"pumpkin": 3}, []string{"pumpkin"}, "pumpkin_jam", 1, 90 * 60, []string{"南瓜果醬", "南瓜醬"}},
 	"watermelon_jam": {"西瓜果醬", "jam_workshop", map[string]int{"watermelon": 3}, []string{"watermelon"}, "watermelon_jam", 1, 120 * 60, []string{"西瓜果醬", "西瓜醬"}},
+	// Go 版新增（2026-11-12）：烘焙坊用地下菇房的菇類做料理；售價約為原料售價的 1.2 倍（菇類本身已經很值錢）
+	"shiitake_bread": {"香菇麵包", "bakery", map[string]int{"shiitake": 2, "flour": 1}, []string{"shiitake", "flour"}, "shiitake_bread", 1, 60 * 60, []string{"香菇麵包"}},
+	"mushroom_soup":  {"洋菇濃湯", "bakery", map[string]int{"button_mushroom": 2, "flour": 1}, []string{"button_mushroom", "flour"}, "mushroom_soup", 1, 60 * 60, []string{"洋菇濃湯", "蘑菇濃湯"}},
+	"enoki_pancake":  {"金針菇煎餅", "bakery", map[string]int{"enoki": 2, "flour": 1}, []string{"enoki", "flour"}, "enoki_pancake", 1, 75 * 60, []string{"金針菇煎餅"}},
+	"lingzhi_cake":   {"靈芝養生糕", "bakery", map[string]int{"lingzhi": 2, "flour": 2}, []string{"lingzhi", "flour"}, "lingzhi_cake", 1, 120 * 60, []string{"靈芝養生糕", "靈芝糕"}},
+	"truffle_bread":  {"松露麵包", "bakery", map[string]int{"truffle": 2, "flour": 2}, []string{"truffle", "flour"}, "truffle_bread", 1, 150 * 60, []string{"松露麵包"}},
+	"glowcap_pie":    {"發光菇派", "bakery", map[string]int{"glowcap": 2, "flour": 2}, []string{"glowcap", "flour"}, "glowcap_pie", 1, 180 * 60, []string{"發光菇派"}},
 }
 
 const (
@@ -324,7 +332,9 @@ type Good struct {
 	Aliases   []string
 }
 
-var GoodOrder = []string{"flour", "bread", "strawberry_jam", "tomato_jam", "grape_jam", "pumpkin_jam", "watermelon_jam"}
+var GoodOrder = []string{"flour", "bread", "strawberry_jam", "tomato_jam", "grape_jam", "pumpkin_jam", "watermelon_jam",
+	"shiitake", "button_mushroom", "enoki", "lingzhi", "truffle", "glowcap",
+	"shiitake_bread", "mushroom_soup", "enoki_pancake", "lingzhi_cake", "truffle_bread", "glowcap_pie"}
 
 var Goods = map[string]Good{
 	"flour":          {"麵粉", 45, []string{"麵粉"}},
@@ -334,6 +344,20 @@ var Goods = map[string]Good{
 	"grape_jam":      {"葡萄果醬", 395, []string{"葡萄果醬", "葡萄醬"}},
 	"pumpkin_jam":    {"南瓜果醬", 485, []string{"南瓜果醬", "南瓜醬"}},
 	"watermelon_jam": {"西瓜果醬", 1145, []string{"西瓜果醬", "西瓜醬"}},
+	// Go 版新增（2026-11-12）：地下菇房的菇類（game/mushroom），可以直接販售；香菇 200 為基準，其他菇在這基礎上加價
+	"shiitake":        {"香菇", 200, []string{"香菇"}},
+	"button_mushroom": {"洋菇", 230, []string{"洋菇", "蘑菇"}},
+	"enoki":           {"金針菇", 260, []string{"金針菇"}},
+	"lingzhi":         {"靈芝", 520, []string{"靈芝"}},
+	"truffle":         {"松露", 700, []string{"松露"}},
+	"glowcap":         {"發光菇", 900, []string{"發光菇"}},
+	// 菇類料理（烘焙坊）
+	"shiitake_bread": {"香菇麵包", 560, []string{"香菇麵包"}},
+	"mushroom_soup":  {"洋菇濃湯", 620, []string{"洋菇濃湯", "蘑菇濃湯"}},
+	"enoki_pancake":  {"金針菇煎餅", 680, []string{"金針菇煎餅"}},
+	"lingzhi_cake":   {"靈芝養生糕", 1350, []string{"靈芝養生糕", "靈芝糕"}},
+	"truffle_bread":  {"松露麵包", 1800, []string{"松露麵包"}},
+	"glowcap_pie":    {"發光菇派", 2300, []string{"發光菇派"}},
 }
 
 // ---------- 群組共同任務 ----------

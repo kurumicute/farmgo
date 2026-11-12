@@ -21,18 +21,22 @@ import (
 	"farmgm/internal/game/achievements"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/checkin"
+	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/featurecfg"
 	"farmgm/internal/game/gameerr"
+	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/pets"
 	"farmgm/internal/game/specialshop"
 	"farmgm/internal/repositories/catalog"
+	"farmgm/internal/repositories/crops"
 	"farmgm/internal/repositories/featuresettings"
 	petsrepo "farmgm/internal/repositories/pets"
 	"farmgm/internal/repositories/titles"
 )
 
 // FeatureKeys 管理網站可調整的規則（顯示順序）。
-var FeatureKeys = []string{checkin.ConfigKey, pets.ConfigKey, specialshop.ConfigKey, achievements.ConfigKey}
+var FeatureKeys = []string{checkin.ConfigKey, pets.ConfigKey, specialshop.ConfigKey, achievements.ConfigKey,
+	exploration.ConfigKey, mushroom.ConfigKey}
 
 // CodexEditable 可在管理網站調整的圖鑑分類（魚類圖鑑來自 farm_fish，不能在這裡改）。
 var CodexEditable = []string{"crop", "animal", "goods", "material"}
@@ -89,12 +93,60 @@ type FeatureLimits struct {
 	TitleMaxLen      int `json:"title_max_len"`
 }
 
+// FeatureCode 代碼與顯示名稱。
+type FeatureCode struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+// FeatureArea 探險設定編輯畫面的區域（代碼、emoji 固定）。
+type FeatureArea struct {
+	Code       string `json:"code"`
+	Emoji      string `json:"emoji"`
+	NeedsRuins bool   `json:"needs_ruins"`
+}
+
+// FeatureExplorationMeta 探險設定編輯畫面需要的清單。
+type FeatureExplorationMeta struct {
+	Areas       []FeatureArea `json:"areas"`
+	DropItems   []FeatureCode `json:"drop_items"`
+	PoolKinds   []FeatureCode `json:"pool_kinds"`
+	RewardTypes []FeatureCode `json:"reward_types"`
+	BonusKinds  []FeatureCode `json:"bonus_kinds"`
+}
+
+// FeatureNutrient 菇房的養分與對應的菇。
+type FeatureNutrient struct {
+	Code       string `json:"code"`
+	Name       string `json:"name"`
+	CommonName string `json:"common_name"`
+	RareName   string `json:"rare_name"`
+}
+
+// FeatureCrop 作物（菇房養分的選項）。
+type FeatureCrop struct {
+	Code   string `json:"code"`
+	Name   string `json:"name"`
+	Active bool   `json:"active"`
+}
+
+// FeatureMushroomMeta 菇房設定編輯畫面需要的資料。
+type FeatureMushroomMeta struct {
+	BedCount   int               `json:"bed_count"`
+	MaxSawdust int               `json:"max_sawdust"`
+	Default    string            `json:"default_nutrient"`
+	Nutrients  []FeatureNutrient `json:"nutrients"`
+	Crops      []FeatureCrop     `json:"crops"`
+}
+
 // FeatureSettingsView 各項規則目前的設定、預設值與最後修改者，以及編輯畫面需要的道具與成就清單。
 type FeatureSettingsView struct {
 	Keys         []FeatureKeyView         `json:"keys"`
 	Items        []FeatureItemView        `json:"items"`
 	Achievements []FeatureAchievementView `json:"achievements"`
 	Limits       FeatureLimits            `json:"limits"`
+	Exploration  FeatureExplorationMeta   `json:"exploration"`
+	Mushroom     FeatureMushroomMeta      `json:"mushroom"`
 }
 
 type AdminGreenhouse struct {
@@ -277,6 +329,54 @@ func (a *AdminService) FeatureSettings(ctx context.Context) (FeatureSettingsView
 		})
 	}
 	v.Limits = FeatureLimits{pets.LevelLimit, specialshop.GreenhouseLevelLimit, checkin.MaxCycleDays, specialshop.TitleMaxLen}
+	meta, err := inTx(ctx, a.GameService, func(t *db.Tx) (featureMeta, error) {
+		names, err := catalog.ItemNames(ctx, t)
+		if err != nil {
+			return featureMeta{}, err
+		}
+		all, err := crops.ListAll(ctx, t, false)
+		return featureMeta{names, all}, err
+	})
+	if err != nil {
+		return FeatureSettingsView{}, err
+	}
+	nameOf := func(code string) string {
+		if crop, ok := strings.CutPrefix(code, "seed_"); ok {
+			if n, ok := meta.names[crop]; ok {
+				return n + "種子"
+			}
+		}
+		if m, ok := exploration.Materials[code]; ok {
+			return m.Name
+		}
+		if n, ok := meta.names[code]; ok {
+			return n
+		}
+		return code
+	}
+	for _, code := range exploration.AreaOrder {
+		ar := exploration.Areas[code]
+		v.Exploration.Areas = append(v.Exploration.Areas, FeatureArea{code, ar.Emoji, ar.NeedsRuins})
+	}
+	for _, code := range exploration.DropItems() {
+		v.Exploration.DropItems = append(v.Exploration.DropItems, FeatureCode{code, nameOf(code)})
+	}
+	for _, code := range exploration.PoolKinds {
+		v.Exploration.PoolKinds = append(v.Exploration.PoolKinds, FeatureCode{code, exploration.RewardTypeLabels[code]})
+		v.Exploration.BonusKinds = append(v.Exploration.BonusKinds, FeatureCode{code, exploration.RewardTypeLabels[code]})
+	}
+	for _, code := range exploration.RewardTypes {
+		v.Exploration.RewardTypes = append(v.Exploration.RewardTypes, FeatureCode{code, exploration.RewardTypeLabels[code]})
+	}
+	v.Mushroom = FeatureMushroomMeta{BedCount: mushroom.BedCount, MaxSawdust: mushroom.MaxSawdust, Default: mushroom.DefaultNutrient}
+	for _, code := range mushroom.NutrientOrder {
+		n := mushroom.Nutrients[code]
+		v.Mushroom.Nutrients = append(v.Mushroom.Nutrients, FeatureNutrient{code, n.Name,
+			mushroom.SpeciesName(n.Common), mushroom.SpeciesName(n.Rare)})
+	}
+	for _, c := range meta.crops {
+		v.Mushroom.Crops = append(v.Mushroom.Crops, FeatureCrop{c.Code, c.Name, c.Active})
+	}
 	return v, nil
 }
 
@@ -782,4 +882,9 @@ func (a *AdminService) ResetWeeklyPurchases(ctx context.Context, actor string, p
 		return len(bought), a.adjust(ctx, t, farm, actor, "reset_weekly_purchases", "重設本週特賣購買量",
 			map[string]any{"week_start": start.Format(time.DateOnly), "before": bought}, rec{})
 	})
+}
+
+type featureMeta struct {
+	names map[string]string
+	crops []models.CropType
 }

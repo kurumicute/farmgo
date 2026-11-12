@@ -129,6 +129,11 @@
           <p>探索<span id="c-areas">青青草原、古老森林、神秘礦坑、古代遺跡</span>，收集木材、礦石、水晶等素材，還有機會撿到假幣與稀有種子（<span id="c-rare-seeds">琥珀瓜、月光花</span>）。</p>
         </article>
         <article class="card">
+          <span class="card-icon" aria-hidden="true">🍄</span>
+          <h3>地下菇房</h3>
+          <p>農場 <span id="c-cellar-level">Lv.4</span> 開放，不用建造。上方農田種的作物決定長出哪種菇；投入探險帶回的木屑，就有機會長出靈芝、松露、發光菇等稀有菇。</p>
+        </article>
+        <article class="card">
           <span class="card-icon" aria-hidden="true">🏛️</span>
           <h3>古代遺跡與守護者</h3>
           <p>伺服器成員一起捐素材修復古代遺跡，修好後每個人每天都能<b>額外</b>探索一次；每週還要合力打倒石像守護者，否則遺跡會崩塌。</p>
@@ -198,6 +203,7 @@
                   <tr><td>查作物價格、品質機率</td><td>「📈 作物價格」→「🧬 品質與突變」</td></tr>
                   <tr><td>養動物</td><td>「🐔 動物」→ 先蓋畜舍 →「🛒 購買動物」→「🍽️ 全部餵食」→「🧺 收集全部」</td></tr>
                   <tr><td>加工</td><td>「🏭 加工」→「🏗️ 建造設施」→ 回加工頁選配方 →「📥 領取完成品」</td></tr>
+                  <tr><td>種菇</td><td>「🌱 農田」→「🍄 地下菇房」→「木屑全部補滿」或選菇床投入木屑 →「收成」（Lv.4 起）</td></tr>
                   <tr><td>偷朋友的菜</td><td>「🥷 偷菜」→ 用玩家選單打開朋友的農田，再選要偷哪一格；也可以直接從作物選單選一株（可翻頁、🔄 重新整理）</td></tr>
                   <tr><td>防止被偷、查誰來偷</td><td>「🛡️ 防守」→ 購買設施 →「📍 調整守護範圍」；「🔦 巡查」查看偷菜者</td></tr>
                   <tr><td>探索山洞</td><td>「⛰️ 山洞」→ 選區域 →「🧭 出發探險」→ 時間到回來後「📦 領取探險獎勵」；「📖 探索紀錄」看最近 10 次</td></tr>
@@ -512,7 +518,54 @@
                   <tr><td>水晶</td><td>稀有</td><td>稀有作物培育</td></tr>
                   <tr><td>古木核心</td><td>極稀有</td><td>高級機器製作</td></tr>
                   <tr><td>機械核心</td><td>極稀有</td><td>高級機器製作</td></tr>
+                  <tr><td>木屑</td><td>普通</td><td>地下菇房</td></tr>
                   <tr><td>假幣</td><td>特殊</td><td>兌換金幣</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide" id="cellar">
+          <summary>🍄 地下菇房</summary>
+          <div class="guide-body">
+            <ol>
+              <li>農場 <b id="g-cellar-level">Lv.4</b> 起開放，不用建造：「🌱 農田」→「🍄 地下菇房」，第一次打開就有 <span id="g-cellar-beds">4</span> 個菇床。</li>
+              <li>菇床不用種植、不用澆水，每 <b id="g-cellar-grow">24 小時</b>長好一批（每床 <span id="g-cellar-yield">2</span> 朵），收成後立即開始下一批；倉庫放不下時只收放得下的部分。</li>
+              <li><b>地下菇房的養分由上方農田所種下的作物決定</b>：每一朵菇在收成當下依各種養分的農田格數加權擲骰，種越多某類作物，越容易長出那一類的菇。</li>
+              <li>投入🪵<b>木屑</b>提高稀有菇機率：每床每批最多 <span id="g-cellar-max-sawdust">4</span> 個，收成後歸零。木屑放在素材背包，每次探險（含古代遺跡）都會固定帶回。</li>
+              <li>菇可以直接在「💰 販售」賣掉，也可以在烘焙坊加上麵粉做成更值錢的料理（見「加工」的配方表）。</li>
+            </ol>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>養分</th><th>上方農田的作物</th><th>普通菇（售價）</th><th>稀有菇（售價）</th></tr></thead>
+                <tbody id="g-cellar-nutrients">
+                  <tr><td>穀物養分</td><td>小麥、玉米（沒有作物時也算）</td><td>香菇（200）</td><td>✨ 靈芝（520）</td></tr>
+                  <tr><td>蔬菜養分</td><td>胡蘿蔔、番茄、南瓜</td><td>洋菇（230）</td><td>✨ 松露（700）</td></tr>
+                  <tr><td>果香養分</td><td>草莓、葡萄、西瓜、琥珀瓜、月光花</td><td>金針菇（260）</td><td>✨ 發光菇（900）</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>這一批投入的木屑</th><th>每朵是稀有菇的機率</th></tr></thead>
+                <tbody id="g-cellar-rare">
+                  <tr><td>0 個</td><td>5%</td></tr>
+                  <tr><td>1 個</td><td>15%</td></tr>
+                  <tr><td>2 個</td><td>25%</td></tr>
+                  <tr><td>3 個</td><td>35%</td></tr>
+                  <tr><td>4 個</td><td>保證 1 朵稀有，其餘 50%</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>探險區域</th><th>每次帶回的木屑</th></tr></thead>
+                <tbody id="g-cellar-sawdust">
+                  <tr><td>🌿 青青草原</td><td>2–3 個</td></tr>
+                  <tr><td>🌲 古老森林</td><td>3–4 個</td></tr>
+                  <tr><td>⛏️ 神秘礦坑</td><td>2–3 個</td></tr>
+                  <tr><td>🏛️ 古代遺跡</td><td>2–3 個</td></tr>
                 </tbody>
               </table>
             </div>

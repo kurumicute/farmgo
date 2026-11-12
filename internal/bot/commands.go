@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"time"
 
 	"farmgm/internal/bot/latency"
@@ -54,12 +55,14 @@ type Commands struct {
 	// Now 面板判斷「今天已簽到」用的時間（Python datetime.now(UTC)）；nil 為系統時間
 	Now func() time.Time
 
-	onPanel func(*Panel) // 測試用：取得剛開啟的面板
+	onPanel func(*Panel)  // 測試用：取得剛開啟的面板
+	images  chan struct{} // 同時產生圖片的上限（CPU 核心數）
 }
 
 // NewCommands 建立指令（AutoCheckin 預設開啟）。
 func NewCommands(svc *services.AdminService, runner *Runner, reg *ui.Registry) *Commands {
-	return &Commands{Service: svc, Runner: runner, Registry: reg, Latency: latency.New(), AutoCheckin: true}
+	return &Commands{Service: svc, Runner: runner, Registry: reg, Latency: latency.New(), AutoCheckin: true,
+		images: make(chan struct{}, runtime.GOMAXPROCS(0))}
 }
 
 func (c *Commands) now() time.Time {
