@@ -339,7 +339,7 @@ func (s *GameService) ensureSpace(ctx context.Context, t *db.Tx, farm *models.Fa
 	return nil
 }
 
-// ensureMaterialSpace 素材背包（山洞素材、假幣與稀有種子，不佔倉庫）是否放得下。
+// ensureMaterialSpace 素材背包（山洞素材、假幣與所有種子，不佔倉庫）是否放得下。
 func (s *GameService) ensureMaterialSpace(ctx context.Context, t *db.Tx, farm *models.Farm, incoming int) error {
 	used, err := inventory.MaterialQuantity(ctx, t, farm.ID)
 	if err != nil {

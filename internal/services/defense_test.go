@@ -280,7 +280,7 @@ func TestBackpackFullRejectedBeforeDefense(t *testing.T) {
 	e.ok(e.so.BuyDefense(e.ctx, w.owner, "警戒犬"))
 	e.ripe(w.owner, 1)
 	e.setGold(w.thief, 10_000)
-	e.ok(e.s.BuySeeds(e.ctx, w.thief, "wheat", 49)) // 背包 49/50
+	e.setInv(w.thief, "carrot", "normal", "none", 49) // 背包 49/50（種子放素材背包，改用農產品佔倉庫）
 	e.noRoll()
 	_, err := e.so.StealCrop(e.ctx, w.g, w.thief, w.owner, 1, 2)
 	wantKind(t, err, gameerr.WarehouseFull)

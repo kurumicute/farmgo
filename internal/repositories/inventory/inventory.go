@@ -4,6 +4,7 @@ package inventory
 import (
 	"context"
 	"slices"
+	"strings"
 
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
@@ -13,17 +14,27 @@ import (
 // MaterialCodes 山洞素材與假幣（放在獨立的素材背包，不計入倉庫空間）。
 func MaterialCodes() []string { return slices.Clone(exploration.MaterialOrder) }
 
-// BagCodes 放素材背包的物品代碼：山洞素材、假幣與稀有作物種子。
+// SeedPrefix 種子的物品代碼前綴：所有種子（含商店種子，2026-11-12 起）都放素材背包，不佔倉庫。
+const SeedPrefix = "seed_"
+
+// seedLikeSQL SQL 條件：種子（LIKE 的 \_ 表示底線本身）。
+const seedLikeSQL = `item_code LIKE 'seed\_%'`
+
+// BagCodes 放素材背包的固定物品代碼：山洞素材、假幣與稀有作物種子（其他種子以 SeedPrefix 判斷）。
 func BagCodes() []string {
 	return append(MaterialCodes(), exploration.RareSeedCodes()...)
 }
 
-// IsMaterial 是否放素材背包（不佔倉庫）。
-func IsMaterial(itemCode string) bool { return slices.Contains(BagCodes(), itemCode) }
+// IsMaterial 是否放素材背包（不佔倉庫）：山洞素材、假幣與所有種子。
+func IsMaterial(itemCode string) bool {
+	return strings.HasPrefix(itemCode, SeedPrefix) || slices.Contains(BagCodes(), itemCode)
+}
 
 // InWarehouseSQL SQL 條件：佔倉庫空間的庫存（排除素材背包的物品）；參數 $n 需傳入 BagCodes()。
 // 例：`... AND ` + InWarehouseSQL("$2")。alias 為空時直接用欄位名稱。
-func InWarehouseSQL(param string) string { return "NOT (item_code = ANY(" + param + "))" }
+func InWarehouseSQL(param string) string {
+	return "NOT (item_code = ANY(" + param + ") OR " + seedLikeSQL + ")"
+}
 
 // WarehouseUsedByFarmSQL 子查詢 (farm_id, used)：各農場的倉庫用量（一般庫存＋賭場獎品，不含素材背包）；
 // param 為 BagCodes() 的參數位置（例如 "$1"）。
@@ -56,10 +67,10 @@ func TotalQuantity(ctx context.Context, t *db.Tx, farmID int64) (int, error) {
 	return n, err
 }
 
-// MaterialQuantity 素材背包已使用空間（山洞素材、假幣與稀有作物種子的總數）。
+// MaterialQuantity 素材背包已使用空間（山洞素材、假幣與所有種子的總數）。
 func MaterialQuantity(ctx context.Context, t *db.Tx, farmID int64) (int, error) {
 	n, _, err := db.QueryValue[int](ctx, t, `
-		SELECT coalesce(sum(quantity), 0) FROM inventory_items WHERE farm_id = $1 AND item_code = ANY($2)`,
+		SELECT coalesce(sum(quantity), 0) FROM inventory_items WHERE farm_id = $1 AND (item_code = ANY($2) OR `+seedLikeSQL+`)`,
 		farmID, BagCodes())
 	return n, err
 }

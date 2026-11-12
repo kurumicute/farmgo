@@ -164,15 +164,20 @@ func TestHarvestOnlyOnce(t *testing.T) {
 	}
 }
 
-func TestBuyBeyondWarehouseCapacityFails(t *testing.T) {
+// 種子放素材背包（2026-11-12 起）：購買種子檢查素材背包，不佔倉庫。
+func TestBuySeedsBeyondBagCapacityFails(t *testing.T) {
 	e := setup(t)
 	pid := e.player()
+	setBag(t, 50)
 	e.exec("UPDATE farms SET gold = 10000")
-	e.ok(e.s.BuySeeds(e.ctx, pid, "wheat", 49)) // 倉庫 49/50
+	e.ok(e.s.BuySeeds(e.ctx, pid, "wheat", 49)) // 素材背包 49/50
+	if e.status(pid).WarehouseUsed != 0 {
+		t.Fatal("種子不應佔倉庫")
+	}
 	_, err := e.s.BuySeeds(e.ctx, pid, "wheat", 2)
-	wantKind(t, err, gameerr.WarehouseFull)
+	wantMsg(t, err, gameerr.WarehouseFull, "素材背包空間不足")
 	if e.status(pid).Gold != 10_000-490 || e.qty(pid, "seed_wheat") != 49 {
-		t.Fatal("倉庫滿時仍有變動")
+		t.Fatal("素材背包滿時仍有變動")
 	}
 }
 
@@ -180,14 +185,14 @@ func TestWarehouseFullKeepsCropOnPlot(t *testing.T) {
 	e := setup(t)
 	pid := e.player()
 	e.grow(pid, 1, "wheat")
-	e.ok(e.s.BuySeeds(e.ctx, pid, "wheat", 49)) // 倉庫 49/50，金幣剛好用完
+	e.setInv(pid, "carrot", "normal", "none", 49) // 倉庫 49/50
 	e.clock.Advance(60)
 	_, err := e.s.HarvestCrop(e.ctx, pid, 1) // 收成 2 個放不下
 	wantKind(t, err, gameerr.WarehouseFull)
 	if e.status(pid).Plots[0].State != rules.PlotReady || e.qty(pid, "wheat") != 0 { // 作物仍在土地上，沒有遺失
 		t.Fatal("作物遺失")
 	}
-	e.ok(e.plantWatered(pid, 2, "wheat")) // 用掉 1 顆種子騰出空間 → 48/50
+	e.setInv(pid, "carrot", "normal", "none", 48) // 騰出空間 → 48/50
 	e.ok(e.s.HarvestCrop(e.ctx, pid, 1))
 	if e.qty(pid, "wheat") != 2 || must[Inventory](t)(e.s.GetInventory(e.ctx, pid)).Used != 50 {
 		t.Fatal("收成結果不對")

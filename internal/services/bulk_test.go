@@ -82,7 +82,7 @@ func TestHarvestAllStopsWhenWarehouseFull(t *testing.T) {
 	e.ok(e.s.PlantAll(e.ctx, pid, "strawberry")) // 每格 5 個
 	e.ok(e.s.WaterAll(e.ctx, pid))
 	e.clock.Advance(600)
-	e.setInv(pid, "seed_wheat", "normal", "none", balance.InitialWarehouseCapacity-12)
+	e.setInv(pid, "carrot", "normal", "none", balance.InitialWarehouseCapacity-12)
 	m := e.ok(e.s.HarvestAll(e.ctx, pid)).Message
 	if !strings.Contains(m, "收成 2 格，共 10 個作物") || !strings.Contains(m, "還有 2 格沒收") {
 		t.Fatal(m)
@@ -90,7 +90,7 @@ func TestHarvestAllStopsWhenWarehouseFull(t *testing.T) {
 	if e.allPlots(pid, rules.PlotReady) != 2 { // 放不下的留在農田，不會遺失
 		t.Fatal(e.plotStates(pid))
 	}
-	e.setInv(pid, "seed_wheat", "normal", "none", balance.InitialWarehouseCapacity-10)
+	e.setInv(pid, "carrot", "normal", "none", balance.InitialWarehouseCapacity-10)
 	_, err := e.s.HarvestAll(e.ctx, pid)
 	wantKind(t, err, gameerr.WarehouseFull)
 }

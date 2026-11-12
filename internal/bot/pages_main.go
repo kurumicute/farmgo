@@ -536,7 +536,6 @@ func (p *Panel) loadBackpack(ctx context.Context) (any, error) {
 func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 	d := data.(backpackData)
 	bp, basket := d.backpack, d.fish
-	rare := exploration.RareSeedCodes() // 稀有種子放素材背包，不佔倉庫
 	var tools, effects, seeds, produce, goods, consumables, prizes, materials, fish []string
 	for _, t := range bp.Tools {
 		switch {
@@ -555,9 +554,6 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	for _, x := range bp.Seeds {
 		line := fmt.Sprintf("%s %s　×**%d**", cropEmoji(x.Code), x.Name, x.Quantity)
-		if slices.Contains(rare, rules.SeedItemCode(x.Code)) {
-			line += "　（⛰️ 素材背包）"
-		}
 		seeds = append(seeds, line)
 	}
 	for _, x := range bp.Produce {
@@ -584,12 +580,12 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	e := &ui.Embed{Title: "🎒 ✦ 背包 ✦", Color: Blue, Description: sections(
 		fmt.Sprintf("📦 倉庫 **%d/%d**\n%s", bp.Used, bp.Capacity, bar(bp.Used, bp.Capacity, 16)),
-		Section{Title: "🌰 種子", Lines: seeds},
+		Section{Title: "🌰 種子（放素材背包，不佔倉庫）", Lines: seeds},
 		Section{Title: "🧺 農產品", Lines: produce},
 		Section{Title: "🥚 動物產品與加工品", Lines: goods},
 		Section{Title: "🧪 道具", Lines: consumables},
 		Section{Title: "🏆 賭場獎品", Lines: prizes},
-		Section{Title: fmt.Sprintf("⛰️ 素材背包 %d/%d（不佔倉庫，稀有種子也算在內）", bp.MaterialUsed, bp.MaterialCapacity), Lines: materials},
+		Section{Title: fmt.Sprintf("⛰️ 素材背包 %d/%d（不佔倉庫，種子也算在內）", bp.MaterialUsed, bp.MaterialCapacity), Lines: materials},
 		Section{Title: "🔧 工具", Lines: tools},
 		Section{Title: "✨ 生效中的效果", Lines: effects},
 		Section{Title: fmt.Sprintf("🎣 魚簍 %d/%d（全部價值 %s 金）", len(basket.Fish), basket.Capacity, money(basket.TotalValue)), Lines: fish},

@@ -282,8 +282,12 @@ func TestMaterialsGoToMaterialBagNotWarehouse(t *testing.T) {
 		e.status(pid).WarehouseUsed != 3 {
 		t.Fatalf("%+v", bp)
 	}
-	_, err := e.s.BuySeeds(e.ctx, pid, "wheat", 1) // 倉庫本身仍然是滿的
+	_, err := e.s.Buy(e.ctx, pid, "fertilizer", 1) // 倉庫本身仍然是滿的
 	wantMsg(t, err, gameerr.WarehouseFull, "倉庫空間不足")
+	e.ok(e.s.BuySeeds(e.ctx, pid, "wheat", 1)) // 種子放素材背包，倉庫滿了也能買
+	if e.status(pid).WarehouseUsed != 3 {
+		t.Fatal("種子不應佔倉庫")
+	}
 }
 
 func setBag(t *testing.T, n int) {
@@ -524,12 +528,12 @@ func TestSeedMakerRareCropRuleIsConfigurable(t *testing.T) {
 	}
 }
 
-func TestSeedMakerRollsBackWhenWarehouseFull(t *testing.T) {
+func TestSeedMakerRollsBackWhenBagFull(t *testing.T) {
 	e := setup(t)
 	pid := e.explorer()
 	e.ownMachine(pid, "seed_maker")
 	e.give(pid, "wheat", 30)
-	e.setFarm(pid, "warehouse_capacity", 40)
+	setBag(t, 40) // 種子放素材背包：60 顆放不下
 	_, err := e.x.MakeSeeds(e.ctx, pid, "wheat", 30, "normal", "none")
 	wantKind(t, err, gameerr.WarehouseFull)
 	if e.bpQty(pid, "wheat") != 30 { // 扣作物與加種子同一筆交易，失敗時一起回滾
@@ -607,7 +611,8 @@ func TestRareSeedsUseMaterialBag(t *testing.T) {
 		})
 	}
 	wantMsg(t, check("seed_amber_melon"), gameerr.WarehouseFull, "素材背包空間不足")
-	if err := check("seed_wheat"); err != nil { // 一般種子仍放倉庫
+	wantMsg(t, check("seed_wheat"), gameerr.WarehouseFull, "素材背包空間不足") // 商店種子也放素材背包（2026-11-12 起）
+	if err := check("wheat"); err != nil {                             // 農產品仍放倉庫
 		t.Fatal(err)
 	}
 }

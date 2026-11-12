@@ -18,7 +18,7 @@ const TotalBP = 10_000
 // ---------- 素材與特殊道具（存在 inventory_items，但放在獨立的素材背包，不佔倉庫空間；不能在商店購買或販售） ----------
 
 // MaterialBagCapacity 素材背包上限（下列素材與假幣的總數）。模組層級可變狀態（Python MATERIAL_BAG_CAPACITY；測試會修改）。
-var MaterialBagCapacity = 500
+var MaterialBagCapacity = 1000
 
 // Material 名稱、稀有度、用途。
 type Material struct {

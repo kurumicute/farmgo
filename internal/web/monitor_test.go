@@ -219,7 +219,7 @@ func TestFarmListAndDetail(t *testing.T) {
 	}
 	r := row()
 	if farms.Total != 2 || num(r["plots"]) != 4 || num(r["empty"]) != 1 || num(r["growing"]) != 1 || num(r["ready"]) != 2 ||
-		num(r["gold"]) != 450 || num(r["warehouse_used"]) != 1 {
+		num(r["gold"]) != 450 || num(r["warehouse_used"]) != 0 { // 剩下的 1 顆種子放素材背包，不佔倉庫
 		t.Fatal(r)
 	}
 
@@ -235,7 +235,7 @@ func TestFarmListAndDetail(t *testing.T) {
 		return inventory.Add(ctx, tx, int64(farmID), "seed_amber_melon", 2, "normal", "none")
 	})
 	gameUsed := must[services.FarmStatus](t)(e.svc.GetFarmStatus(e.ctx, e.pid)).WarehouseUsed
-	if gameUsed != 1+3 {
+	if gameUsed != 3 { // 只有賭場獎品；種子與素材都放素材背包
 		t.Fatal(gameUsed)
 	}
 	e.getJSON("/api/monitor/farms", nil, &farms)

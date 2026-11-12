@@ -101,7 +101,7 @@ func (s *GameService) BuySeeds(ctx context.Context, playerID int64, cropKey stri
 		if farm.Gold < cost {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：需要 %d，目前只有 %d。", cost, farm.Gold)
 		}
-		if err := s.ensureSpace(ctx, t, farm, quantity); err != nil {
+		if err := s.ensureMaterialSpace(ctx, t, farm, quantity); err != nil { // 種子放素材背包（2026-11-12 起）
 			return ActionResult{}, err
 		}
 		farm.Gold -= cost

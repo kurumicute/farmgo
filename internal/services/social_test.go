@@ -207,7 +207,7 @@ func TestStealTargetMaxRespectsRemainingAndCapacity(t *testing.T) {
 	e.grow(w.b, 2, "strawberry")
 	e.clock.Advance(600)
 	e.setGold(w.a, 10_000)
-	e.ok(e.s.BuySeeds(e.ctx, w.a, "wheat", 49)) // 背包 49/50
+	e.setInv(w.a, "carrot", "normal", "none", 49) // 背包 49/50（種子放素材背包，改用農產品佔倉庫）
 	var t2 StealTarget
 	for _, tg := range e.targets(w.g1, w.a) {
 		if tg.PlotNumber == 2 {
@@ -217,7 +217,7 @@ func TestStealTargetMaxRespectsRemainingAndCapacity(t *testing.T) {
 	if t2.RemainingQuantity != 5 || t2.MaxSteal != 1 {
 		t.Fatalf("%+v", t2)
 	}
-	e.ok(e.s.BuySeeds(e.ctx, w.a, "wheat", 1)) // 背包滿
+	e.setInv(w.a, "carrot", "normal", "none", 50) // 背包滿
 	if ts := e.targets(w.g1, w.a); len(ts) != 0 {
 		t.Fatal(ts)
 	}
@@ -305,7 +305,7 @@ func TestStealValidation(t *testing.T) {
 	wantMsg(t, err, gameerr.AlreadyStolen, "每天只能偷同一位玩家 1 格田")
 	// 背包滿（另一位偷菜者 c，今天還沒偷過 b）
 	e.setGold(w.c, 10_000)
-	e.ok(e.s.BuySeeds(e.ctx, w.c, "wheat", 50-must[Inventory](t)(e.s.GetInventory(e.ctx, w.c)).Used))
+	e.give(w.c, "carrot", 50-must[Inventory](t)(e.s.GetInventory(e.ctx, w.c)).Used)
 	_, err = e.so.StealCrop(e.ctx, g1, w.c, b, 1, 1)
 	wantKind(t, err, gameerr.WarehouseFull)
 	e.clock.Advance(600 + balance.WitherSeconds)

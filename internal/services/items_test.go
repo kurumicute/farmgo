@@ -299,7 +299,7 @@ func TestBackpackContents(t *testing.T) {
 	if c := bp.Consumables; len(c) != 1 || c[0].Name != "化肥" || c[0].Quantity != 2 || !strings.Contains(c[0].Description, "減少 15%") {
 		t.Fatalf("%+v", c)
 	}
-	if !bp.Tools[0].Owned || !bp.Tools[0].Enabled || bp.Used != 7 {
-		t.Fatalf("%+v %d", bp.Tools[0], bp.Used)
+	if !bp.Tools[0].Owned || !bp.Tools[0].Enabled || bp.Used != 5 || bp.MaterialUsed != 2 { // 種子放素材背包
+		t.Fatalf("%+v %d %d", bp.Tools[0], bp.Used, bp.MaterialUsed)
 	}
 }
