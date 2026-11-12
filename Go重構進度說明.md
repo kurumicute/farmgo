@@ -65,7 +65,7 @@
   - 沒有自訂設定時直接用原本的程式常數，行為與調整前完全相同；`exploration.Current()`／`mushroom.Current()` 依 `featurecfg.Version()` 快取解析結果。遊戲、Discord 說明頁（山洞、菇房的等級與時間）與介紹網站都讀目前設定。
   - 介紹網站：手冊新增「🍄 地下菇房」（養分與作物、稀有機率、各區域帶回的木屑）、農場卡片與速查表一列；山洞的區域表加上木屑。
   - 測試：`game/exploration/config_test.go`、`game/mushroom/config_test.go`（預設值來回、設定生效與還原、驗證錯誤）、`services/progress_admin_test.go` 的 `TestExplorationAndMushroomSettings`。也以本機 `farmgm_play` 實際啟動網站，在管理網站儲存兩項設定並確認介紹網站跟著更新（之後已還原）。
-- **偷菜名單隱藏全是空地的玩家**（`SocialService.StealPlayers`）。
+- **偷菜名單隱藏全是空地的玩家**（`SocialService.StealPlayers`）；2026-11-12 起只有空地與乾枯作物的玩家也不列出（有成長中或成熟的作物才列出）。
 - **音樂改寫成 Go（`internal/music`）**：Lavalink v4（REST＋WebSocket，30 秒看門狗自動重連）、Spotify 連結解析、16 個斜線指令（名稱與參數與 Python 相同）、播放控制按鈕與佇列分頁；各伺服器音量與前綴沿用 `data/music_guild_settings.json`。設定 `LAVALINK_URI`、`LAVALINK_PASSWORD`；`MUSIC_ENABLED` 且沒有 `MUSIC_BOT_TOKEN` 時在農場 Bot 內執行。只支援斜線指令（前綴指令需要 Message Content 特權 Intent）。實機測試：`TestRealLavalink`（讀 `FARMGM_TEST_LAVALINK_URL`／`PASSWORD`）。
 
 ## 正式環境切換（2026-11-12）
@@ -697,7 +697,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/gamble_test.go` | `88a175c8b93c4d5d390bfbd1c48f66737dddfd199dc7d0ed7159e5217d21715e` |
 | `internal/services/game_service_test.go` | `636fdb77e647d96d10ff9f9d5d021701584f1d9f052a152cf6fe6b4439663008` |
 | `internal/services/genetics_test.go` | `2e50fe222ddbcce44620c4f727c6d21190ce1016b1b64c8cbd3d434849c884bc` |
-| `internal/services/go_features_test.go` | `407577575e29ad0d105a3462f972ab01c3ae3e69acdd771ca123667c621a8cd9` |
+| `internal/services/go_features_test.go` | `025f4fa59d5acbfa233b4677710b015ec36906472cc787161bbf7b0e8a05eb16` |
 | `internal/services/group_test.go` | `d3ef99ebc8ac4ec2929755c137f76a8f2d2840e9765861badb2e06107acb3f3a` |
 | `internal/services/helpers_test.go` | `51bdcba9ae26e2bffc8ac309dadcdc8f4ae05880bb4ad7a8565227c87888165c` |
 | `internal/services/items.go` | `2ba822ebe09c4ca3a86b32118354ccf3e0823890fac9a0d1bec133248e261cf3` |
@@ -728,7 +728,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/ruins_test.go` | `80565e5b64a40c7d283bb7ecfaad5cafd3c4a1ac34853a216d38d609618d40d6` |
 | `internal/services/service.go` | `2a1aa853db33d2a6eb102e0dc31c8b9a810f3a2f379c297423eceebe7506af59` |
 | `internal/services/site.go` | `e54433ab8a11996507590ed1676af3fc7eab35b927481f4e5c59afe34345a64e` |
-| `internal/services/social.go` | `442eaddccd817ba20e2c124d47c8006b964edff48c98130ed45de5c7de448558` |
+| `internal/services/social.go` | `d3e32dcf63cba29196947bbc7a8b640c99baf56c820d719614fb9c5028221709` |
 | `internal/services/social_test.go` | `65f6371c11236d0837f6144494da0fad58fa23d8db38c6b6ac28144821a755b0` |
 | `internal/services/stress_test.go` | `a4aa847f169673c1d8af3656a9508f25c226415f50f465f141f546e025ec2e8f` |
 | `internal/services/svctest/svctest.go` | `d58382c0713634a9fca6c58f84b672a5d8d6c754351bf243dd1d7a22fa447c80` |

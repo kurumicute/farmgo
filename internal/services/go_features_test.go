@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"farmgm/internal/game/balance"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/seasons"
 )
@@ -145,6 +146,27 @@ func TestStealPlayersSkipAllEmptyFarms(t *testing.T) {
 	e.grow(planted, 1, "wheat") // 還沒成熟：沒有可偷的，但不是空地，仍然列出
 	rows := must[[]StealPlayer](t)(e.so.StealPlayers(e.ctx, g, thief))
 	if len(rows) != 1 || rows[0].PlayerID != planted || rows[0].Stealable != 0 {
+		t.Fatalf("%+v", rows)
+	}
+}
+
+// 農田只有空地與乾枯作物的玩家也不列出（2026-11-12 使用者要求）。
+func TestStealPlayersSkipWitheredOnlyFarms(t *testing.T) {
+	e := setup(t)
+	g := e.group("主群組")
+	thief := e.farmer("小偷", g)
+	withered := e.farmer("全部乾枯", g)
+	e.grow(withered, 1, "wheat")
+	e.clock.Advance(60 + balance.WitherSeconds) // 成熟後沒收成，乾枯
+	rows := must[[]StealPlayer](t)(e.so.StealPlayers(e.ctx, g, thief))
+	if len(rows) != 0 {
+		t.Fatalf("只有乾枯與空地的玩家不應列出：%+v", rows)
+	}
+	growing := e.farmer("還在長", g)
+	e.grow(growing, 1, "wheat")  // 成長中（還沒成熟）仍列出
+	e.grow(withered, 2, "wheat") // 乾枯以外還有成長中的作物：列出
+	rows = must[[]StealPlayer](t)(e.so.StealPlayers(e.ctx, g, thief))
+	if len(rows) != 2 {
 		t.Fatalf("%+v", rows)
 	}
 }

@@ -429,7 +429,7 @@ func (s *SocialService) StealPlayers(ctx context.Context, groupID, playerID int6
 			if m.Farm == nil || m.PlayerID == playerID {
 				continue
 			}
-			if m.Farm.Empty >= m.Farm.Plots { // 農田全是空地：沒有東西可看，不列出（Go 版新增）
+			if m.Farm.Empty+m.Farm.Withered >= m.Farm.Plots { // 農田只有空地與乾枯的作物：沒有東西可偷，不列出（Go 版新增）
 				continue
 			}
 			lim := slices.Contains(limited, m.PlayerID)
