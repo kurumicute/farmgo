@@ -255,7 +255,17 @@ func (r *RanchService) AddSawdust(ctx context.Context, playerID int64, bedNo, qu
 			rec{ItemCode: exploration.Sawdust, Quantity: total}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("%s，共 %d 個木屑。", text, total), farm.Gold, 0, exploration.Sawdust, total), nil
+		msg := fmt.Sprintf("%s，共 %d 個木屑。", text, total)
+		if bedNo == 0 {
+			short := 0
+			for _, b := range beds {
+				short += mushroom.MaxSawdust - b.Sawdust
+			}
+			if short > 0 { // 「全部補滿」時木屑不夠：依序補，先把前面的菇床補滿（投滿才有保底稀有菇）
+				msg += fmt.Sprintf("木屑用完了，其餘菇床還差 %d 個（全部補滿共需 %d 個）。", short, short+total)
+			}
+		}
+		return result(msg, farm.Gold, 0, exploration.Sawdust, total), nil
 	})
 }
 

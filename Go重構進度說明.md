@@ -729,7 +729,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/monitor_more.go` | `295e3a6404296592391953e903fc48d9996abf7e015184a8ef6994b554761461` |
 | `internal/services/monitor_more2.go` | `9bcf88fce251713494c1d377204e4b29b682653037582a7b0fe50d725e77beb2` |
 | `internal/services/monitor_test.go` | `9490a74814411c190cbd075b5bfc181f4c3d63aaf1b862320b653fd5453eb5d9` |
-| `internal/services/mushroom.go` | `63b4a53f641897b832c2ef2fb53e2e332b90658512fd7174ff5f428a7b2f3de5` |
+| `internal/services/mushroom.go` | `989d2e2c69396db9ebce8f10dbfaf394f87aec50f5f4a6e4963592a908504ef7` |
 | `internal/services/mushroom_test.go` | `54ecd06992061843c036e439b1c80f33f499e39d50885357f0e371414bad22b7` |
 | `internal/services/news.go` | `f3ab1d22c1b940dc00f6cac9209b192f3f0d57c9f01aae3ee788a7a3c449d7b2` |
 | `internal/services/news_test.go` | `5914ac31c9b81dfcc389854c20493863c7020e45b428b76b33116fc924c41b25` |
@@ -775,12 +775,12 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/web/monitor.go` | `a2da4535241a8282a7443fb1e534f5eefbc5aae95197f0820a02a3bf2b4ead1a` |
 | `internal/web/monitor2_test.go` | `373963a779e25e0334f1a07113bb9091c4951ae4c05d39d1b561fc4b7f01c2d0` |
 | `internal/web/monitor3_test.go` | `570e0e3dee7aefcd86a3508fc57458fe754659736a6700aea74c308e4e576a63` |
-| `internal/web/monitor_test.go` | `08e0f7d55ffa6e124261ad071b9f581544bfd2145556cbd604219bc4bc6c647b` |
+| `internal/web/monitor_test.go` | `a8d5370a6862de881bb52ed9dcc9b4101f722e2f2c9bd2446d50532e60db782d` |
 | `internal/web/params.go` | `34b8405d750761c6280cc542b0919b265122369fc254f2bc91e89a9e26f1b745` |
 | `internal/web/respond.go` | `869011e0448845d1d9106ff5d2ecaaf8c815d043a9b5e84b51c24f33d364d67b` |
 | `internal/web/schema.go` | `f0b0107ada37ebd88f1b71f73c1d9f3c2c48afcc69eae25203c24bffaf41b6a3` |
 | `internal/web/static/monitor/app.css` | `1ea9816a5f7f3b24d2b05704e6624ef2c60be627d593845f1e9fa7e53188ed5a` |
 | `internal/web/static/monitor/app.js` | `725bad477390e83b26d21fc418c90f8599c516ac677c7b24410145d62e5c8bd0` |
 | `internal/web/static/monitor/index.html` | `900ccf024e89c1a89ab3c92b742bb5a6240e19cadd5993a7b2fd7f45711e5428` |
-| `internal/web/web.go` | `71d98d479b92b727acb3ce499ebd7983e6c1ed6755a1bc8eca51fc68bf5f556b` |
+| `internal/web/web.go` | `2eaef4fc10ef26c31b7a977e5b1d411cbc6edb4c0c753e1215f028a95fadfd22` |
 | `internal/web/ws.go` | `dda2e1fd64b2f7f6adb5d31c531feebfb0e0956b3ea5a2ed7e93863c39bd8b9c` |

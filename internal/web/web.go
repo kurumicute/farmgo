@@ -2,14 +2,16 @@
 //
 // 防護（與 Python 相同）：
 //   - 只接受設定的 Host（防 DNS rebinding；Python TrustedHostMiddleware）。
-//   - 安全標頭（CSP、X-Frame-Options 等）；/api/ 一律 Cache-Control: no-store。
+//   - 安全標頭（CSP、X-Frame-Options 等）；/api/ 一律 Cache-Control: no-store；靜態檔 no-cache＋ETag。
 //   - 監控 API 只有 GET；管理 API 的防護在 admin.go／auth.go。
 //   - 不提供 API 文件頁面（Python docs_url=None）。
 package web
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -202,6 +204,11 @@ func serveStatic(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string
 		}
 	}
 	w.Header().Set("Content-Type", ct)
+	// 更新後管理者立即拿到新版前端（例如設定欄位的上限）：可快取，但每次先以 ETag 向伺服器確認；
+	// 也避免前面的 CDN 依預設把 .js 快取數小時。
+	sum := sha256.Sum256(data)
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:8])+`"`)
 	http.ServeContent(w, r, name, time.Time{}, strings.NewReader(string(data)))
 }
 

@@ -513,7 +513,8 @@ func TestIndexServedWithSecurityHeaders(t *testing.T) {
 	}
 	js := e.get("/static/app.js", nil)
 	if js.Code != 200 || js.Header().Get("Content-Type") != "text/javascript; charset=utf-8" ||
-		js.Header().Get("X-Content-Type-Options") != "nosniff" {
+		js.Header().Get("X-Content-Type-Options") != "nosniff" || js.Header().Get("Cache-Control") != "no-cache" ||
+		js.Header().Get("ETag") == "" {
 		t.Fatal(js.Code, js.Header())
 	}
 	if e.get("/static/../web.go", nil).Code == 200 || e.get("/static/", nil).Code == 200 {
