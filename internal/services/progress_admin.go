@@ -26,6 +26,7 @@ import (
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/pets"
+	"farmgm/internal/game/seedlab"
 	"farmgm/internal/game/specialshop"
 	"farmgm/internal/repositories/catalog"
 	"farmgm/internal/repositories/crops"
@@ -36,7 +37,7 @@ import (
 
 // FeatureKeys 管理網站可調整的規則（顯示順序）。
 var FeatureKeys = []string{checkin.ConfigKey, pets.ConfigKey, specialshop.ConfigKey, achievements.ConfigKey,
-	exploration.ConfigKey, mushroom.ConfigKey}
+	exploration.ConfigKey, mushroom.ConfigKey, seedlab.ConfigKey}
 
 // CodexEditable 可在管理網站調整的圖鑑分類（魚類圖鑑來自 farm_fish，不能在這裡改）。
 var CodexEditable = []string{"crop", "animal", "goods", "material"}
@@ -139,6 +140,21 @@ type FeatureMushroomMeta struct {
 	Crops      []FeatureCrop     `json:"crops"`
 }
 
+// FeatureHybrid 種子實驗室設定畫面的雜交組合（雙親與目前售價、公式售價）。
+type FeatureHybrid struct {
+	Code         string `json:"code"`
+	Name         string `json:"name"`
+	AName        string `json:"a_name"`
+	BName        string `json:"b_name"`
+	SellPrice    int    `json:"sell_price"`
+	FormulaPrice int    `json:"formula_price"` // 雙親目前售價的總和 × 1.5
+}
+
+// FeatureSeedLabMeta 種子實驗室設定畫面需要的資料。
+type FeatureSeedLabMeta struct {
+	Hybrids []FeatureHybrid `json:"hybrids"`
+}
+
 // FeatureSettingsView 各項規則目前的設定、預設值與最後修改者，以及編輯畫面需要的道具與成就清單。
 type FeatureSettingsView struct {
 	Keys         []FeatureKeyView         `json:"keys"`
@@ -147,6 +163,7 @@ type FeatureSettingsView struct {
 	Limits       FeatureLimits            `json:"limits"`
 	Exploration  FeatureExplorationMeta   `json:"exploration"`
 	Mushroom     FeatureMushroomMeta      `json:"mushroom"`
+	SeedLab      FeatureSeedLabMeta       `json:"seedlab"`
 }
 
 type AdminGreenhouse struct {
@@ -374,10 +391,25 @@ func (a *AdminService) FeatureSettings(ctx context.Context) (FeatureSettingsView
 		v.Mushroom.Nutrients = append(v.Mushroom.Nutrients, FeatureNutrient{code, n.Name,
 			mushroom.SpeciesName(n.Common), mushroom.SpeciesName(n.Rare)})
 	}
+	byCode := map[string]models.CropType{}
 	for _, c := range meta.crops {
 		v.Mushroom.Crops = append(v.Mushroom.Crops, FeatureCrop{c.Code, c.Name, c.Active})
+		byCode[c.Code] = c
+	}
+	v.SeedLab.Hybrids = []FeatureHybrid{}
+	for _, h := range seedlab.Hybrids {
+		a, b, c := byCode[h.A], byCode[h.B], byCode[h.Code]
+		v.SeedLab.Hybrids = append(v.SeedLab.Hybrids, FeatureHybrid{h.Code, lookupName(c.Name, h.Code), lookupName(a.Name, h.A),
+			lookupName(b.Name, h.B), c.SellPrice, seedlab.HybridPrice(a.SellPrice, b.SellPrice)})
 	}
 	return v, nil
+}
+
+func lookupName(name, code string) string {
+	if name == "" {
+		return code
+	}
+	return name
 }
 
 func checkFeatureKey(key string) error {

@@ -180,6 +180,7 @@
     if (g.special_shop) renderSpecialShop(g.special_shop);
     if (g.pets) renderPets(g.pets);
     if (g.mushroom) renderMushroom(g.mushroom);
+    if (g.seedlab) renderSeedLab(g.seedlab);
   }
 
   // 地下菇房：開放等級、生長時間、養分對應的作物與菇、木屑的稀有機率與各區域帶回的木屑（管理網站可調整）
@@ -196,6 +197,34 @@
     fillRows("g-cellar-rare", m.rare.map((r) => [`${r.sawdust} 個`,
       r.guaranteed ? `保證 ${r.guaranteed} 朵稀有，其餘 ${r.pct}%` : `${r.pct}%`]));
     fillRows("g-cellar-sawdust", m.sawdust_drop.map((d) => [d.area, d.max ? `${d.min}–${d.max} 個` : "不會帶回"]));
+  }
+
+  // 種子實驗室：只介紹規則，不列出雜交組合與雜交作物
+  function renderSeedLab(l) {
+    const mins = (m) => (m % 60 === 0 ? `${m / 60} 小時` : duration(m * 60));
+    setText("g-lab-level", `Lv.${l.unlock_level}`);
+    setText("c-lab-level", `Lv.${l.unlock_level}`);
+    setText("g-lab-gold", num.format(l.build_gold));
+    setText("g-lab-fee-mul", String(l.identify_multiplier));
+    setText("g-lab-fee-min", num.format(l.identify_min));
+    setText("g-lab-capacity", String(l.capacity));
+    setText("g-lab-time", l.min_minutes === l.max_minutes ? mins(l.min_minutes) : `${mins(l.min_minutes)}–${mins(l.max_minutes)}`);
+    setText("g-lab-hybrids", String(l.hybrid_count));
+    setText("g-lab-resin", String(l.resin_pct));
+    setText("g-lab-herb", String(l.herb_pct));
+    setText("g-lab-catalyst", String(l.catalyst_pct));
+    setText("g-lab-mutate-crystal", String(l.mutate_crystal));
+    setText("g-lab-mutate-time", mins(l.mutate_minutes));
+    setText("g-lab-mutate-base", String(l.mutate_base_pct));
+    setText("g-lab-mutate-level", String(l.mutate_level_pct));
+    setText("g-lab-mutate-max", String(l.mutate_max_pct));
+    setText("g-lab-inherit", String(l.inherit_pct));
+    setText("g-lab-share-send", String(l.share_send));
+    setText("g-lab-share-receive", String(l.share_receive));
+    setText("g-lab-slots", String(l.max_slots));
+    fillRows("g-lab-genes", [["⏱️ 生長", `生長時間 -${l.growth_pct}%`], ["🧺 產量", `每 ${l.yield_levels} 級收成 +1`],
+      ["⭐ 品質", `品質加成 +${l.quality_pct}%`], ["🧬 突變", `突變機率 +${l.mutation_pct}%`]]);
+    fillRows("g-lab-mutations", l.lab_mutations.map((m) => [m.name, m.effect]));
   }
 
   // 寵物：領養與升級價格、每級加成（固定規則）

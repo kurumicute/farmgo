@@ -116,6 +116,7 @@ type Panel struct {
 	fishPage          int
 	fishRankGlobal    bool
 	confirm           string
+	lab               labState // 種子實驗室：選取的種子與雜交設定
 	checkinNextAt     time.Time
 	welcomed          bool
 	marks             *services.ProgressMarks

@@ -241,11 +241,14 @@ func RollMutation(s balance.GeneticsSettings, u float64, eventBonusBP int) strin
 	return MutationOrder[len(MutationOrder)-1]
 }
 
-// HarvestQuantity 收成數量：巨型作物先乘倍率，再套用限時事件加成（無條件捨去，至少為原數量）。
+// HarvestQuantity 收成數量：巨型作物先乘倍率（豐收作物 +50%，至少 +1），再套用限時事件加成（無條件捨去，至少為原數量）。
 func HarvestQuantity(baseQuantity int, mutation string, s balance.GeneticsSettings, eventBonusPct int) int {
 	quantity := baseQuantity
-	if mutation == "giant" {
+	switch mutation {
+	case "giant":
 		quantity = baseQuantity * s.GiantMultiplier
+	case "bountiful":
+		quantity = baseQuantity + max(1, baseQuantity*balance.BountifulBonusPct/100)
 	}
 	return numfmt.FloorDiv(quantity*(100+max(0, eventBonusPct)), 100)
 }
@@ -272,10 +275,14 @@ func BasePrice(cropSellPrice int, mutation string, s balance.GeneticsSettings) i
 	return cropSellPrice
 }
 
-// MutationPricePct 突變售價倍率：只有黃金作物影響單價；巨型影響數量、快速生長影響時間、變種已反映在基本售價。
+// MutationPricePct 突變售價倍率：只有黃金、夜光作物影響單價；巨型、豐收影響數量、快速生長影響時間、
+// 變種已反映在基本售價、水晶在收成時額外給水晶。
 func MutationPricePct(mutation string, s balance.GeneticsSettings) int {
-	if mutation == "golden" {
+	switch mutation {
+	case "golden":
 		return s.GoldenPricePct
+	case "glow":
+		return balance.GlowPricePct
 	}
 	return 100
 }

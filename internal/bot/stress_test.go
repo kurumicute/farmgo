@@ -11,6 +11,8 @@ package bot
 //	FARMGM_STRESS=1 go test -p 1 -run TestStressBotPanel -v ./internal/bot
 //
 // 可調參數：FARMGM_STRESS_USERS（同時玩家數，預設 100）、FARMGM_STRESS_WORKERS（BOT_WORKER_THREADS，預設 16）。
+// FARMGM_STRESS_LAB=1（選用，Go 版新增）：每位玩家在原本 10 次互動後再操作種子實驗室 8 次（實驗室頁 → 建造 → 確認建造 →
+// 鑑定 ×2 → 雜交頁 → 選母本 → 選父本 → 開始培育）；開始前以管理員調整（有交易紀錄）把每位玩家設為 Lv.5、10 萬金幣，鑑定的是前面在商店買的胡蘿蔔種子。
 // FARMGM_STRESS_REDIS_URL（選用）：啟用 cachebus，目錄快取比照正式環境從 10 秒拉長到 cachebus.Fallback。
 // 連線池 = 工作數 + 2 + 5（正式環境 PoolSize(workers+2) 的預設值，與 Python pool_size=WORKERS+2、max_overflow=5 相同）。
 
@@ -286,6 +288,21 @@ func TestStressBotPanel(t *testing.T) {
 		list[i] = who{uid, gid}
 	}
 	fmt.Printf("建立 %d 位玩家：%.1f 秒\n", users, time.Since(t0).Seconds())
+	lab := os.Getenv("FARMGM_STRESS_LAB") != ""
+	if lab {
+		t1 := time.Now()
+		level, gold := 5, 100_000
+		for _, w := range list {
+			ec, err := svc.ExternalContext(ctx, Platform, w.uid, &w.gid, "")
+			if err != nil || ec.PlayerID == nil {
+				t.Fatal("找不到壓測玩家", err)
+			}
+			if _, err := svc.SetFarmValues(ctx, "stress", *ec.PlayerID, &gold, &level); err != nil {
+				t.Fatal(err)
+			}
+		}
+		fmt.Printf("種子實驗室情境：設定 Lv.5 與金幣 %.1f 秒\n", time.Since(t1).Seconds())
+	}
 
 	reg := ui.NewRegistry() // DirectReply 1.5 秒，與正式環境相同
 	cmds := NewCommands(svc, NewRunner(workers), reg)
@@ -345,6 +362,27 @@ func TestStressBotPanel(t *testing.T) {
 		click("買 5", "購買")
 		goPage("board", "排行榜")
 		goPage("casino", "切換頁面")
+		if !lab {
+			return
+		}
+		// 種子實驗室（Go 版新增）
+		chooseNth := func(placeholder string, n int, step string) {
+			for _, s := range p.View.Selects() {
+				if strings.Contains(s.Placeholder, placeholder) && len(s.Options) > n {
+					choose(placeholder, s.Options[n].Value, step)
+					return
+				}
+			}
+		}
+		goPage("lab", "實驗室：切換頁面")
+		click("建造實驗室", "實驗室：建造（第一次按）")
+		click("確認建造", "實驗室：建造")
+		choose("鑑定一般種子", "carrot", "實驗室：鑑定") // 前面在商店買的 5 顆胡蘿蔔種子
+		choose("鑑定一般種子", "carrot", "實驗室：鑑定")
+		goPage("lab_cross", "實驗室：切換頁面")
+		chooseNth("選擇母本", 0, "實驗室：選種子")
+		chooseNth("選擇父本", 0, "實驗室：選種子")
+		click("開始培育", "實驗室：開始培育")
 	}
 
 	// CPU、記憶體取樣（每 0.5 秒；CPU 以本程序累計 CPU 時間計算，100% = 1 核）

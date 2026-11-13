@@ -112,6 +112,114 @@
       "unripe": "crops/watermelon/unripe.png",
       "ready": "crops/watermelon/ready.png",
       "withered": "crops/watermelon/withered.png"
+    },
+    "golden_grain": {
+      "unripe": "crops/golden_grain/unripe.png",
+      "ready": "crops/golden_grain/ready.png",
+      "withered": "crops/golden_grain/withered.png",
+      "variant": {
+        "code": "sun_grain",
+        "ready": "crops/golden_grain/variant_ready.png"
+      }
+    },
+    "rainbow_carrot": {
+      "unripe": "crops/rainbow_carrot/unripe.png",
+      "ready": "crops/rainbow_carrot/ready.png",
+      "withered": "crops/rainbow_carrot/withered.png",
+      "variant": {
+        "code": "aurora_carrot",
+        "ready": "crops/rainbow_carrot/variant_ready.png"
+      }
+    },
+    "purple_berry": {
+      "unripe": "crops/purple_berry/unripe.png",
+      "ready": "crops/purple_berry/ready.png",
+      "withered": "crops/purple_berry/withered.png",
+      "variant": {
+        "code": "midnight_berry",
+        "ready": "crops/purple_berry/variant_ready.png"
+      }
+    },
+    "honey_melon": {
+      "unripe": "crops/honey_melon/unripe.png",
+      "ready": "crops/honey_melon/ready.png",
+      "withered": "crops/honey_melon/withered.png",
+      "variant": {
+        "code": "sugar_crystal_melon",
+        "ready": "crops/honey_melon/variant_ready.png"
+      }
+    },
+    "lantern_gourd": {
+      "unripe": "crops/lantern_gourd/unripe.png",
+      "ready": "crops/lantern_gourd/ready.png",
+      "withered": "crops/lantern_gourd/withered.png",
+      "variant": {
+        "code": "golden_lantern_gourd",
+        "ready": "crops/lantern_gourd/variant_ready.png"
+      }
+    },
+    "starry_night_flower": {
+      "unripe": "crops/starry_night_flower/unripe.png",
+      "ready": "crops/starry_night_flower/ready.png",
+      "withered": "crops/starry_night_flower/withered.png",
+      "variant": {
+        "code": "galaxy_flower",
+        "ready": "crops/starry_night_flower/variant_ready.png"
+      }
+    },
+    "ruby_corn": {
+      "unripe": "crops/ruby_corn/unripe.png",
+      "ready": "crops/ruby_corn/ready.png",
+      "withered": "crops/ruby_corn/withered.png",
+      "variant": {
+        "code": "blaze_corn",
+        "ready": "crops/ruby_corn/variant_ready.png"
+      }
+    },
+    "sakura_wheat": {
+      "unripe": "crops/sakura_wheat/unripe.png",
+      "ready": "crops/sakura_wheat/ready.png",
+      "withered": "crops/sakura_wheat/withered.png",
+      "variant": {
+        "code": "night_sakura_wheat",
+        "ready": "crops/sakura_wheat/variant_ready.png"
+      }
+    },
+    "sunset_squash": {
+      "unripe": "crops/sunset_squash/unripe.png",
+      "ready": "crops/sunset_squash/ready.png",
+      "withered": "crops/sunset_squash/withered.png",
+      "variant": {
+        "code": "afterglow_squash",
+        "ready": "crops/sunset_squash/variant_ready.png"
+      }
+    },
+    "jade_grape": {
+      "unripe": "crops/jade_grape/unripe.png",
+      "ready": "crops/jade_grape/ready.png",
+      "withered": "crops/jade_grape/withered.png",
+      "variant": {
+        "code": "imperial_jade_grape",
+        "ready": "crops/jade_grape/variant_ready.png"
+      }
+    },
+    "dawn_melon": {
+      "unripe": "crops/dawn_melon/unripe.png",
+      "ready": "crops/dawn_melon/ready.png",
+      "withered": "crops/dawn_melon/withered.png",
+      "variant": {
+        "code": "corona_melon",
+        "ready": "crops/dawn_melon/variant_ready.png"
+      }
+    },
+    "crimson_moon_flower": {
+      "unripe": "crops/crimson_moon_flower/unripe.png",
+      "ready": "crops/crimson_moon_flower/ready.png",
+      "withered": "crops/crimson_moon_flower/withered.png",
+      "variant": {
+        "code": "blood_moon_flower",
+        "ready": "crops/crimson_moon_flower/variant_ready.png"
+      }
     }
   },
   "animals": {

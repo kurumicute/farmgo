@@ -27,7 +27,11 @@ const (
 
 var (
 	CropEmoji = map[string]string{"wheat": "🌾", "carrot": "🥕", "tomato": "🍅", "strawberry": "🍓", "amber_melon": "🍈",
-		"moonflower": "🌙", "corn": "🌽", "pumpkin": "🎃", "grape": "🍇", "watermelon": "🍉"}
+		"moonflower": "🌙", "corn": "🌽", "pumpkin": "🎃", "grape": "🍇", "watermelon": "🍉",
+		// 種子實驗室的雜交作物（Migration 0039）
+		"golden_grain": "🌾", "rainbow_carrot": "🥕", "purple_berry": "🫐", "honey_melon": "🍈", "lantern_gourd": "🏮",
+		"starry_night_flower": "🌌", "ruby_corn": "🌽", "sakura_wheat": "🌸", "sunset_squash": "🌇", "jade_grape": "🍇",
+		"dawn_melon": "🌅", "crimson_moon_flower": "🌺"}
 	AnimalEmoji   = map[string]string{"chicken": "🐔", "cow": "🐄", "sheep": "🐑"}
 	MaterialEmoji = map[string]string{"wood": "🪵", "stone": "🪨", "copper_ore": "🟠", "iron_ore": "⛓️", "resin": "🍯",
 		"herb": "🌿", "gear": "⚙️", "crystal": "💎", "ancient_core": "🌳", "machine_core": "🔩", "fake_coin": "🪙"}

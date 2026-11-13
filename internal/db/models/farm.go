@@ -184,6 +184,8 @@ type FarmPlot struct {
 	PlantingNo int       `db:"planting_no"`
 	CreatedAt  time.Time `db:"created_at"` // server_default now()
 	UpdatedAt  time.Time `db:"updated_at"` // server_default now()；Python onupdate=now()
+	// 種下的特殊種子（種子實驗室，Migration 0039）；一般種子為 NULL。收成或清除時改成 NULL，種子標記為已消耗
+	LabSeedID *int64 `db:"lab_seed_id"`
 }
 
 func (FarmPlot) TableName() string { return TableFarmPlot }

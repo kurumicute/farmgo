@@ -9,7 +9,7 @@ import (
 
 func TestDefinitionsAreConsistent(t *testing.T) {
 	featurecfg.Reset()
-	if n := len(Active()); n < 30 || n > 40 {
+	if n := len(Active()); n < 30 || n > 50 { // Python 33 個＋實驗室與菇房 10 個
 		t.Fatal(n)
 	}
 	for _, a := range Active() {

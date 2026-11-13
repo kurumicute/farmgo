@@ -68,6 +68,8 @@ type GameService struct {
 	RumorRng func() float64
 	// 地下菇房的擲骰（Go 版新增）；測試可直接指定
 	MushroomRng func() float64
+	// 種子實驗室的擲骰（鑑定、雜交、突變研究、收成傳承；Go 版新增）；測試可直接指定
+	LabRng func() float64
 
 	contextGroupID *int64
 }
@@ -85,6 +87,7 @@ func NewGameService(d *db.DB, opt Options) *GameService {
 		PetRng:      rand.Float64,
 		RumorRng:    rand.Float64,
 		MushroomRng: rand.Float64,
+		LabRng:      rand.Float64,
 	}
 	if s.clock == nil {
 		s.clock = clock.System{}

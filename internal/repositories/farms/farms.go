@@ -191,6 +191,15 @@ func Plant(ctx context.Context, t *db.Tx, plot *models.FarmPlot, cropTypeID int6
 	return nil
 }
 
+// SetLabSeed 記錄這格種的是哪一顆特殊種子（種子實驗室；在 Plant 之後呼叫）。
+func SetLabSeed(ctx context.Context, t *db.Tx, plot *models.FarmPlot, seedID int64) error {
+	if err := plotWrite(ctx, t, "UPDATE farm_plots SET lab_seed_id = $2 WHERE id = $1", plot.ID, seedID); err != nil {
+		return err
+	}
+	plot.LabSeedID = &seedID
+	return nil
+}
+
 // Water 澆水並設定成熟時間。
 func Water(ctx context.Context, t *db.Tx, plot *models.FarmPlot, now, readyAt time.Time) error {
 	if err := plotWrite(ctx, t, "UPDATE farm_plots SET watered_at = $2, ready_at = $3, updated_at = now() WHERE id = $1",
@@ -201,14 +210,21 @@ func Water(ctx context.Context, t *db.Tx, plot *models.FarmPlot, now, readyAt ti
 	return nil
 }
 
-// Clear 清空土地。
+// Clear 清空土地。種的是特殊種子（種子實驗室）時，種子標記為已消耗。
 func Clear(ctx context.Context, t *db.Tx, plot *models.FarmPlot) error {
+	if plot.LabSeedID != nil {
+		if err := plotWrite(ctx, t, "UPDATE lab_seeds SET status = 'used', updated_at = now() WHERE id = $1 AND status = 'planted'",
+			*plot.LabSeedID); err != nil {
+			return err
+		}
+	}
 	if err := plotWrite(ctx, t, `
 		UPDATE farm_plots SET crop_type_id = NULL, quality = NULL, mutation = NULL, planted_at = NULL, watered_at = NULL,
-		       ready_at = NULL, remaining_quantity = NULL, fertilized = false, updated_at = now()
+		       ready_at = NULL, remaining_quantity = NULL, fertilized = false, lab_seed_id = NULL, updated_at = now()
 		WHERE id = $1`, plot.ID); err != nil {
 		return err
 	}
+	plot.LabSeedID = nil
 	plot.CropTypeID, plot.Quality, plot.Mutation = nil, nil, nil
 	plot.PlantedAt, plot.WateredAt, plot.ReadyAt = nil, nil, nil
 	plot.RemainingQuantity = nil

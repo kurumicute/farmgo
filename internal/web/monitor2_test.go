@@ -190,7 +190,7 @@ func TestMonitorCatalogShapesAndOrder(t *testing.T) {
 	if q := keysOf(t, genetics.Labels.Qualities); !slices.Equal(q, []string{"normal", "good", "rare", "legendary"}) {
 		t.Fatal(q)
 	}
-	if m := keysOf(t, genetics.Labels.Mutations); !slices.Equal(m, []string{"none", "giant", "golden", "fast", "variant"}) {
+	if m := keysOf(t, genetics.Labels.Mutations); !slices.Equal(m, []string{"none", "giant", "golden", "fast", "variant", "glow", "bountiful", "crystal"}) {
 		t.Fatal(m)
 	}
 	if genetics.Version != 1 || len(genetics.GrowSecondsRange) != 2 || len(genetics.History) != 1 || len(genetics.Crops) == 0 {

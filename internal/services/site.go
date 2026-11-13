@@ -31,6 +31,7 @@ import (
 	"farmgm/internal/game/ranking"
 	"farmgm/internal/game/ruins"
 	"farmgm/internal/game/seasons"
+	"farmgm/internal/game/seedlab"
 	"farmgm/internal/game/specialshop"
 	wb "farmgm/internal/game/worldboss"
 	"farmgm/internal/numfmt"
@@ -142,7 +143,8 @@ func buildGuide(ctx context.Context, t *db.Tx, now time.Time) (*OrderedMap, erro
 	names := map[string]string{}
 	for _, c := range allCrops {
 		names[c.Code] = c.Name
-		if c.Active {
+		// 雜交作物不在介紹網站列出（只介紹「可以雜交出新作物」，不公開組合與品種），也不放進特賣
+		if c.Active && !seedlab.IsHybrid(c.Code) {
 			activeCrops = append(activeCrops, c)
 		}
 	}
@@ -204,6 +206,7 @@ func buildGuide(ctx context.Context, t *db.Tx, now time.Time) (*OrderedMap, erro
 	g.Set("special_shop", buildSpecialShop(activeCrops, now))
 	g.Set("pets", buildPets(activeCrops))
 	g.Set("mushroom", buildMushroom(names))
+	g.Set("seedlab", buildSeedLab())
 
 	qualities := []map[string]any{}
 	for _, code := range balance.QualityOrder {
@@ -750,6 +753,34 @@ func buildSpecialShop(activeCrops []models.CropType, now time.Time) map[string]a
 }
 
 // buildMushroom 地下菇房（Go 版新增）：開放等級、生長時間、養分對應的作物與菇、木屑的稀有機率、菇與料理的售價。
+// buildSeedLab 種子實驗室的規則（不列出雜交組合與雜交作物）。
+func buildSeedLab() map[string]any {
+	c := seedlab.Current()
+	minMin, maxMin := c.SameSpeciesMinutes, c.SameSpeciesMinutes
+	for _, h := range seedlab.CurrentHybrids() {
+		minMin, maxMin = min(minMin, h.Minutes), max(maxMin, h.Minutes)
+	}
+	mutations := []map[string]any{}
+	for _, m := range []struct{ code, effect string }{
+		{"glow", fmt.Sprintf("售價 ×%s", pyG(float64(balance.GlowPricePct)/100))},
+		{"bountiful", fmt.Sprintf("收成數量 +%d%%（至少 +1）", balance.BountifulBonusPct)},
+		{"crystal", fmt.Sprintf("收成時額外得到 %d–%d 個水晶", balance.CrystalDropMin, balance.CrystalDropMax)},
+	} {
+		mutations = append(mutations, map[string]any{"name": balance.Mutations[m.code], "effect": m.effect})
+	}
+	return map[string]any{
+		"unlock_level": c.UnlockLevel, "build_gold": c.BuildGold, "capacity": c.LibraryCapacity,
+		"identify_multiplier": c.IdentifyFeeMultiplier, "identify_min": c.IdentifyFeeMin,
+		"min_minutes": minMin, "max_minutes": maxMin, "mutate_minutes": c.MutateMinutes, "mutate_crystal": c.MutateCrystal,
+		"mutate_base_pct": bpPct(c.MutateBaseBP), "mutate_level_pct": bpPct(c.MutatePerLevelBP), "mutate_max_pct": bpPct(c.MutateMaxBP),
+		"growth_pct": c.GrowthPctPerLevel, "yield_levels": c.YieldLevelsPerBonus, "quality_pct": bpPct(c.QualityBPPerLevel),
+		"mutation_pct": bpPct(c.MutationBPPerLevel), "inherit_pct": bpPct(c.InheritBP),
+		"resin_pct": bpPct(c.ResinSuccessBP), "herb_pct": c.HerbTimePct, "catalyst_pct": bpPct(c.CatalystUpBP),
+		"share_send": c.ShareSendPerDay, "share_receive": c.ShareReceiveSenders, "max_slots": seedlab.MaxLevel,
+		"hybrid_count": len(seedlab.Hybrids), "lab_mutations": mutations,
+	}
+}
+
 func buildMushroom(names map[string]string) map[string]any {
 	cfg := mushroom.Current()
 	nutrients := []map[string]any{}

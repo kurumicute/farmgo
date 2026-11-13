@@ -24,8 +24,10 @@ import (
 	"farmgm/internal/game/checkin"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
+	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/pets"
 	"farmgm/internal/game/rules"
+	"farmgm/internal/game/seedlab"
 	"farmgm/internal/game/specialshop"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/animals"
@@ -45,6 +47,8 @@ var CodexCategories = []struct{ Key, Emoji, Name string }{
 	{"goods", "🏭", "加工品"},
 	{"material", "⛏️", "山洞素材"},
 	{"fish", "🐟", "魚類"},
+	{"mushroom", "🍄", "菇類"}, // 地下菇房（Go 版新增）
+	{"lab", "🧪", "特殊種子"},    // 種子實驗室（Go 版新增）：取得過的特殊種子品種
 }
 
 // TitleSources 稱號來源的顯示名稱（成就以外）。
@@ -435,9 +439,23 @@ func codexCategories(ctx context.Context, t *db.Tx, farmID int64) ([]CodexCatego
 			animalList = append(animalList, entry(a.ProductCode, a.ProductName, false))
 		}
 	}
-	var goods []CodexEntry
+	var goods, mushrooms []CodexEntry
 	for _, code := range balance.GoodOrder {
+		if _, ok := mushroom.SpeciesMap[code]; ok {
+			continue // 菇類有自己的分類
+		}
 		goods = append(goods, entry(code, balance.Goods[code].Name, false))
+	}
+	for _, code := range mushroom.SpeciesOrder {
+		mushrooms = append(mushrooms, entry(code, mushroom.SpeciesName(code), false))
+	}
+	// 特殊種子：一般作物、稀有作物與雜交作物（停用的作物只有取得過才列出）
+	var labSeeds []CodexEntry
+	for _, c := range cropTypes {
+		code := LabCodexPrefix + c.Code
+		if c.Active || has(code) {
+			labSeeds = append(labSeeds, entry(code, c.Name+"種子", seedlab.IsHybrid(c.Code)))
+		}
 	}
 	var materials []CodexEntry
 	for _, code := range exploration.MaterialOrder {
@@ -458,7 +476,8 @@ func codexCategories(ctx context.Context, t *db.Tx, farmID int64) ([]CodexCatego
 			fish = append(fish, CodexEntry{Code: ft.Code, Name: ft.Name, Got: ok, Quantity: c.Count})
 		}
 	}
-	lists := map[string][]CodexEntry{"crop": cropList, "animal": animalList, "goods": goods, "material": materials, "fish": fish}
+	lists := map[string][]CodexEntry{"crop": cropList, "animal": animalList, "goods": goods, "material": materials, "fish": fish,
+		"mushroom": mushrooms, "lab": labSeeds}
 	out := make([]CodexCategory, 0, len(CodexCategories))
 	for _, c := range CodexCategories {
 		entries := lists[c.Key]
@@ -558,28 +577,52 @@ func achievementMetrics(ctx context.Context, t *db.Tx, farm *models.Farm, catego
 	if err != nil {
 		return nil, err
 	}
+	// 種子實驗室（Go 版新增）
+	var labBuilt, labCrosses, labMutations, labShares int
+	if err := t.QueryRow(ctx, `SELECT
+			(SELECT count(*) FROM seed_labs WHERE farm_id = $1),
+			(SELECT count(*) FROM lab_records WHERE farm_id = $1 AND kind = 'cross' AND success),
+			(SELECT count(*) FROM lab_records WHERE farm_id = $1 AND kind = 'mutate' AND success),
+			(SELECT count(*) FROM lab_seed_shares WHERE sender_farm_id = $1)`, farm.ID).
+		Scan(&labBuilt, &labCrosses, &labMutations, &labShares); err != nil {
+		return nil, err
+	}
+	labHybrids := 0
+	for _, e := range cats["lab"].Entries {
+		if e.Got && e.Variant { // 特殊種子圖鑑的 Variant 表示雜交作物
+			labHybrids++
+		}
+	}
 	return map[string]int{
-		"crops":           sumQty(cropEntries),
-		"crop_sales":      sales,
-		"level":           farm.Level,
-		"plots":           plots,
-		"gold":            farm.Gold,
-		"legendary_crop":  legendary,
-		"variant_crop":    variants,
-		"animal_products": sumQty(cats["animal"].Entries),
-		"goods":           sumQty(cats["goods"].Entries),
-		"explorations":    explorations,
-		"fish":            fishTotal,
-		"legendary_fish":  fishLegendary,
-		"steals":          steals,
-		"defended":        defended,
-		"gambles":         gambles,
-		"boss_joined":     bossJoined,
-		"boss_won":        bossWon,
-		"best_streak":     bestStreak,
-		"codex_crop_pct":  pct(cats["crop"].Discovered, cats["crop"].Total),
-		"codex_fish_pct":  pct(cats["fish"].Discovered, cats["fish"].Total),
-		"codex_pct":       pct(allFound, allTotal),
+		"lab_built":          labBuilt,
+		"lab_crosses":        labCrosses,
+		"lab_mutations":      labMutations,
+		"lab_hybrids":        labHybrids,
+		"lab_shares":         labShares,
+		"mushrooms":          sumQty(cats["mushroom"].Entries),
+		"codex_mushroom_pct": pct(cats["mushroom"].Discovered, cats["mushroom"].Total),
+		"codex_lab_pct":      pct(cats["lab"].Discovered, cats["lab"].Total),
+		"crops":              sumQty(cropEntries),
+		"crop_sales":         sales,
+		"level":              farm.Level,
+		"plots":              plots,
+		"gold":               farm.Gold,
+		"legendary_crop":     legendary,
+		"variant_crop":       variants,
+		"animal_products":    sumQty(cats["animal"].Entries),
+		"goods":              sumQty(cats["goods"].Entries),
+		"explorations":       explorations,
+		"fish":               fishTotal,
+		"legendary_fish":     fishLegendary,
+		"steals":             steals,
+		"defended":           defended,
+		"gambles":            gambles,
+		"boss_joined":        bossJoined,
+		"boss_won":           bossWon,
+		"best_streak":        bestStreak,
+		"codex_crop_pct":     pct(cats["crop"].Discovered, cats["crop"].Total),
+		"codex_fish_pct":     pct(cats["fish"].Discovered, cats["fish"].Total),
+		"codex_pct":          pct(allFound, allTotal),
 	}, nil
 }
 
@@ -951,6 +994,9 @@ func weeklyOffers(ctx context.Context, t *db.Tx, start time.Time) ([]specialshop
 	}
 	refs := make([]specialshop.CropRef, 0, len(list))
 	for _, c := range list {
+		if seedlab.IsHybrid(c.Code) { // 雜交作物只能從種子實驗室取得，不放進特賣
+			continue
+		}
 		refs = append(refs, specialshop.CropRef{Code: c.Code, Name: c.Name, SeedPrice: c.SeedPrice, ShopBuyable: c.ShopBuyable})
 	}
 	return specialshop.WeeklyOffers(start, refs), nil

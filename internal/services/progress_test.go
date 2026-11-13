@@ -309,7 +309,7 @@ func TestEmptyCodexListsEverythingHidden(t *testing.T) {
 	for _, x := range c.Categories {
 		keys = append(keys, x.Key)
 	}
-	if strings.Join(keys, ",") != "crop,animal,goods,material,fish" {
+	if strings.Join(keys, ",") != "crop,animal,goods,material,fish,mushroom,lab" {
 		t.Fatal(keys)
 	}
 	codes := map[string]bool{}

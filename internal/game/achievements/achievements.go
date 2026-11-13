@@ -28,7 +28,8 @@ const (
 	TitleMaxLen = 20
 )
 
-var PctMetrics = map[string]bool{"codex_crop_pct": true, "codex_fish_pct": true, "codex_pct": true}
+var PctMetrics = map[string]bool{"codex_crop_pct": true, "codex_fish_pct": true, "codex_pct": true,
+	"codex_mushroom_pct": true, "codex_lab_pct": true}
 
 // Metric 指標名稱與單位；值由服務層（ProgressService._achievement_metrics）計算。
 type Metric struct {
@@ -40,6 +41,8 @@ var MetricOrder = []string{
 	"crops", "crop_sales", "level", "plots", "gold", "legendary_crop", "variant_crop", "animal_products", "goods",
 	"explorations", "fish", "legendary_fish", "steals", "defended", "gambles", "boss_joined", "boss_won",
 	"best_streak", "codex_crop_pct", "codex_fish_pct", "codex_pct",
+	// 地下菇房與種子實驗室（Go 版新增）
+	"mushrooms", "codex_mushroom_pct", "lab_built", "lab_crosses", "lab_mutations", "lab_hybrids", "lab_shares", "codex_lab_pct",
 }
 
 var Metrics = map[string]Metric{
@@ -64,6 +67,15 @@ var Metrics = map[string]Metric{
 	"codex_crop_pct":  {"作物圖鑑", "%"},
 	"codex_fish_pct":  {"魚類圖鑑", "%"},
 	"codex_pct":       {"全部圖鑑", "%"},
+	// 地下菇房與種子實驗室（Go 版新增）
+	"mushrooms":          {"收成菇類", "朵"},
+	"codex_mushroom_pct": {"菇類圖鑑", "%"},
+	"lab_built":          {"建造種子實驗室", "座"},
+	"lab_crosses":        {"雜交成功", "次"},
+	"lab_mutations":      {"突變研究成功", "次"},
+	"lab_hybrids":        {"雜交作物種子", "種"},
+	"lab_shares":         {"分享特殊種子", "顆"},
+	"codex_lab_pct":      {"特殊種子圖鑑", "%"},
 }
 
 // Category 成就分類。
@@ -79,6 +91,7 @@ var Categories = []Category{
 	{"social", "🥷", "社交與娛樂"},
 	{"boss", "🐉", "世界 Boss"},
 	{"collect", "📖", "簽到與圖鑑"},
+	{"lab", "🧪", "實驗室與菇房"}, // Go 版新增
 }
 
 // Achievement 成就定義（值型別；Items 不可修改，需要時用 Reward() 取得副本）。Title 為 "" 表示沒有稱號。
@@ -96,7 +109,10 @@ type Achievement struct {
 
 func (a Achievement) Description() string {
 	m := Metrics[a.Metric]
-	if (a.Metric == "legendary_crop" || a.Metric == "variant_crop" || a.Metric == "legendary_fish") && a.Target == 1 {
+	if a.Metric == "lab_built" {
+		return "建造種子實驗室"
+	}
+	if (a.Metric == "legendary_crop" || a.Metric == "variant_crop" || a.Metric == "legendary_fish" || a.Metric == "lab_hybrids") && a.Target == 1 {
 		return "取得" + m.Label
 	}
 	return fmt.Sprintf("%s達到 %s %s", m.Label, numfmt.Comma(a.Target), m.Unit)
@@ -173,6 +189,17 @@ var BaseAchievements = []Achievement{
 	ach("codex_fish_all", "collect", "🐠", "垂釣大師", "codex_fish_pct", 100, 2_000, nil, "垂釣大師"),
 	ach("codex_half", "collect", "📗", "收藏家", "codex_pct", 50, 0, it{e: 2}, ""),
 	ach("codex_all", "collect", "📚", "博物學家", "codex_pct", 100, 5_000, nil, "博物學家"),
+	// 實驗室與菇房（Go 版新增，2026-11-13）
+	ach("lab_build", "lab", "🧪", "實驗室落成", "lab_built", 1, 0, it{f: 5}, ""),
+	ach("lab_cross_10", "lab", "🧬", "育種學徒", "lab_crosses", 10, 0, it{e: 2}, ""),
+	ach("lab_cross_100", "lab", "🔬", "育種專家", "lab_crosses", 100, 3_000, nil, "育種專家"),
+	ach("lab_hybrid_1", "lab", "🌱", "新品種誕生", "lab_hybrids", 1, 0, it{e: 1}, ""),
+	ach("lab_hybrid_all", "lab", "🌈", "雜交大師", "lab_hybrids", 12, 5_000, nil, "雜交大師"),
+	ach("lab_mutation_1", "lab", "☢️", "突變研究員", "lab_mutations", 1, 0, it{p: 2}, "突變研究員"),
+	ach("lab_share_10", "lab", "🎁", "慷慨育種家", "lab_shares", 10, 500, nil, "慷慨育種家"),
+	ach("codex_lab_all", "lab", "🌰", "種子收藏家", "codex_lab_pct", 100, 5_000, nil, "種子收藏家"),
+	ach("mushroom_100", "lab", "🍄", "採菇人", "mushrooms", 100, 0, it{f: 5}, ""),
+	ach("codex_mushroom_all", "lab", "✨", "菇類達人", "codex_mushroom_pct", 100, 2_000, nil, "菇類達人"),
 }
 
 var BaseByCode = func() map[string]Achievement {

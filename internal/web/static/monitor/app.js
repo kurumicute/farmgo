@@ -4288,8 +4288,94 @@ if (typeof document !== "undefined") {
     });
   }
 
+  // ----- 種子實驗室（Go 版新增）：建造、鑑定、培育時間、機率、基因效果、分享、研究經驗、各雜交組合 -----
+  // 機率在伺服器以萬分比（bp）存放，這裡以「%」顯示與輸入（可到小數兩位）
+  const SEEDLAB_GROUPS = [
+    ["🏗️ 開放與建造", [["unlock_level", "開放等級", 1, 100], ["build_gold", "建造費用（金幣）", 0, 100000000],
+      ["library_capacity", "種子庫上限（顆，最多 25）", 1, 25]]],
+    ["🔬 鑑定", [["identify_fee_multiplier", "鑑定費（種子價格的倍數）", 0, 100], ["identify_fee_min", "最低鑑定費（金幣）", 0, 1000000]]],
+    ["⏱️ 時間", [["same_species_minutes", "同品種培育（分鐘）", 1, 1440], ["mutate_minutes", "突變研究（分鐘）", 1, 1440],
+      ["herb_time_pct", "藥草縮短時間（%）", 0, 90]]],
+    ["🧬 雜交與基因", [["resin_success_bp", "樹脂提高成功率（%）", 0, 10000, true], ["catalyst_up_bp", "水晶催化提高升級機率（%）", 0, 10000, true],
+      ["gene_up_bp", "基因升級機率（%）", 0, 10000, true], ["gene_down_bp", "基因退化機率（%）", 0, 10000, true],
+      ["inherit_mutation_bp", "雙親有突變時遺傳機率（%）", 0, 10000, true],
+      ["cross_mutation_per_level_bp", "每級突變基因的自然突變（%）", 0, 2000, true]]],
+    ["☢️ 突變研究", [["mutate_crystal", "需要的水晶（個）", 0, 100], ["mutate_base_bp", "基礎成功率（%）", 0, 10000, true],
+      ["mutate_per_level_bp", "突變基因每級 +（%）", 0, 10000, true], ["mutate_max_bp", "成功率上限（%）", 0, 10000, true]]],
+    ["🌱 基因效果（每高 1 級）", [["growth_pct_per_level", "生長時間減少（%）", 0, 20], ["yield_levels_per_bonus", "產量：每幾級收成 +1", 1, 4],
+      ["quality_bp_per_level", "品質加成（%）", 0, 1000, true], ["mutation_bp_per_level", "突變加成（%）", 0, 1000, true],
+      ["inherit_bp", "收成時取回種子（%）", 0, 10000, true]]],
+    ["🎁 分享", [["share_send_per_day", "每人每天最多送出（顆）", 0, 100], ["share_receive_senders", "每人每天最多收幾位玩家", 1, 100]]],
+    ["📈 研究經驗", [["exp_identify", "鑑定", 0, 10000], ["exp_cross", "雜交成功", 0, 10000], ["exp_cross_fail", "雜交失敗", 0, 10000],
+      ["exp_mutate", "突變研究", 0, 10000], ["level2_exp", "Lv.2 需要（2 個研究槽）", 1, 1000000], ["level3_exp", "Lv.3 需要（3 個研究槽）", 1, 1000000]]],
+  ];
+  const bpInput = (bp, maxBp) => {
+    const input = numInput(null, bp / 100, 0, maxBp / 100);
+    input.step = "0.01";
+    return input;
+  };
+  const bpIn = (input, label, maxBp) => {
+    const n = Number(input.value);
+    if (!Number.isFinite(n) || n < 0 || n > maxBp / 100 || Math.abs(n * 100 - Math.round(n * 100)) > 1e-6) {
+      throw new Error(`${label}必須是 0–${fmtNum(maxBp / 100)} 之間的數字（最多小數兩位）。`);
+    }
+    return Math.round(n * 100);
+  };
+  const fieldText = (f, v) => (f[4] ? `${v / 100}%` : fmtNum(v));
+
+  function seedlabCard() {
+    const k = featureKey("seedlab");
+    const c = k.current;
+    const meta = features.data.seedlab;
+    const inputs = {};
+    const sections = SEEDLAB_GROUPS.map(([title, fields]) => {
+      const controls = fields.map((f) => {
+        const [key, label, min, max, pct] = f;
+        inputs[key] = pct ? bpInput(c[key], max) : numInput(null, c[key], min, max);
+        if (!pct && max >= 10000) inputs[key].classList.add("wide-num");
+        return labeled(label, inputs[key]);
+      });
+      return [el("h4", { text: title }), el("div", { className: "controls" }, controls)];
+    }).flat();
+    const hybridEds = meta.hybrids.map((h) => {
+      const cur = c.hybrids[h.code];
+      return { h, success: bpInput(cur.success_bp, 10000), minutes: numInput(null, cur.minutes, 1, 1440) };
+    });
+    const body = el("div", {}, [
+      ...sections,
+      el("h4", { text: "🌈 雜交組合（組合本身固定；售價請到「作物目錄」調整）" }),
+      miniTable(["雙親", "雜交作物", "成功率（%）", "培育（分鐘）", "目前售價", "公式售價（雙親 × 1.5）"], hybridEds.map(({ h, success, minutes }) => el("tr", {}, [
+        td(`${h.a_name} × ${h.b_name}`), td(`${h.name}（${h.code}）`), el("td", {}, [success]), el("td", {}, [minutes]),
+        td(fmtNum(h.sell_price), "num"), td(fmtNum(h.formula_price), "num"),
+      ])), "沒有雜交組合"),
+      el("p", { className: "muted small", text: "同品種配對一定成功；成功率是不加樹脂時的基礎值。研究等級上限 Lv.3（研究槽 1–3 個）、基因 1–5 級與突變種類固定。" }),
+    ]);
+    return featureCard("seedlab", "🧪 種子實驗室：建造費用、鑑定、培育時間、各種機率、基因效果、分享上限、研究經驗與雜交組合", body, () => {
+      const value = {};
+      const diff = [];
+      for (const [, fields] of SEEDLAB_GROUPS) {
+        for (const f of fields) {
+          const [key, label, min, max, pct] = f;
+          value[key] = pct ? bpIn(inputs[key], label, max) : intIn(inputs[key], label, min, max);
+          diff.push(diffRow(label, fieldText(f, c[key]), fieldText(f, value[key])));
+        }
+      }
+      if (value.gene_up_bp + value.gene_down_bp > 10000) throw new Error("基因升級與退化機率加起來不能超過 100%。");
+      if (value.level3_exp <= value.level2_exp) throw new Error("Lv.3 需要的經驗必須大於 Lv.2。");
+      value.hybrids = {};
+      for (const { h, success, minutes } of hybridEds) {
+        const v = { success_bp: bpIn(success, `${h.name}的成功率`, 10000), minutes: intIn(minutes, `${h.name}的培育時間`, 1, 1440) };
+        value.hybrids[h.code] = v;
+        const cur = c.hybrids[h.code];
+        diff.push(diffRow(`${h.name}`, `${cur.success_bp / 100}%・${cur.minutes} 分`, `${v.success_bp / 100}%・${v.minutes} 分`));
+      }
+      return [value, diff.filter(Boolean)];
+    });
+  }
+
   function renderFeatureSettings() {
-    $("fs-body").replaceChildren(checkinCard(), petsCard(), specialShopCard(), achievementsCard(), explorationCard(), mushroomCard());
+    $("fs-body").replaceChildren(checkinCard(), petsCard(), specialShopCard(), achievementsCard(), explorationCard(), mushroomCard(),
+      seedlabCard());
   }
 
   async function loadFeatureSettings(force = false) {

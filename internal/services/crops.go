@@ -15,6 +15,7 @@ import (
 	"farmgm/internal/game/genetics"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/seasons"
+	"farmgm/internal/game/seedlab"
 	"farmgm/internal/game/specialshop"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/catalog"
@@ -183,6 +184,13 @@ func (s *GameService) checkSeason(crop *models.CropType) error {
 // plant 在已鎖定、空著的土地種下一顆（種子由呼叫端扣除）。回傳 (品質標籤, 自動澆水後的生長秒數或 nil)。
 func (s *GameService) plant(ctx context.Context, t *db.Tx, farm *models.Farm, plot *models.FarmPlot, crop *models.CropType,
 	source string) (string, *int, error) {
+	return s.plantWith(ctx, t, farm, plot, crop, source, nil)
+}
+
+// plantWith 同 plant；labSeed 不是 nil 時種的是種子實驗室的特殊種子（已由呼叫端標記為已種下）：
+// 品質基因、突變基因加到加成，種子本身的突變直接成為作物的突變，產量基因增加收成數量（生長基因在澆水時套用）。
+func (s *GameService) plantWith(ctx context.Context, t *db.Tx, farm *models.Farm, plot *models.FarmPlot, crop *models.CropType,
+	source string, labSeed *models.LabSeed) (string, *int, error) {
 	now := s.now()
 	// 播種時一次決定整批的品質與主要突變，之後固定不變（收成、偷菜、重啟都不重新抽取）
 	settings, err := s.geneticsSettings(ctx, t)
@@ -197,11 +205,28 @@ func (s *GameService) plant(ctx context.Context, t *db.Tx, farm *models.Farm, pl
 	q := eventrules.BonusOf(active, eventrules.PlantEffects[0], &crop.ID)
 	m := eventrules.BonusOf(active, eventrules.PlantEffects[1], &crop.ID)
 	h := eventrules.BonusOf(active, eventrules.PlantEffects[2], &crop.ID)
-	quality := genetics.RollQuality(genetics.EffectiveQualityBP(settings, farm.Level, q.Value), s.geneticsRng())
-	mutation := genetics.RollMutation(settings, s.geneticsRng(), m.Value)
+	qualityBonus, mutationBonus := q.Value, m.Value
+	if labSeed != nil {
+		qualityBonus += seedlab.QualityBonusBP(labSeed.GeneQuality)
+		mutationBonus += seedlab.MutationBonusBP(labSeed.GeneMutation)
+	}
+	quality := genetics.RollQuality(genetics.EffectiveQualityBP(settings, farm.Level, qualityBonus), s.geneticsRng())
+	mutation := genetics.RollMutation(settings, s.geneticsRng(), mutationBonus)
+	if labSeed != nil && labSeed.Mutation != "none" {
+		mutation = labSeed.Mutation
+	}
 	quantity := genetics.HarvestQuantity(crop.HarvestQuantity, mutation, settings, h.Value)
+	if labSeed != nil {
+		quantity += seedlab.YieldBonus(labSeed.GeneYield)
+	}
 	if err := farms.Plant(ctx, t, plot, crop.ID, quantity, now, quality, mutation); err != nil {
 		return "", nil, err
+	}
+	if labSeed != nil {
+		if err := farms.SetLabSeed(ctx, t, plot, labSeed.ID); err != nil {
+			return "", nil, err
+		}
+		source += "特殊種子："
 	}
 	label := GeneticsLabel(quality, mutation)
 	applied := eventrules.MergeApplied(q, m, h)
@@ -330,7 +355,12 @@ func (s *GameService) water(ctx context.Context, t *db.Tx, farm *models.Farm, pl
 	mutation := deref(plot.Mutation)
 	// 快速生長突變也只在澆水後才開始計時，不會繞過澆水與乾枯規則；溫室的減少 % 與限時活動相加
 	greenhouse := specialshop.GreenhousePct(farm.GreenhouseLevel)
-	seconds := genetics.GrowSeconds(crop.GrowSeconds, mutation, earthworm, settings, grow.Value+greenhouse)
+	// 特殊種子（種子實驗室）的生長基因也一起相加
+	labPct, err := labGrowthPct(ctx, t, plot)
+	if err != nil {
+		return 0, err
+	}
+	seconds := genetics.GrowSeconds(crop.GrowSeconds, mutation, earthworm, settings, grow.Value+greenhouse+labPct)
 	if err := farms.Water(ctx, t, plot, now, rules.ReadyTime(now, seconds)); err != nil {
 		return 0, err
 	}
@@ -343,6 +373,9 @@ func (s *GameService) water(ctx context.Context, t *db.Tx, farm *models.Farm, pl
 	}
 	if farm.GreenhouseLevel != 0 {
 		extra += fmt.Sprintf("（溫室 -%d%%）", greenhouse)
+	}
+	if labPct > 0 {
+		extra += fmt.Sprintf("（生長基因 -%d%%）", labPct)
 	}
 	bonuses := []eventrules.Bonus{grow}
 	source := "澆水"
@@ -501,6 +534,11 @@ func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.
 		t.Adjust(warehouseUsedKey{farm.ID}, quantity)
 	}
 	plotNumber := plot.PlotNumber
+	// 種子實驗室：水晶作物額外給水晶、特殊種子有機會取回同基因的種子（在清空土地前判斷）
+	labNote, err := s.labHarvest(ctx, t, farm, plot, mutation)
+	if err != nil {
+		return "", 0, "", err
+	}
 	if err := farms.Clear(ctx, t, plot); err != nil { // 收成後土地清空，同一批作物不會再發放
 		return "", 0, "", err
 	}
@@ -514,6 +552,7 @@ func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.
 	if catBonus > 0 {
 		note += fmt.Sprintf("（🐱 貓咪趕走老鼠 +%d 個）", catBonus)
 	}
+	note += labNote
 	var applied []eventrules.Applied
 	if lost > 0 {
 		applied = eventrules.MergeApplied(wind)

@@ -28,6 +28,10 @@ func (p *Panel) registerPages() {
 		"main":            {p.loadMain, p.buildMain},
 		"plots":           {p.loadPlots, p.buildPlots},
 		"cellar":          {p.loadCellar, p.buildCellar},
+		"lab":             {p.loadLab, p.buildLab},
+		"lab_seeds":       {p.loadLabSeeds, p.buildLabSeeds},
+		"lab_cross":       {p.loadLab, p.buildLabCross},
+		"lab_records":     {p.loadLabRecords, p.buildLabRecords},
 		"backpack":        {p.loadBackpack, p.buildBackpack},
 		"shop":            {p.loadShop, p.buildShop},
 		"prices":          {p.loadPrices, p.buildPrices},
@@ -511,6 +515,7 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 		}, btn{emoji: "🪱", row: 3})
 	}
 	p.nav("地下菇房", "cellar", btn{emoji: "🍄", row: 4, style: ui.Primary})
+	p.nav("種子實驗室", "lab", btn{emoji: "🧪", row: 4, style: ui.Primary})
 	p.navBack(4)
 	return e, nil
 }

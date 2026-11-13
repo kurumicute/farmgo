@@ -12,6 +12,7 @@ import (
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/featurecfg"
 	"farmgm/internal/game/fishing"
+	"farmgm/internal/game/seedlab"
 	"farmgm/internal/repositories/featuresettings"
 	"farmgm/internal/repositories/repotest"
 )
@@ -61,6 +62,9 @@ func Prepare(t *testing.T, clearCaches func()) *db.DB {
 		for _, c := range exploration.RareCrops {
 			codes = append(codes, c.Code)
 		}
+		for _, c := range seedlab.HybridCrops {
+			codes = append(codes, c.Code)
+		}
 		if _, err := tx.Exec(ctx, "DELETE FROM crop_types WHERE NOT (code = ANY($1))", codes); err != nil {
 			return err
 		}
@@ -77,6 +81,21 @@ func Prepare(t *testing.T, clearCaches func()) *db.DB {
 		for _, c := range exploration.RareCrops {
 			if _, err := tx.Exec(ctx, upd, c.Code, c.Name, c.GrowSeconds, c.SeedPrice, c.HarvestQty, c.SellPrice,
 				c.VariantCode, c.VariantName, false); err != nil {
+				return err
+			}
+		}
+		// 種子實驗室的雜交作物（Migration 0039；商店不賣）：價格 = 雙親的總和 × 1.5
+		prices := map[string][2]int{}
+		for _, c := range balance.InitialCrops {
+			prices[c.Code] = [2]int{c.SeedPrice, c.SellPrice}
+		}
+		for _, c := range exploration.RareCrops {
+			prices[c.Code] = [2]int{c.SeedPrice, c.SellPrice}
+		}
+		for i, c := range seedlab.HybridCrops {
+			a, b := prices[seedlab.Hybrids[i].A], prices[seedlab.Hybrids[i].B]
+			if _, err := tx.Exec(ctx, upd, c.Code, c.Name, c.GrowSeconds, seedlab.HybridPrice(a[0], b[0]), c.HarvestQty,
+				seedlab.HybridPrice(a[1], b[1]), c.VariantCode, c.VariantName, false); err != nil {
 				return err
 			}
 		}

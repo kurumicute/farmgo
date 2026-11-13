@@ -1,7 +1,7 @@
 # 農場 Go 重構：進度說明（2026-11-11）
 
 來源：Python 專案 `farmgmdiscordb-feature-exploration-update`（Alembic head 0038；2026-11-11 由 0036 同步，見「與 Python 新版同步」）。
-目標：把**農場相關**的 Python 程式改寫成 Go。音樂（`app/music`、Lavalink）不移植，繼續使用 Python 版。
+目標：把**農場相關**的 Python 程式改寫成 Go。音樂（`app/music`、Lavalink）原本不移植，之後已改寫成 Go（`internal/music`，見「Go 版新增的功能」）。
 
 目前完成 **第 1～3 階段**（遊戲規則、資料庫層、服務層）：11 個服務與 `RetryingService`（`Retrier`）都已移植，Python 服務層測試也都已移植或歸到之後的階段。第 4 階段（網站）也已完成：監控 API 全部 31 個端點、WebSocket、管理員登入與管理 API 防護、管理 API 全部 64 個端點、程式進入點（`cmd/farmgm-web`、`cmd/farmgm-hash-password`），以及介紹網站（`internal/site`、`cmd/farmgm-site`）。Discord 面板與 Bot 的程式已全部移植（第 5 階段第 1～8 批：所有面板頁面、discordgo 轉接層、`cmd/farmgm-bot`），CMD 決定不移植。**Discord Bot 還沒有在真實 Discord 上操作過，也還沒有取代 Python 版**（見「第 5 階段」的實機測試與切換前的決定）；網站部分可以考慮先上線（見「可以考慮的上線方式」）。
 
@@ -65,6 +65,19 @@
   - 沒有自訂設定時直接用原本的程式常數，行為與調整前完全相同；`exploration.Current()`／`mushroom.Current()` 依 `featurecfg.Version()` 快取解析結果。遊戲、Discord 說明頁（山洞、菇房的等級與時間）與介紹網站都讀目前設定。
   - 介紹網站：手冊新增「🍄 地下菇房」（養分與作物、稀有機率、各區域帶回的木屑）、農場卡片與速查表一列；山洞的區域表加上木屑。
   - 測試：`game/exploration/config_test.go`、`game/mushroom/config_test.go`（預設值來回、設定生效與還原、驗證錯誤）、`services/progress_admin_test.go` 的 `TestExplorationAndMushroomSettings`。也以本機 `farmgm_play` 實際啟動網站，在管理網站儲存兩項設定並確認介紹網站跟著更新（之後已還原）。
+- **種子實驗室（2026-11-13，Migration 0039，`game/seedlab`、`repositories/seedlab`、`services/seedlab.go`、`bot/pages_lab.go`）**：設計與流程圖見 `種子實驗室流程圖.md`。農場 **Lv.5** 花 5,000 金幣建造（不需要素材），入口在「🌱 農田」頁的「🧪 種子實驗室」。**所有數值都可以在管理網站「新功能設定 → 種子實驗室」調整**（`game/seedlab/config.go`，存在 `feature_settings` key `seedlab`，不需要 Migration）：開放等級、建造費用、種子庫上限、鑑定費、培育與突變研究時間、各種機率、基因效果、分享上限、研究經驗與每個雜交組合的成功率與時間（設定卡同時列出每種雜交作物的目前售價與公式售價；售價在「作物目錄」調整）。
+  - **鑑定**：背包的一般種子 ×1＋鑑定費（種子價格 ×5，至少 50）→ 有 4 個基因（生長、產量、品質、突變，1–5 級）的特殊種子；一般作物 1–2 級、稀有作物 2–3 級。種子庫上限 25 顆。
+  - **雜交**：同品種一定可以配對（改良基因，2 小時）；不同品種只有 12 組可以雜交出雜交作物（黃金穀物、彩虹蘿蔔、紫莓、蜜糖瓜、燈籠瓜、星夜花、紅寶玉米、櫻花麥、夕陽瓜、翡翠葡萄、曙光瓜、赤月花；成功率 40–70%、1–3 小時）；雜交作物的種子價格與售價 = 雙親的總和 × 1.5（Migration 依資料庫目前的雙親價格計算）。每個基因 50% 繼承母本或父本，再 15% 升級、10% 退化；世代 = 較大的世代 + 1。選用材料：樹脂（成功率 +15%）、藥草（時間 -30%）、水晶（指定基因升級機率 +20%）。失敗時得到母本品種的種子並退回材料。
+  - **突變研究**：水晶 ×2（必要）＋古代核心（選用，成功率加倍），2 小時；成功率 30% + 突變基因每級 5%（上限 90%）。新增三種實驗室限定突變：夜光（售價 200%）、豐收（收成 +50%，至少 +1）、水晶（收成時額外 1–2 個水晶）；一般種植不會抽到。突變寫在種子上，會隨雜交（50%）與傳承保留。
+  - **種植**：特殊種子種到空地後，生長基因每級 -5% 生長時間（澆水時套用）、產量基因每 2 級 +1 收成、品質基因每級 +1% 品質加成、突變基因每級 +0.5% 突變機率；種子的突變直接成為作物的突變。收成時 30% 取回 1 顆同基因的種子（傳承）。
+  - **分享**：可以分享給同伺服器（群組）有農場的玩家，**對方沒有實驗室（或未滿 Lv.5）也能收**，並在實驗室頁的「種子庫」種下；每人每天最多送出 5 顆，每人每天只能收 1 位玩家的分享（台灣日期）。先依 farm_id 由小到大鎖定雙方農場再檢查上限，並行時也不會超過。
+  - **研究等級**：鑑定 +2、雜交 +10（失敗 +15）、突變研究 +8 經驗；Lv.2（100）2 個研究槽、Lv.3（300）3 個。
+  - **圖鑑**：新增「🍄 菇類」（6 種菇，原本列在加工品，已移出）與「🧪 特殊種子」（取得過哪些作物的特殊種子：鑑定、雜交、收成取回、收到分享時登記，`farm_codex.item_code = labseed_<作物>`）兩個分類；實驗室頁有「特殊種子圖鑑」「菇類圖鑑」按鈕。「全部圖鑑」的總數因此變多。
+  - **成就**：新分類「🧪 實驗室與菇房」10 個：實驗室落成、育種學徒（雜交 10）、育種專家（雜交 100，稱號）、新品種誕生、雜交大師（12 種雜交作物，稱號）、突變研究員（稱號）、慷慨育種家（分享 10 顆，稱號）、種子收藏家（特殊種子圖鑑 100%，稱號）、採菇人（菇 100 朵）、菇類達人（菇類圖鑑 100%，稱號）。
+  - **介紹網站**：新增卡片與「🧪 種子實驗室」說明（規則與數值依目前設定），**不列出雜交組合與雜交作物**；作物表、每週特賣也不包含雜交作物（每週特賣原本會把所有商店不賣的作物當成稀有種子輪流販售，已排除雜交作物）。
+  - **資料庫（Migration 0039，在 Python 專案）**：新表 `seed_labs`、`lab_seeds`、`lab_jobs`、`lab_records`、`lab_seed_shares`；`farm_plots.lab_seed_id`；突變 CHECK 加入 glow、bountiful、crystal；事件類型加入 `seed_lab`、`seed_share`；`crop_types` 新增 12 種雜交作物（`shop_buyable = false`，種子製造機也不能做）。`db.AlembicHead` 改為 0039。降版會刪除新表、把新突變改回 none、事件改成 use_item。
+  - 農田圖片：12 種雜交作物各 4 張（未成熟、成熟、乾枯、變種成熟），由使用者提供的 `example.png` 切割、去背，做成 **76×76**（比現有作物的 64×64 大，植物最高 72 像素，在農田上比較顯眼；農田圖照圖檔原尺寸貼上、底部對齊），放在 `farmimage/farm/crops/<代碼>/`。實驗室頁面不產生圖片（點擊頻繁，避免卡頓）。
+  - 測試：`game/seedlab`（雜交表、繼承、突變研究、鑑定與基因效果）、`services/seedlab_test.go`（建造、鑑定、雜交成功與失敗、突變研究、特殊種子的種植與收成、分享上限）、`bot/panel_lab_test.go`（從農田頁進入到分享的完整流程）。
 - **偷菜名單隱藏全是空地的玩家**（`SocialService.StealPlayers`）；2026-11-12 起只有空地與乾枯作物的玩家也不列出（有成長中或成熟的作物才列出）。
 - **音樂改寫成 Go（`internal/music`）**：Lavalink v4（REST＋WebSocket，30 秒看門狗自動重連）、Spotify 連結解析、16 個斜線指令（名稱與參數與 Python 相同）、播放控制按鈕與佇列分頁；各伺服器音量與前綴沿用 `data/music_guild_settings.json`。設定 `LAVALINK_URI`、`LAVALINK_PASSWORD`；`MUSIC_ENABLED` 且沒有 `MUSIC_BOT_TOKEN` 時在農場 Bot 內執行。只支援斜線指令（前綴指令需要 Message Content 特權 Intent）。實機測試：`TestRealLavalink`（讀 `FARMGM_TEST_LAVALINK_URL`／`PASSWORD`）。
 
@@ -108,7 +121,7 @@
 
 ## 設計原則
 
-- **資料庫 schema 不變**：與 Python 版共用同一個 PostgreSQL。Migration 仍由 Python 專案的 Alembic 管理。Go 只檢查 `alembic_version` 是否等於 `db.AlembicHead`（0038），不會建表或改結構。Python 新增 Migration 時，Go 要同步修改。
+- **資料庫 schema 不變**：與 Python 版共用同一個 PostgreSQL。Migration 仍由 Python 專案的 Alembic 管理。Go 只檢查 `alembic_version` 是否等於 `db.AlembicHead`（0038），不會建表或改結構。Python 新增 Migration 時，Go 要同步修改。2026-11-13 起為 0039（種子實驗室，Go 版新增的 Migration）。
 - **逐行對照 Python**：
   - 錯誤訊息、常數、繁體中文註解照搬。
   - 數值運算用 `numfmt` 保持與 Python 相同的結果。

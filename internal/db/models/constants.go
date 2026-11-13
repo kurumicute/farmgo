@@ -57,6 +57,9 @@ var EventTypes = []string{
 	"ruins_donate",
 	"ruins_guardian",
 	"rumor_treasure",
+	// 0039 種子實驗室（Go 版新增）
+	"seed_lab",
+	"seed_share",
 }
 
 // QualityCodes 作物品質代碼（inventory_items／farm_plots 等的 quality CHECK）。

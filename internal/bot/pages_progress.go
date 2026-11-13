@@ -361,6 +361,9 @@ func (p *Panel) buildCodex(_ context.Context, data any) (*ui.Embed, error) {
 		return nil
 	}, 0, cat.Key)
 	p.nav("成就與圖鑑", "progress", btn{emoji: "🏅", row: 1})
+	if cat.Key == "lab" || cat.Key == "mushroom" { // 從種子實驗室進來的圖鑑分類
+		p.labNav(1)
+	}
 	p.nav("回總覽", "main", btn{emoji: "🏠", row: 1})
 	return e, nil
 }

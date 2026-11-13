@@ -1,7 +1,7 @@
 // Package dbtest 資料庫測試輔助：從環境變數 FARMGM_TEST_DATABASE_URL 取得測試資料庫（名稱必須以 _test 結尾，
 // 測試會清空遊戲資料表）。沒有設定時跳過需要資料庫的測試。
 //
-// 測試資料庫的 schema 由 Python 專案的 Alembic 建立：`alembic upgrade head`（目前 0038）。
+// 測試資料庫的 schema 由 Python 專案的 Alembic 建立：`alembic upgrade head`（目前 0039）。
 package dbtest
 
 import (

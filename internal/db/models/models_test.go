@@ -29,7 +29,7 @@ func TestEventTypesMatchRules(t *testing.T) {
 	}
 }
 
-// allModels 全部 60 個資料表模型。
+// allModels 全部 65 個資料表模型（Python 60 個＋種子實驗室 5 個）。
 var allModels = []Table{
 	Player{}, CropType{}, AnimalType{}, Farm{}, FarmStats{}, FarmDailyStats{}, FarmPlot{}, InventoryItem{},
 	GamblePrize{}, GameTransaction{}, Group{}, GroupMember{}, FarmTool{}, FarmExploration{}, ExplorationLog{},
@@ -43,11 +43,12 @@ var allModels = []Table{
 	DailyCheckin{}, FarmCodexEntry{}, FarmAchievement{}, FarmTitle{}, WeeklyShopPurchase{}, FarmPet{},
 	FeatureSetting{}, FarmFeedback{}, GroupRuins{}, RuinsContribution{}, RuinsGuardian{}, RuinsGuardianHit{},
 	RumorDig{},
+	SeedLab{}, LabSeed{}, LabJob{}, LabRecord{}, LabSeedShare{},
 }
 
 func TestEveryFieldHasDBTagAndTablesUnique(t *testing.T) {
-	if len(allModels) != 60 {
-		t.Fatalf("模型數量 %d，Python 有 60 個資料表", len(allModels))
+	if len(allModels) != 65 {
+		t.Fatalf("模型數量 %d，應該有 65 個資料表（Python 60 個＋種子實驗室 5 個）", len(allModels))
 	}
 	seen := map[string]bool{}
 	for _, m := range allModels {

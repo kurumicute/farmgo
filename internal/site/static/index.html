@@ -134,6 +134,11 @@
           <p>農場 <span id="c-cellar-level">Lv.4</span> 開放，不用建造。上方農田種的作物決定長出哪種菇；投入探險帶回的木屑，就有機會長出靈芝、松露、發光菇等稀有菇。</p>
         </article>
         <article class="card">
+          <span class="card-icon" aria-hidden="true">🧪</span>
+          <h3>種子實驗室</h3>
+          <p>農場 <span id="c-lab-level">Lv.5</span> 起花金幣建造。把種子鑑定成有基因的特殊種子，兩兩雜交改良基因，還能培育出商店買不到的全新作物；突變研究讓種子帶上夜光、豐收、水晶等突變，也能分享給朋友。</p>
+        </article>
+        <article class="card">
           <span class="card-icon" aria-hidden="true">🏛️</span>
           <h3>古代遺跡與守護者</h3>
           <p>伺服器成員一起捐素材修復古代遺跡，修好後每個人每天都能<b>額外</b>探索一次；每週還要合力打倒石像守護者，否則遺跡會崩塌。</p>
@@ -166,7 +171,7 @@
         <article class="card">
           <span class="card-icon" aria-hidden="true">🏅</span>
           <h3>簽到、成就與圖鑑</h3>
-          <p>每天打開農場自動簽到，連續 7 天一輪；完成 <span id="c-achievements">33</span> 個成就領取道具與稱號，收集作物、動物產品、加工品、素材與魚類圖鑑。</p>
+          <p>每天打開農場自動簽到，連續 7 天一輪；完成 <span id="c-achievements">43</span> 個成就領取道具與稱號，收集作物、動物產品、加工品、素材、魚類、菇類與特殊種子圖鑑。</p>
         </article>
       </div>
     </section>
@@ -204,6 +209,7 @@
                   <tr><td>養動物</td><td>「🐔 動物」→ 先蓋畜舍 →「🛒 購買動物」→「🍽️ 全部餵食」→「🧺 收集全部」</td></tr>
                   <tr><td>加工</td><td>「🏭 加工」→「🏗️ 建造設施」→ 回加工頁選配方 →「📥 領取完成品」</td></tr>
                   <tr><td>種菇</td><td>「🌱 農田」→「🍄 地下菇房」→「木屑全部補滿」或選菇床投入木屑 →「收成」（Lv.4 起）</td></tr>
+                  <tr><td>培育種子</td><td>「🌱 農田」→「🧪 種子實驗室」→ 鑑定種子 →「🧬 雜交培育」選母本、父本 →「開始培育」→ 完成後「領取」；「🌰 種子庫」種下或分享</td></tr>
                   <tr><td>偷朋友的菜</td><td>「🥷 偷菜」→ 用玩家選單打開朋友的農田，再選要偷哪一格；也可以直接從作物選單選一株（可翻頁、🔄 重新整理）</td></tr>
                   <tr><td>防止被偷、查誰來偷</td><td>「🛡️ 防守」→ 購買設施 →「📍 調整守護範圍」；「🔦 巡查」查看偷菜者</td></tr>
                   <tr><td>探索山洞</td><td>「⛰️ 山洞」→ 選區域 →「🧭 出發探險」→ 時間到回來後「📦 領取探險獎勵」；「📖 探索紀錄」看最近 10 次</td></tr>
@@ -572,6 +578,43 @@
           </div>
         </details>
 
+        <details class="guide" id="seedlab">
+          <summary>🧪 種子實驗室</summary>
+          <div class="guide-body">
+            <ol>
+              <li>農場 <b id="g-lab-level">Lv.5</b> 起，花 <b id="g-lab-gold">5,000</b> 金幣建造：「🌱 農田」→「🧪 種子實驗室」→「建造實驗室」。</li>
+              <li><b>鑑定</b>：把背包裡的一般種子拿去鑑定（鑑定費是種子價格的 <span id="g-lab-fee-mul">5</span> 倍，最少 <span id="g-lab-fee-min">50</span> 金），就會變成有 4 種基因的<b>特殊種子</b>。稀有作物的種子鑑定出來的基因比較好。種子庫最多放 <span id="g-lab-capacity">25</span> 顆。</li>
+              <li><b>雜交</b>：選兩顆特殊種子當母本與父本，培育約 <b id="g-lab-time">1–3 小時</b>。同品種一定能配對，用來改良基因；某些不同品種的組合能雜交出<b>商店買不到的全新作物</b>（共 <span id="g-lab-hybrids">12</span> 種，組合要自己摸索）。新作物的基礎售價是雙親售價總和的 <b>1.5 倍</b>。雜交失敗也不會白費，會得到母本品種的種子並退回材料。</li>
+              <li>每個基因各有一半機率繼承母本或父本，培育時還可能升級或退化；世代會一代代往上加。可以加入選用材料：🍯 樹脂（成功率 +<span id="g-lab-resin">15</span>%）、🌿 藥草（時間 -<span id="g-lab-herb">30</span>%）、💎 水晶（指定一個基因升級機率 +<span id="g-lab-catalyst">20</span>%）。</li>
+              <li><b>突變研究</b>：用 💎 水晶 ×<span id="g-lab-mutate-crystal">2</span> 研究約 <span id="g-lab-mutate-time">2 小時</span>，成功率 <span id="g-lab-mutate-base">30</span>%＋突變基因每級 <span id="g-lab-mutate-level">5</span>%（最高 <span id="g-lab-mutate-max">90</span>%，加古代核心加倍）。成功時種子會帶上突變，種下後作物一定是這種突變，而且會一直傳承下去。</li>
+              <li><b>種下特殊種子</b>：從「種子庫」選種子和空地。收成時有 <span id="g-lab-inherit">30</span>% 機率取回 1 顆基因相同的種子。</li>
+              <li><b>分享</b>：可以把特殊種子送給同伺服器的朋友（對方沒有實驗室也能收、也能種）。每人每天最多送出 <span id="g-lab-share-send">5</span> 顆，每人每天只能收 <span id="g-lab-share-receive">1</span> 位玩家的分享。</li>
+              <li>研究等級提升後研究槽會增加（最多 <span id="g-lab-slots">3</span> 個）。實驗室裡也能查看🍄菇類與🌰特殊種子圖鑑，收集與培育都有對應的成就。</li>
+            </ol>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>基因</th><th>每高 1 級的效果（1 級沒有加成）</th></tr></thead>
+                <tbody id="g-lab-genes">
+                  <tr><td>⏱️ 生長</td><td>生長時間 -5%</td></tr>
+                  <tr><td>🧺 產量</td><td>每 2 級收成 +1</td></tr>
+                  <tr><td>⭐ 品質</td><td>品質加成 +1%</td></tr>
+                  <tr><td>🧬 突變</td><td>突變機率 +0.5%</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>實驗室限定的突變</th><th>效果</th></tr></thead>
+                <tbody id="g-lab-mutations">
+                  <tr><td>夜光作物</td><td>售價 ×2</td></tr>
+                  <tr><td>豐收作物</td><td>收成數量 +50%（至少 +1）</td></tr>
+                  <tr><td>水晶作物</td><td>收成時額外得到 1–2 個水晶</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
         <details class="guide" id="ruins">
           <summary>🏛️ 古代遺跡與守護者</summary>
           <div class="guide-body">
@@ -877,7 +920,7 @@
                 達成後按「🎁 領取全部」一次領完，每個成就只能領一次。</li>
               <li><b>稱號</b>：部分成就與世界 Boss（擊敗時名列前茅）會給稱號。到「🎖️ 稱號」選一個顯示，
                 會出現在總覽、排行榜與世界 Boss 貢獻排行的名字旁邊，例如「阿明〔傳說農夫〕」；也可以選「不顯示稱號」。</li>
-              <li><b>圖鑑</b>：「📖 圖鑑」分成 <span id="g-codex-cats">作物（含珍稀變種）、動物產品、加工品、山洞素材、魚類</span>。
+              <li><b>圖鑑</b>：「📖 圖鑑」分成 <span id="g-codex-cats">作物（含珍稀變種）、動物產品、加工品、山洞素材、魚類、菇類、特殊種子</span>。
                 收成、偷菜、收集動物產品、領取加工品、山洞探險與釣魚取得過的物品會自動登記，顯示累計數量與最高品質；沒取得過的顯示「？？？」。</li>
               <li><b>獎勵發放</b>：道具放進倉庫；倉庫放不下時改發等值金幣（道具商店價格），不會因為倉庫滿而領不到。簽到與成就獎勵不計入排名。</li>
             </ul>
@@ -932,6 +975,16 @@
                   <tr><td>📖 簽到與圖鑑</td><td>🐠 垂釣大師</td><td>魚類圖鑑達到 100 %</td><td>2,000 金幣、稱號「垂釣大師」</td></tr>
                   <tr><td>📖 簽到與圖鑑</td><td>📗 收藏家</td><td>全部圖鑑達到 50 %</td><td>人工養殖蚯蚓 ×2</td></tr>
                   <tr><td>📖 簽到與圖鑑</td><td>📚 博物學家</td><td>全部圖鑑達到 100 %</td><td>5,000 金幣、稱號「博物學家」</td></tr>
+                  <tr><td>🧪 實驗室與菇房</td><td>🧪 實驗室落成</td><td>建造種子實驗室</td><td>化肥 ×5</td></tr>
+                  <tr><td>🧪 實驗室與菇房</td><td>🧬 育種學徒</td><td>雜交成功達到 10 次</td><td>人工養殖蚯蚓 ×2</td></tr>
+                  <tr><td>🧪 實驗室與菇房</td><td>🔬 育種專家</td><td>雜交成功達到 100 次</td><td>3,000 金幣、稱號「育種專家」</td></tr>
+                  <tr><td>🧪 實驗室與菇房</td><td>🌱 新品種誕生</td><td>取得雜交作物種子</td><td>人工養殖蚯蚓 ×1</td></tr>
+                  <tr><td>🧪 實驗室與菇房</td><td>🌈 雜交大師</td><td>雜交作物種子達到 12 種</td><td>5,000 金幣、稱號「雜交大師」</td></tr>
+                  <tr><td>🧪 實驗室與菇房</td><td>☢️ 突變研究員</td><td>突變研究成功達到 1 次</td><td>巡查券 ×2、稱號「突變研究員」</td></tr>
+                  <tr><td>🧪 實驗室與菇房</td><td>🎁 慷慨育種家</td><td>分享特殊種子達到 10 顆</td><td>500 金幣、稱號「慷慨育種家」</td></tr>
+                  <tr><td>🧪 實驗室與菇房</td><td>🌰 種子收藏家</td><td>特殊種子圖鑑達到 100 %</td><td>5,000 金幣、稱號「種子收藏家」</td></tr>
+                  <tr><td>🧪 實驗室與菇房</td><td>🍄 採菇人</td><td>收成菇類達到 100 朵</td><td>化肥 ×5</td></tr>
+                  <tr><td>🧪 實驗室與菇房</td><td>✨ 菇類達人</td><td>菇類圖鑑達到 100 %</td><td>2,000 金幣、稱號「菇類達人」</td></tr>
                 </tbody>
               </table>
             </div>

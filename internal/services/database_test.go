@@ -10,6 +10,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/dbtest"
 	"farmgm/internal/game/gameerr"
+	"farmgm/internal/game/seedlab"
 )
 
 func TestInsertAndQuery(t *testing.T) {
@@ -21,8 +22,16 @@ func TestInsertAndQuery(t *testing.T) {
 	var codes, notBuyable []string
 	repotestQuery(t, e, "SELECT code FROM crop_types ORDER BY code", &codes)
 	repotestQuery(t, e, "SELECT code FROM crop_types WHERE NOT shop_buyable ORDER BY code", &notBuyable)
+	// 一般作物 8 種、稀有作物 2 種、種子實驗室的雜交作物 12 種（Migration 0039，商店不賣）
 	want := []string{"amber_melon", "carrot", "corn", "grape", "moonflower", "pumpkin", "strawberry", "tomato", "watermelon", "wheat"}
-	if !slices.Equal(codes, want) || !slices.Equal(notBuyable, []string{"amber_melon", "moonflower"}) {
+	wantNotBuyable := []string{"amber_melon", "moonflower"}
+	for _, c := range seedlab.HybridCrops {
+		want = append(want, c.Code)
+		wantNotBuyable = append(wantNotBuyable, c.Code)
+	}
+	slices.Sort(want)
+	slices.Sort(wantNotBuyable)
+	if !slices.Equal(codes, want) || !slices.Equal(notBuyable, wantNotBuyable) {
 		t.Fatal(codes, notBuyable)
 	}
 	if e.scalar("SELECT seed_price FROM crop_types WHERE code = 'strawberry'") != 60 ||

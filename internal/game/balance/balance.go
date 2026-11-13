@@ -421,10 +421,20 @@ const (
 
 // 依序排列（判定時依此順序切分機率區間）
 var (
-	QualityOrder  = []string{"normal", "good", "rare", "legendary"}
-	Qualities     = map[string]string{"normal": "普通", "good": "優良", "rare": "稀有", "legendary": "傳說"}
-	MutationOrder = []string{"none", "giant", "golden", "fast", "variant"}
-	Mutations     = map[string]string{"none": "無", "giant": "巨型作物", "golden": "黃金作物", "fast": "快速生長", "variant": "珍稀變種"}
+	QualityOrder = []string{"normal", "good", "rare", "legendary"}
+	Qualities    = map[string]string{"normal": "普通", "good": "優良", "rare": "稀有", "legendary": "傳說"}
+	// glow、bountiful、crystal 是種子實驗室的突變（Go 版新增，Migration 0039）：只能從實驗室的突變研究取得，一般種植不會抽到
+	MutationOrder = []string{"none", "giant", "golden", "fast", "variant", "glow", "bountiful", "crystal"}
+	Mutations     = map[string]string{"none": "無", "giant": "巨型作物", "golden": "黃金作物", "fast": "快速生長", "variant": "珍稀變種",
+		"glow": "夜光作物", "bountiful": "豐收作物", "crystal": "水晶作物"}
+)
+
+// 種子實驗室突變的效果（固定，不在品質與突變設定中調整）
+const (
+	GlowPricePct      = 200 // 夜光作物售價倍率（%），與黃金作物同樣疊在品質倍率之後
+	BountifulBonusPct = 50  // 豐收作物收成數量 +50%（無條件捨去，至少 +1）
+	CrystalDropMin    = 1   // 水晶作物收成時額外得到的水晶（素材）數量
+	CrystalDropMax    = 2
 )
 
 // Variant 珍稀變種代碼與名稱。
