@@ -448,27 +448,46 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		facilities = append(facilities, fmt.Sprintf("🏭 **%s**　%s", b.Name, state))
 	}
+	// 只列出「設施已建造、現有原料至少做得出 1 份」的配方（配方很多，全部列出太長；2026-11-13 使用者要求）
 	var recipes []string
-	var built []services.RecipeView
+	var built, makeable []services.RecipeView
+	lacking, unbuilt := 0, 0
 	for _, r := range d.recipes {
-		mark := "🔒"
-		if r.Built {
-			mark = "✅"
-			built = append(built, r)
+		if !r.Built {
+			unbuilt++
+			continue
 		}
+		built = append(built, r)
+		if canMake(r) == 0 {
+			lacking++
+			continue
+		}
+		makeable = append(makeable, r)
 		inputs := make([]string, len(r.InputOrder))
 		for i, name := range r.InputOrder {
 			inputs[i] = fmt.Sprintf("×%d %s", r.Inputs[name], name)
 		}
-		line := fmt.Sprintf("%s **%s**（%s）\n　📥 %s　➡️ 📤 ×%d %s\n　⏱️ %s／份", mark, r.Name, r.BuildingName,
+		line := fmt.Sprintf("✅ **%s**（%s）\n　📥 %s　➡️ 📤 ×%d %s\n　⏱️ %s／份", r.Name, r.BuildingName,
 			strings.Join(inputs, "、"), r.OutputQuantity, r.OutputName, services.LongDuration(r.Seconds))
 		if r.SellPrice != nil && *r.SellPrice != 0 {
 			line += fmt.Sprintf("　🏷️ 售價 %d", *r.SellPrice)
 		}
-		if r.Built {
-			line += fmt.Sprintf("\n　🧮 現有原料可做 **%d** 份", canMake(r))
-		}
+		line += fmt.Sprintf("\n　🧮 現有原料可做 **%d** 份", canMake(r))
 		recipes = append(recipes, line)
+	}
+	var others []string
+	if lacking > 0 {
+		others = append(others, fmt.Sprintf("%d 個原料不足", lacking))
+	}
+	if unbuilt > 0 {
+		others = append(others, fmt.Sprintf("%d 個需要先建造設施", unbuilt))
+	}
+	othersNote := ""
+	if len(others) > 0 {
+		othersNote = "📋 另外還有 " + strings.Join(others, "、") + "的配方沒有列出（各設施能做的配方在「🏗️ 建造設施」頁）。巨型作物也能當原料。"
+	}
+	if len(recipes) == 0 && len(built) > 0 {
+		recipes = []string{"目前的原料一份都做不了，先去收成或購買原料吧。"}
 	}
 	if p.picker != nil { // 每次重繪依最新的原料重算份數按鈕
 		most := 0
@@ -490,7 +509,8 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	e := &ui.Embed{Title: "🏭 ✦ 加工 ✦", Color: Blue, Description: sections(
 		Section{Title: "設施狀態", Lines: facilities},
-		Section{Title: "📖 配方（✅ 可以加工、🔒 需要先建造設施）", Lines: recipes, Sep: "\n\n"},
+		Section{Title: "📖 現在可以加工的配方", Lines: recipes, Sep: "\n\n"},
+		othersNote,
 		hint,
 	)}
 	if p.picker != nil {
@@ -523,15 +543,15 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
 		return nil
 	}
-	options := make([]option, len(built))
-	for i, r := range built {
+	options := make([]option, len(makeable))
+	for i, r := range makeable {
 		options[i] = option{r.Name, r.Code, fmt.Sprintf("%s｜%s／份", r.BuildingName, services.LongDuration(r.Seconds)), "🏭"}
 	}
 	selected := ""
 	if p.picker != nil {
 		selected = p.picker.Key
 	}
-	p.selectMenu("🏭 開始加工（只列出已建造設施的配方）…", options, pick, 0, selected)
+	p.selectMenu("🏭 開始加工（只列出現在做得出來的配方）…", options, pick, 0, selected)
 	p.quantityButtons(1)
 	p.nav("建造設施", "build", btn{emoji: "🏗️", row: 2, style: ui.Primary})
 	p.button(fmt.Sprintf("領取完成品（%d）", ready), func(ctx context.Context, it ui.Interaction) error {

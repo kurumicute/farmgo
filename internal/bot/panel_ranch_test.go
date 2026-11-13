@@ -131,6 +131,7 @@ func TestCraftButtonsFollowIngredientsAndQueue(t *testing.T) {
 	contains(t, p.Text, "✅", "7 份麵粉")
 	notContains(t, p.Text, "排在")
 	e.setInventory(pid, "wheat", 6)
+	p.goPage("craft") // 原料用完時選單不列麵粉，補了原料後重新打開
 	p.choose("開始加工", "flour")
 	p.click("做 2")
 	contains(t, p.Text, "排在訂單 #1 之後", "⏳ 排隊 1 張")
@@ -151,8 +152,10 @@ func TestCraftCollectFinishedOrders(t *testing.T) {
 	if !p.button("領取完成品（0）").Disabled {
 		t.Fatal("沒有完成品時應停用")
 	}
-	p.choose("開始加工", "flour")
-	contains(t, p.Text, "⚠️ 原料不足，一份都做不了")
+	if len(p.options("開始加工")) != 0 { // 小麥用完：麵粉不再列在選單
+		t.Fatal(p.options("開始加工"))
+	}
+	contains(t, p.Text, "目前的原料一份都做不了")
 	e.clock.Advance(24 * 3600)
 	p.goPage("craft")
 	p.click("領取完成品（1）")

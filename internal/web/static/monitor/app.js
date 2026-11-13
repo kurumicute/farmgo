@@ -4292,7 +4292,7 @@ if (typeof document !== "undefined") {
   // 機率在伺服器以萬分比（bp）存放，這裡以「%」顯示與輸入（可到小數兩位）
   const SEEDLAB_GROUPS = [
     ["🏗️ 開放與建造", [["unlock_level", "開放等級", 1, 100], ["build_gold", "建造費用（金幣）", 0, 100000000],
-      ["library_capacity", "種子庫上限（顆，最多 25）", 1, 25]]],
+      ["library_capacity", "種子庫上限（顆，最多 200；超過 25 顆時 Discord 會分頁顯示）", 1, 200]]],
     ["🔬 鑑定", [["identify_fee_multiplier", "鑑定費（種子價格的倍數）", 0, 100], ["identify_fee_min", "最低鑑定費（金幣）", 0, 1000000]]],
     ["⏱️ 時間", [["same_species_minutes", "同品種培育（分鐘）", 1, 1440], ["mutate_minutes", "突變研究（分鐘）", 1, 1440],
       ["herb_time_pct", "藥草縮短時間（%）", 0, 90]]],

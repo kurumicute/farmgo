@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"farmgm/internal/game/featurecfg"
+	"farmgm/internal/game/seedlab"
 )
 
 func TestLabPageFlow(t *testing.T) {
@@ -131,4 +134,55 @@ func mustInt(t *testing.T, s string) int64 {
 		t.Fatal(err)
 	}
 	return n
+}
+
+// 種子庫上限超過 25 顆時（管理網站可調到 200），種子庫與雜交頁的選單分頁顯示（2026-11-13 使用者要求）。
+func TestLabSeedPages(t *testing.T) {
+	e := setup(t)
+	cfg, _ := featurecfg.DeepCopy(seedlab.DefaultValue())
+	cfg["library_capacity"] = 30
+	if _, err := e.admin.UpdateFeatureSettings(e.ctx, "root", seedlab.ConfigKey, cfg); err != nil { // 和管理網站一樣存進資料庫
+		t.Fatal(err)
+	}
+	t.Cleanup(featurecfg.Reset)
+
+	p := e.makePlayer(alice, guildA, "阿明")
+	pid := p.panel.playerID
+	e.setLevel(pid, 5)
+	e.setGold(pid, 1_000_000)
+	p.goPage("lab")
+	p.click("建造實驗室")
+	p.click("確認建造")
+	e.setInventory(pid, "seed_wheat", 30)
+	for i := 0; i < 30; i++ {
+		p.goPage("lab")
+		p.choose("鑑定一般種子", "wheat")
+	}
+	p.goPage("lab_seeds")
+	contains(t, p.Text, "特殊種子 30／30（第 1/2 頁）")
+	if got := p.options("選擇種子"); len(got) != 25 {
+		t.Fatal(len(got))
+	}
+	p.click("上一頁（1/2）")
+	contains(t, p.Text, "（第 2/2 頁）")
+	if got := p.options("選擇種子"); len(got) != 5 {
+		t.Fatal(len(got))
+	}
+	p.goPage("lab_cross")
+	if got := p.options("選擇母本"); len(got) != 25 {
+		t.Fatal(len(got))
+	}
+	p.click("母本下一頁")
+	mothers := p.options("選擇母本")
+	if len(mothers) != 5 {
+		t.Fatal(len(mothers))
+	}
+	p.choose("選擇母本", mothers[0])
+	if got := p.options("選擇父本"); len(got) != 25 { // 其他 29 顆都能配對，第一頁 25 顆
+		t.Fatal(len(got))
+	}
+	p.click("父本下一頁")
+	if got := p.options("選擇父本"); len(got) != 4 {
+		t.Fatal(len(got))
+	}
 }

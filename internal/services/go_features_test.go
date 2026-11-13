@@ -11,6 +11,7 @@ import (
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/seasons"
+	"farmgm/internal/repositories/inventory"
 )
 
 // offSeason 現在不是的那個季節（測試時鐘的日期決定）。
@@ -169,4 +170,37 @@ func TestStealPlayersSkipWitheredOnlyFarms(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("%+v", rows)
 	}
+}
+
+// 巨型作物也能當加工原料（2026-11-13 使用者要求）：先扣沒有突變的，不夠再扣巨型作物；優良品質不算。
+func TestCraftUsesGiantCrops(t *testing.T) {
+	e := setup(t)
+	f := e.rancher()
+	e.ok(e.r.Build(e.ctx, f, "磨坊"))
+	e.setInv(f, "wheat", "normal", "none", 2)
+	e.setInv(f, "wheat", "normal", "giant", 5)
+	e.setInv(f, "wheat", "good", "none", 9) // 優良品質不能加工
+	stock := func(mutation, quality string) int {
+		n := 0
+		if err := e.s.transaction(e.ctx, func(tx *dbTx) error {
+			var err error
+			n, err = inventory.GetQuantity(e.ctx, tx, must[FarmStatus](t)(e.s.GetFarmStatus(e.ctx, f)).FarmID, "wheat", quality, mutation)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	pid := f
+	for _, r := range must[[]RecipeView](t)(e.r.Recipes(e.ctx, &pid)) {
+		if r.Code == "flour" && (r.CanMake == nil || *r.CanMake != 2) { // (2 + 5) / 3 = 2 份
+			t.Fatalf("可做份數不對：%+v", r.CanMake)
+		}
+	}
+	e.ok(e.r.StartCraft(e.ctx, f, "flour", 2)) // 需要 6 個：無突變 2 個 + 巨型 4 個
+	if stock("none", "normal") != 0 || stock("giant", "normal") != 1 || stock("none", "good") != 9 {
+		t.Fatal(stock("none", "normal"), stock("giant", "normal"), stock("none", "good"))
+	}
+	_, err := e.r.StartCraft(e.ctx, f, "flour", 1) // 只剩 1 個巨型小麥
+	wantKind(t, err, gameerr.InsufficientItems)
 }

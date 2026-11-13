@@ -167,14 +167,17 @@ func TestErrorScreenHidesPageAndReturnsWithSelection(t *testing.T) {
 	p.goPage("build")
 	p.choose("選擇要建造的設施", "mill")
 	p.goPage("craft")
-	p.choose("開始加工", "flour")
-	contains(t, p.Text, "原料不足，一份都做不了")
-	for _, l := range p.labels() {
-		if strings.HasPrefix(l, "做 ") {
-			t.Fatal(p.labels())
-		}
+	if len(p.options("開始加工")) != 0 { // 沒有小麥：做不出來的配方不列出
+		t.Fatal(p.options("開始加工"))
 	}
-	p.modal("自訂數量", "1") // 沒有小麥：失敗
+	contains(t, p.Text, "1 個原料不足")
+	pid := p.panel.playerID
+	e.setInventory(pid, "wheat", 3)
+	p.goPage("craft")
+	p.choose("開始加工", "flour")
+	contains(t, p.Text, "現有原料最多可做 **1** 份")
+	e.setInventory(pid, "wheat", 0) // 選好之後小麥不見了
+	p.modal("自訂數量", "1")            // 沒有小麥：失敗
 	if !strings.HasPrefix(p.Text, "⚠️ 無法完成") || strings.Contains(strings.SplitN(p.Text, "\n", 2)[0], "加工") {
 		t.Fatal(p.Text)
 	}
@@ -182,6 +185,7 @@ func TestErrorScreenHidesPageAndReturnsWithSelection(t *testing.T) {
 	if got := p.labels(); !slices.Equal(got, []string{"返回"}) || len(p.panel.View.Items()) != 1 {
 		t.Fatal(got)
 	}
+	e.setInventory(pid, "wheat", 3) // 補回原料，回到加工頁時麵粉會出現在選單
 	p.click("返回")
 	contains(t, p.Text, "🏭 ✦ 加工 ✦", "已選擇") // 回到加工頁，保留剛才選的麵粉
 	if got := p.defaults(optLabel); !slices.Equal(got, []string{"麵粉"}) {

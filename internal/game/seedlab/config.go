@@ -129,7 +129,7 @@ type intField struct {
 var intFields = []intField{
 	{"unlock_level", "開放等級", 1, 100, func(c *Config) *int { return &c.UnlockLevel }},
 	{"build_gold", "建造費用", 0, 100_000_000, func(c *Config) *int { return &c.BuildGold }},
-	{"library_capacity", "種子庫上限", 1, 25, func(c *Config) *int { return &c.LibraryCapacity }},
+	{"library_capacity", "種子庫上限", 1, 200, func(c *Config) *int { return &c.LibraryCapacity }}, // 超過 25 顆時 Discord 分頁顯示
 	{"identify_fee_multiplier", "鑑定費（種子價格的倍數）", 0, 100, func(c *Config) *int { return &c.IdentifyFeeMultiplier }},
 	{"identify_fee_min", "最低鑑定費", 0, 1_000_000, func(c *Config) *int { return &c.IdentifyFeeMin }},
 	{"same_species_minutes", "同品種培育時間（分鐘）", 1, 1440, func(c *Config) *int { return &c.SameSpeciesMinutes }},

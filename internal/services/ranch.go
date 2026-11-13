@@ -780,7 +780,7 @@ func (r *RanchService) Recipes(ctx context.Context, playerID *int64) ([]RecipeVi
 				if _, ok := have[item]; ok {
 					continue
 				}
-				if have[item], err = inventory.GetQuantity(ctx, t, farm.ID, item, "normal", "none"); err != nil {
+				if have[item], err = craftStock(ctx, t, farm.ID, item); err != nil {
 					return nil, err
 				}
 			}
@@ -888,7 +888,7 @@ func (r *RanchService) startOrder(ctx context.Context, t *db.Tx, farm *models.Fa
 	for _, item := range sp.InputOrder {
 		amount := sp.Inputs[item] * quantity
 		needed[item] = amount
-		have, err := inventory.GetQuantity(ctx, t, farm.ID, item, "normal", "none")
+		have, err := craftStock(ctx, t, farm.ID, item) // 普通品質（無突變＋巨型作物）
 		if err != nil {
 			return ActionResult{}, err
 		}
@@ -901,7 +901,7 @@ func (r *RanchService) startOrder(ctx context.Context, t *db.Tx, farm *models.Fa
 	}
 	// 扣除原料與建立訂單在同一筆交易中完成
 	for _, item := range sp.InputOrder {
-		ok, err := inventory.Remove(ctx, t, farm.ID, item, needed[item], "normal", "none")
+		ok, err := removeCraftStock(ctx, t, farm.ID, item, needed[item])
 		if err != nil {
 			return ActionResult{}, err
 		}
@@ -1315,4 +1315,45 @@ func (r *RanchService) UpgradePet(ctx context.Context, playerID int64, petCode s
 			lv-1, lv, petrules.BonusPct(intPtr(lv-1)), petrules.BonusPct(&lv), GoldChange(farm.Gold, -price), tail),
 			farm.Gold, -price, item, 1), nil
 	})
+}
+
+// CraftMutations 可以當加工原料的突變（依扣除順序）：巨型作物只是收成數量 ×2、售價和普通的一樣，所以也能拿來加工
+// （2026-11-12 使用者要求）。品質一律只收普通品質；退回原料時退成普通、無突變。
+var CraftMutations = []string{"none", "giant"}
+
+// craftStock 可以拿來加工的數量（普通品質、CraftMutations 的總和）。
+func craftStock(ctx context.Context, t *db.Tx, farmID int64, item string) (int, error) {
+	total := 0
+	for _, m := range CraftMutations {
+		n, err := inventory.GetQuantity(ctx, t, farmID, item, "normal", m)
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
+// removeCraftStock 依 CraftMutations 的順序扣除加工原料（先扣無突變）；不夠時回傳 false（呼叫端應回滾）。
+func removeCraftStock(ctx context.Context, t *db.Tx, farmID int64, item string, quantity int) (bool, error) {
+	left := quantity
+	for _, m := range CraftMutations {
+		if left == 0 {
+			break
+		}
+		n, err := inventory.GetQuantity(ctx, t, farmID, item, "normal", m)
+		if err != nil {
+			return false, err
+		}
+		take := min(n, left)
+		if take == 0 {
+			continue
+		}
+		ok, err := inventory.Remove(ctx, t, farmID, item, take, "normal", m)
+		if err != nil || !ok {
+			return false, err
+		}
+		left -= take
+	}
+	return left == 0, nil
 }

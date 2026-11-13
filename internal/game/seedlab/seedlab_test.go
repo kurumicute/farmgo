@@ -101,7 +101,7 @@ func TestConfigDefaultsAndOverrides(t *testing.T) {
 	for _, bad := range []func(featurecfg.Value){
 		func(v featurecfg.Value) { v["gene_up_bp"], v["gene_down_bp"] = 6000, 5000 },
 		func(v featurecfg.Value) { v["level3_exp"] = 50 },
-		func(v featurecfg.Value) { v["library_capacity"] = 26 },
+		func(v featurecfg.Value) { v["library_capacity"] = 201 },
 		func(v featurecfg.Value) { delete(v["hybrids"].(map[string]any), "dawn_melon") },
 		func(v featurecfg.Value) { v["build_gold"] = 1.5 },
 	} {

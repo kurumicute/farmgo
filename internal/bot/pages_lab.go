@@ -27,6 +27,31 @@ type labState struct {
 	resin    bool
 	herb     bool
 	catalyst string // 基因代碼；"" = 不使用
+	// 種子超過 25 顆（Discord 選單上限）時分頁：種子庫頁、雜交頁的母本與父本選單各自的頁碼
+	seedPage, motherPage, fatherPage int
+}
+
+// pageOf 第 page 頁（每頁 ui.MaxOptions 項）的內容、修正後的頁碼與總頁數。
+func pageOf[T any](items []T, page int) ([]T, int, int) {
+	pages := pageCount(len(items), ui.MaxOptions)
+	page = max(0, min(page, pages-1))
+	return items[min(len(items), page*ui.MaxOptions):min(len(items), (page+1)*ui.MaxOptions)], page, pages
+}
+
+// pageButtons 上一頁／下一頁按鈕（循環翻頁）；只有一頁時不顯示。
+func (p *Panel) pageButtons(label string, page *int, pages, row int, target string) {
+	if pages <= 1 {
+		return
+	}
+	move := func(delta int) ui.Handler {
+		return func(ctx context.Context, it ui.Interaction) error {
+			*page = ((*page+delta)%pages + pages) % pages
+			p.goTo(ctx, it, target, "")
+			return nil
+		}
+	}
+	p.button(fmt.Sprintf("%s上一頁（%d/%d）", label, *page+1, pages), move(-1), btn{emoji: "◀️", row: row})
+	p.button(label+"下一頁", move(1), btn{emoji: "▶️", row: row})
 }
 
 func (p *Panel) loadLab(ctx context.Context) (any, error) {
@@ -267,15 +292,22 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 	}
 	cfg := seedlab.Current()
 	e := &ui.Embed{Title: "🌰 ✦ 種子庫 ✦", Color: Teal}
+	// 種子超過 25 顆時分頁：清單與選單都只顯示這一頁
+	pageSeeds, page, pages := pageOf(v.Seeds, p.lab.seedPage)
+	p.lab.seedPage = page
 	var lines []string
-	for _, s := range v.Seeds {
+	for _, s := range pageSeeds {
 		lines = append(lines, fmt.Sprintf("`#%d` %s", s.ID, seedLine(s)))
 	}
 	sel := findSeed(v, p.lab.seed)
 	if sel != nil && sel.Busy {
 		sel = nil
 	}
-	parts := []any{Section{Title: fmt.Sprintf("特殊種子 %d／%d", len(v.Seeds), v.Capacity), Lines: lines}}
+	listTitle := fmt.Sprintf("特殊種子 %d／%d", len(v.Seeds), v.Capacity)
+	if pages > 1 {
+		listTitle += fmt.Sprintf("（第 %d/%d 頁）", page+1, pages)
+	}
+	parts := []any{Section{Title: listTitle, Lines: lines}}
 	if len(lines) == 0 {
 		parts = []any{"種子庫是空的。到實驗室把背包裡的一般種子拿去鑑定吧！"}
 	}
@@ -297,7 +329,7 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 		bpPct(cfg.InheritBP), cfg.ShareSendPerDay, cfg.ShareReceiveSenders)
 
 	var options []option
-	for _, s := range v.Seeds {
+	for _, s := range pageSeeds {
 		if s.Busy {
 			continue
 		}
@@ -307,7 +339,11 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 	if sel != nil {
 		selected = fmt.Sprint(sel.ID)
 	}
-	p.selectMenu("🌰 選擇種子…", options, func(ctx context.Context, it ui.Interaction, value string) error {
+	placeholder := "🌰 選擇種子…"
+	if pages > 1 {
+		placeholder = fmt.Sprintf("🌰 選擇種子（第 %d/%d 頁）…", page+1, pages)
+	}
+	p.selectMenu(placeholder, options, func(ctx context.Context, it ui.Interaction, value string) error {
 		id, _ := strconv.ParseInt(value, 10, 64)
 		p.lab.seed = id
 		p.goTo(ctx, it, "lab_seeds", "")
@@ -363,6 +399,7 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 			return nil
 		}, btn{emoji: "🌳", row: 3, disabled: !free || !crystals || v.Materials[seedlab.MatAncientCore] == 0})
 	}
+	p.pageButtons("", &p.lab.seedPage, pages, 3, "lab_seeds")
 	p.labNav(4)
 	p.nav("回農田", "plots", btn{emoji: "🌱", row: 4})
 	return e, nil
@@ -454,7 +491,15 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 	if mother != nil {
 		selected = fmt.Sprint(mother.ID)
 	}
-	p.selectMenu("♀ 選擇母本…", mothers, func(ctx context.Context, it ui.Interaction, value string) error {
+	// 種子超過 25 顆時分頁：還沒選母本時翻母本選單，選好母本後翻父本選單
+	mothers, mPage, mPages := pageOf(mothers, st.motherPage)
+	st.motherPage = mPage
+	mHolder := "♀ 選擇母本…"
+	if mPages > 1 {
+		mHolder = fmt.Sprintf("♀ 選擇母本（第 %d/%d 頁）…", mPage+1, mPages)
+	}
+	pagesFor, pageField, pageLabel := mPages, &st.motherPage, "母本"
+	p.selectMenu(mHolder, mothers, func(ctx context.Context, it ui.Interaction, value string) error {
 		st.mother, _ = strconv.ParseInt(value, 10, 64)
 		p.goTo(ctx, it, "lab_cross", "")
 		return nil
@@ -481,7 +526,14 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 			fathers = nil
 			e.Description += "\n\n⚠️ 種子庫沒有能和這顆母本配對的種子。"
 		}
-		p.selectMenu("♂ 選擇父本…", fathers, func(ctx context.Context, it ui.Interaction, value string) error {
+		fathers, fPage, fPages := pageOf(fathers, st.fatherPage)
+		st.fatherPage = fPage
+		fHolder := "♂ 選擇父本…"
+		if fPages > 1 {
+			fHolder = fmt.Sprintf("♂ 選擇父本（第 %d/%d 頁）…", fPage+1, fPages)
+		}
+		pagesFor, pageField, pageLabel = fPages, &st.fatherPage, "父本"
+		p.selectMenu(fHolder, fathers, func(ctx context.Context, it ui.Interaction, value string) error {
 			st.father, _ = strconv.ParseInt(value, 10, 64)
 			p.goTo(ctx, it, "lab_cross", "")
 			return nil
@@ -527,6 +579,7 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 		}), actOpts{page: "lab", noProgress: true})
 		return nil
 	}, btn{emoji: "🧬", style: ui.Success, row: 3, disabled: mother == nil || father == nil || v.FreeSlots == 0})
+	p.pageButtons(pageLabel, pageField, pagesFor, 3, "lab_cross")
 	p.labNav(4)
 	return e, nil
 }
