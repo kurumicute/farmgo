@@ -567,8 +567,14 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 // ======================================================================
 
 func (p *Panel) loadLog(ctx context.Context) (any, error) {
-	return p.svc().GetRecentTransactions(ctx, p.playerID, 15)
+	return p.svc().GetRecentTransactions(ctx, p.playerID, logMaxRecords)
 }
+
+// 操作紀錄與培育紀錄：一次讀最近的 logMaxRecords 筆，每頁 logPerPage 筆（2026-11-14 從只顯示 15 筆改成分頁）。
+const (
+	logMaxRecords = 100
+	logPerPage    = 10
+)
 
 // signedComma Python f"{n:+,}"。
 func signedComma(n int) string {
@@ -579,7 +585,9 @@ func signedComma(n int) string {
 }
 
 func (p *Panel) buildLog(_ context.Context, data any) (*ui.Embed, error) {
-	txs := data.([]services.TransactionInfo)
+	all := data.([]services.TransactionInfo)
+	txs, page, pages := pageSlice(all, p.logPage, logPerPage)
+	p.logPage = page
 	var lines []string
 	for _, t := range txs {
 		delta := ""
@@ -593,9 +601,11 @@ func (p *Panel) buildLog(_ context.Context, data any) (*ui.Embed, error) {
 		lines = append(lines, fmt.Sprintf("🕒 %s　**%s** %s\n　%s", tsv(t.CreatedAt), label, delta, cut(t.Description, 120)))
 	}
 	p.navBack(0)
+	p.pageButtons("", &p.logPage, pages, 0, "log")
 	e := &ui.Embed{Title: "🧾 ✦ 最近的操作紀錄 ✦", Color: Grey, Description: "目前沒有紀錄。"}
 	if len(lines) > 0 {
 		e.Description = sections(Section{Lines: lines, Sep: "\n\n"})
+		e.Footer = fmt.Sprintf("第 %d/%d 頁，共 %d 筆（可翻閱最近 %d 筆）", page+1, pages, len(all), logMaxRecords)
 	}
 	return e, nil
 }

@@ -136,8 +136,12 @@ func (g Genes) Stars() string {
 // GrowthReductionPct 生長基因：生長時間減少的百分比（與溫室、限時活動相加；下限沿用 balance.MinGrowSeconds）。
 func GrowthReductionPct(level int) int { return Current().GrowthPctPerLevel * max(0, level-1) }
 
-// YieldBonus 產量基因：每次收成增加的數量。
-func YieldBonus(level int) int { return max(0, level-1) / max(1, Current().YieldLevelsPerBonus) }
+// YieldBonus 產量基因：每次收成增加的數量 = 作物原本收成數量 × 每級 % × (等級 − 1)，無條件進位
+// （2026-11-14 改成百分比：原本每 2 級 +1，鑑定出的 1–2 級完全沒有加成）。baseQuantity 是作物目錄的收成數量。
+func YieldBonus(level, baseQuantity int) int {
+	pct := Current().YieldPctPerLevel * max(0, level-1) * max(0, baseQuantity)
+	return (pct + 99) / 100
+}
 
 // QualityBonusBP 品質基因：品質加成（與農場等級、限時活動的加成相加）。
 func QualityBonusBP(level int) int { return Current().QualityBPPerLevel * max(0, level-1) }

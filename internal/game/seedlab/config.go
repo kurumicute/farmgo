@@ -47,7 +47,7 @@ type Config struct {
 	ShareSendPerDay       int
 	ShareReceiveSenders   int
 	GrowthPctPerLevel     int
-	YieldLevelsPerBonus   int
+	YieldPctPerLevel      int // 產量基因每級增加的收成：作物原本收成數量的 %（無條件進位，所以 2 級起至少 +1）
 	QualityBPPerLevel     int
 	MutationBPPerLevel    int
 	ExpIdentify           int
@@ -75,16 +75,25 @@ var defaultHybrids = map[string]HybridSetting{
 }
 
 // DefaultConfig 預設設定（每次回傳新的副本）。
+//
+// 2026-11-14 基因強化平衡（玩家回饋：鑑定後的種子收益比一般種子還低、改良基因太慢）：
+//   - 鑑定費 種子價 ×5（正式環境 ×2）、最低 50 → ×1、最低 10：原本小麥鑑定費是種子價的 10 倍、比兩次收成還貴。
+//   - 收成取回種子 30% → 60%：一顆特殊種子平均能種 2.5 次（原本 1.4 次），投資攤得開。
+//   - 生長 每級 -5% → -6%；產量 每 2 級 +1 → 每級 +15%（無條件進位，鑑定出的 2 級就 +1）；
+//     品質 每級 +1% → +5%；突變 每級 +0.5% → +1.5%。原本品質、突變加成換算成售價不到 +2%，幾乎沒有感覺。
+//   - 基因升級 15% → 25%、退化 10% → 5%；同品種改良 60 → 30 分鐘：改良到高等級的時間大約減半。
+//   - 結果（依正式環境作物價格試算，含鑑定費與取回機率）：剛鑑定的種子每小時收益約為一般種子的 1.2–1.6 倍
+//     （原本 0.2–0.8 倍，小麥甚至虧錢）；全部 5 級約 2.5–3.9 倍，是長期培育的目標。
 func DefaultConfig() *Config {
 	c := &Config{
 		UnlockLevel: 5, BuildGold: 5000, LibraryCapacity: 25,
-		IdentifyFeeMultiplier: 5, IdentifyFeeMin: 50,
-		SameSpeciesMinutes: 60, MutateMinutes: 120,
+		IdentifyFeeMultiplier: 1, IdentifyFeeMin: 10,
+		SameSpeciesMinutes: 30, MutateMinutes: 120,
 		ResinSuccessBP: 1500, HerbTimePct: 30, CatalystUpBP: 2000,
-		GeneUpBP: 1500, GeneDownBP: 1000, InheritMutationBP: 5000, CrossMutationPerLvBP: 100,
+		GeneUpBP: 2500, GeneDownBP: 500, InheritMutationBP: 5000, CrossMutationPerLvBP: 100,
 		MutateCrystal: 2, MutateBaseBP: 3000, MutatePerLevelBP: 500, MutateMaxBP: 9000,
-		InheritBP: 3000, ShareSendPerDay: 5, ShareReceiveSenders: 1,
-		GrowthPctPerLevel: 5, YieldLevelsPerBonus: 2, QualityBPPerLevel: 100, MutationBPPerLevel: 50,
+		InheritBP: 6000, ShareSendPerDay: 5, ShareReceiveSenders: 1,
+		GrowthPctPerLevel: 6, YieldPctPerLevel: 15, QualityBPPerLevel: 500, MutationBPPerLevel: 150,
 		ExpIdentify: 2, ExpCross: 10, ExpCrossFail: 15, ExpMutate: 8,
 		LevelExp: [MaxLevel + 1]int{0, 0, 100, 300},
 		Hybrids:  map[string]HybridSetting{},
@@ -149,7 +158,7 @@ var intFields = []intField{
 	{"share_send_per_day", "每天最多送出的種子", 0, 100, func(c *Config) *int { return &c.ShareSendPerDay }},
 	{"share_receive_senders", "每天最多收幾位玩家的分享", 1, 100, func(c *Config) *int { return &c.ShareReceiveSenders }},
 	{"growth_pct_per_level", "生長基因每級縮短的時間（%）", 0, 20, func(c *Config) *int { return &c.GrowthPctPerLevel }},
-	{"yield_levels_per_bonus", "產量基因每幾級 +1 收成", 1, 4, func(c *Config) *int { return &c.YieldLevelsPerBonus }},
+	{"yield_pct_per_level", "產量基因每級增加的收成（%）", 0, 50, func(c *Config) *int { return &c.YieldPctPerLevel }},
 	{"quality_bp_per_level", "品質基因每級的品質加成", 0, 1_000, func(c *Config) *int { return &c.QualityBPPerLevel }},
 	{"mutation_bp_per_level", "突變基因每級的突變加成", 0, 1_000, func(c *Config) *int { return &c.MutationBPPerLevel }},
 	{"exp_identify", "鑑定的研究經驗", 0, 10_000, func(c *Config) *int { return &c.ExpIdentify }},
@@ -176,8 +185,14 @@ func encodeConfig(c *Config) featurecfg.Value {
 
 func parseConfig(raw featurecfg.Value) (*Config, error) {
 	c := &Config{Hybrids: map[string]HybridSetting{}}
+	defaults := DefaultConfig()
 	for _, f := range intFields {
-		n, err := featurecfg.IntValue(raw[f.key], f.label, f.low, f.high)
+		v, ok := raw[f.key]
+		if !ok { // 新增的設定項目：之前存的快照沒有這個 key 時用預設值（不讓整份設定失效）
+			*f.ptr(c) = *f.ptr(defaults)
+			continue
+		}
+		n, err := featurecfg.IntValue(v, f.label, f.low, f.high)
 		if err != nil {
 			return nil, err
 		}

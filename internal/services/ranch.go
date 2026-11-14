@@ -888,7 +888,7 @@ func (r *RanchService) startOrder(ctx context.Context, t *db.Tx, farm *models.Fa
 	for _, item := range sp.InputOrder {
 		amount := sp.Inputs[item] * quantity
 		needed[item] = amount
-		have, err := craftStock(ctx, t, farm.ID, item) // 普通品質（無突變＋巨型作物）
+		have, err := craftStock(ctx, t, farm.ID, item) // 普通品質（無突變＋巨型、快速生長作物）
 		if err != nil {
 			return ActionResult{}, err
 		}
@@ -1317,9 +1317,10 @@ func (r *RanchService) UpgradePet(ctx context.Context, playerID int64, petCode s
 	})
 }
 
-// CraftMutations 可以當加工原料的突變（依扣除順序）：巨型作物只是收成數量 ×2、售價和普通的一樣，所以也能拿來加工
-// （2026-11-12 使用者要求）。品質一律只收普通品質；退回原料時退成普通、無突變。
-var CraftMutations = []string{"none", "giant"}
+// CraftMutations 可以當加工原料的突變（依扣除順序）：巨型作物只是收成數量 ×2、快速生長只縮短生長時間，
+// 兩者售價都和普通的一樣，所以也能拿來加工
+// （巨型 2026-11-12、快速生長 2026-11-14 使用者要求）。品質一律只收普通品質；退回原料時退成普通、無突變。
+var CraftMutations = []string{"none", "giant", "fast"}
 
 // craftStock 可以拿來加工的數量（普通品質、CraftMutations 的總和）。
 func craftStock(ctx context.Context, t *db.Tx, farmID int64, item string) (int, error) {

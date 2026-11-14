@@ -82,21 +82,31 @@ func TestConfigDefaultsAndOverrides(t *testing.T) {
 	}
 	raw, _ := featurecfg.DeepCopy(DefaultValue())
 	raw["build_gold"] = 8000
-	raw["same_species_minutes"] = 30
+	raw["same_species_minutes"] = 45
 	raw["hybrids"].(map[string]any)["golden_grain"] = map[string]any{"success_bp": 9900, "minutes": 10}
 	v, err := featurecfg.Validate(ConfigKey, raw)
 	if err != nil {
 		t.Fatal(err)
 	}
 	featurecfg.SetCurrent(ConfigKey, v)
-	if c := Current(); c.BuildGold != 8000 || c.SameSpeciesMinutes != 30 {
+	if c := Current(); c.BuildGold != 8000 || c.SameSpeciesMinutes != 45 {
 		t.Fatalf("%+v", c)
 	}
 	if h := FindHybrid("corn", "wheat"); h.SuccessBP != 9900 || h.Minutes != 10 {
 		t.Fatalf("%+v", h)
 	}
-	if d := (CrossPlan{Mother: "wheat", Father: "wheat"}).Duration(); d != 30*time.Minute {
+	if d := (CrossPlan{Mother: "wheat", Father: "wheat"}).Duration(); d != 45*time.Minute {
 		t.Fatal(d)
+	}
+	// 舊快照沒有新增的設定項目（例如 yield_pct_per_level）、還留著已移除的 key：缺的用預設值，整份設定照樣生效
+	old, _ := featurecfg.DeepCopy(DefaultValue())
+	delete(old, "yield_pct_per_level")
+	old["yield_levels_per_bonus"] = 2
+	old["identify_fee_multiplier"] = 2
+	if v, err := featurecfg.Validate(ConfigKey, old); err != nil || v["yield_pct_per_level"] != 15 || v["identify_fee_multiplier"] != 2 {
+		t.Fatal(v, err)
+	} else if _, stale := v["yield_levels_per_bonus"]; stale {
+		t.Fatal("已移除的 key 應該被丟掉")
 	}
 	for _, bad := range []func(featurecfg.Value){
 		func(v featurecfg.Value) { v["gene_up_bp"], v["gene_down_bp"] = 6000, 5000 },
@@ -118,7 +128,7 @@ func TestCrossPlan(t *testing.T) {
 	if code, bp, ok := same.Result(); !ok || code != "wheat" || bp != 10_000 {
 		t.Fatal(code, bp, ok)
 	}
-	if same.Duration() != time.Hour {
+	if same.Duration() != 30*time.Minute {
 		t.Fatal(same.Duration())
 	}
 	p := CrossPlan{Mother: "strawberry", Father: "moonflower", Resin: true, Herb: true, Catalyst: GeneYield}
@@ -149,13 +159,13 @@ func TestInheritGenes(t *testing.T) {
 	if c.Genes != (Genes{2, 5, 2, 5}) || c.Generation != 4 || c.Mutation != "none" {
 		t.Fatalf("%+v", c)
 	}
-	// 升級（u < 15%）與上限 5；退化（15%–25%）與下限 1
+	// 升級（u < 25%）與上限 5；退化（25%–30%）與下限 1
 	c = Inherit(Parent{Genes{1, 1, 1, 1}, 1, "none"}, Parent{Genes{5, 5, 5, 5}, 1, "none"}, "",
-		seq(0.9, 0.0, 0.1, 0.2, 0.9, 0.2, 0.1, 0.0, 0.99))
+		seq(0.9, 0.0, 0.1, 0.27, 0.9, 0.27, 0.1, 0.0, 0.99))
 	if c.Genes != (Genes{5, 1, 4, 2}) {
 		t.Fatalf("%+v", c.Genes)
 	}
-	// 催化劑：u = 0.3 一般是維持，指定的基因升級（15% + 20% = 35%）
+	// 催化劑：u = 0.3 一般是維持，指定的基因升級（25% + 20% = 45%）
 	c = Inherit(mother, mother, GeneQuality, seq(0.1, 0.3, 0.1, 0.3, 0.1, 0.3, 0.1, 0.3, 0.99))
 	if c.Genes != (Genes{2, 2, 3, 2}) {
 		t.Fatalf("%+v", c.Genes)
@@ -192,11 +202,12 @@ func TestIdentifyAndEffects(t *testing.T) {
 	if g := RollIdentify(true, seq(0.9)); g != (Genes{2, 2, 2, 2}) {
 		t.Fatalf("%+v", g)
 	}
-	if GrowthReductionPct(1) != 0 || GrowthReductionPct(5) != 20 || YieldBonus(1) != 0 || YieldBonus(3) != 1 ||
-		YieldBonus(5) != 2 || QualityBonusBP(5) != 400 || MutationBonusBP(5) != 200 {
+	// 產量：收成數量 × 15% × (等級 − 1)，無條件進位（2 收成 2 級 0.3 → 1；3 收成 5 級 1.8 → 2；6 收成 5 級 3.6 → 4）
+	if GrowthReductionPct(1) != 0 || GrowthReductionPct(5) != 24 || YieldBonus(1, 3) != 0 || YieldBonus(2, 2) != 1 ||
+		YieldBonus(5, 3) != 2 || YieldBonus(5, 6) != 4 || YieldBonus(3, 0) != 0 || QualityBonusBP(5) != 2000 || MutationBonusBP(5) != 600 {
 		t.Fatal("基因效果")
 	}
-	if IdentifyFee(5) != 50 || IdentifyFee(500) != 2500 {
+	if IdentifyFee(5) != 10 || IdentifyFee(500) != 500 {
 		t.Fatal("鑑定費用")
 	}
 	if Slots(1) != 1 || Slots(3) != 3 || Slots(9) != 3 || LevelFor(0) != 1 || LevelFor(100) != 2 || LevelFor(999) != 3 ||

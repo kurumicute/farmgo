@@ -126,20 +126,19 @@ func TestSeedLabCross(t *testing.T) {
 	corn := e.identify(pid, "corn")
 	grape := e.identify(pid, "grape")
 
-	_, err := e.s.StartCross(e.ctx, pid, wheat.ID, grape.ID, false, false, "")
-	wantMsg(t, err, gameerr.Validation, "不能雜交")
-	_, err = e.s.StartCross(e.ctx, pid, wheat.ID, corn.ID, true, false, "")
+	_, err := e.s.StartCross(e.ctx, pid, wheat.ID, corn.ID, true, false, "")
 	wantMsg(t, err, gameerr.InsufficientItems, "樹脂")
 
-	// 小麥 × 玉米 → 黃金穀物（用樹脂與水晶催化產量基因）
+	// 小麥 × 玉米 → 黃金穀物（用樹脂與水晶催化產量基因）。配方隱藏（2026-11-14）：還沒發現的配方不顯示結果與成功率
 	e.give(pid, seedlab.MatResin, 1)
 	e.give(pid, seedlab.MatCrystal, 1)
 	r := e.ok(e.s.StartCross(e.ctx, pid, wheat.ID, corn.ID, true, false, seedlab.GeneYield))
-	if !strings.Contains(r.Message, "黃金穀物") || !strings.Contains(r.Message, "成功率 85%") {
+	if !strings.Contains(r.Message, "試驗雜交") || strings.Contains(r.Message, "黃金穀物") || strings.Contains(r.Message, "成功率") {
 		t.Fatal(r.Message)
 	}
 	v := e.lab(pid)
-	if len(v.Jobs) != 1 || v.FreeSlots != 0 || v.Jobs[0].ResultName != "黃金穀物" || v.ReadyCount != 0 {
+	if len(v.Jobs) != 1 || v.FreeSlots != 0 || !v.Jobs[0].Unknown || v.Jobs[0].ResultName != "❔ 結果未知" || v.ReadyCount != 0 ||
+		len(v.KnownHybrids) != 0 {
 		t.Fatalf("%+v", v.Jobs)
 	}
 	_, err = e.s.StartCross(e.ctx, pid, grape.ID, grape.ID, false, false, "")
@@ -155,7 +154,7 @@ func TestSeedLabCross(t *testing.T) {
 	e.s.LabRng = func() float64 { return 0 }
 	e.clock.Advance((2 * time.Hour).Seconds())
 	r = e.ok(e.s.CollectLab(e.ctx, pid))
-	if !strings.Contains(r.Message, "雜交成功") || !strings.Contains(r.Message, "黃金穀物") {
+	if !strings.Contains(r.Message, "雜交成功") || !strings.Contains(r.Message, "📖 發現新配方：小麥 × 玉米 → 黃金穀物") {
 		t.Fatal(r.Message)
 	}
 	gg := e.labSeed(pid, "golden_grain")
@@ -180,7 +179,7 @@ func TestSeedLabCross(t *testing.T) {
 	e.s.LabRng = func() float64 { return 0.99 }
 	e.clock.Advance((5 * time.Hour).Seconds())
 	r = e.ok(e.s.CollectLab(e.ctx, pid))
-	if !strings.Contains(r.Message, "雜交失敗") {
+	if !strings.Contains(r.Message, "雜交失敗") || !strings.Contains(r.Message, "好像有反應") { // 有這個配方但還沒發現：給提示
 		t.Fatal(r.Message)
 	}
 	if g := e.labSeed(pid, "grape"); g.Generation != 2 {
@@ -192,6 +191,36 @@ func TestSeedLabCross(t *testing.T) {
 	recs := must[[]LabRecordView](t)(e.s.LabRecords(e.ctx, pid, 10))
 	if len(recs) != 6 || recs[0].Kind != "cross" || recs[0].Success || !recs[1].Success {
 		t.Fatalf("%+v", recs)
+	}
+
+	// 已發現的配方：顯示結果與成功率；失敗時不再給提示
+	w2, c2 := e.identify(pid, "wheat"), e.identify(pid, "corn")
+	r = e.ok(e.s.StartCross(e.ctx, pid, w2.ID, c2.ID, false, false, ""))
+	if !strings.Contains(r.Message, "小麥 × 玉米 → 黃金穀物（成功率 70%）") {
+		t.Fatal(r.Message)
+	}
+	if v := e.lab(pid); !v.KnownHybrids["golden_grain"] || v.Jobs[0].Unknown || v.Jobs[0].ResultName != "黃金穀物" {
+		t.Fatalf("%+v %+v", v.KnownHybrids, v.Jobs)
+	}
+	e.clock.Advance((2 * time.Hour).Seconds())
+	if r = e.ok(e.s.CollectLab(e.ctx, pid)); !strings.Contains(r.Message, "雜交失敗") || strings.Contains(r.Message, "好像有反應") {
+		t.Fatal(r.Message)
+	}
+
+	// 不在雜交表中的組合（小麥 × 葡萄）也能試驗：一定得到母本品種，材料退回
+	w3, g3 := e.identify(pid, "wheat"), e.identify(pid, "grape")
+	e.give(pid, seedlab.MatResin, 1)
+	r = e.ok(e.s.StartCross(e.ctx, pid, w3.ID, g3.ID, true, false, ""))
+	if !strings.Contains(r.Message, "試驗雜交：小麥 × 葡萄 → ❔ 結果未知") {
+		t.Fatal(r.Message)
+	}
+	e.s.LabRng = func() float64 { return 0 } // 擲骰成功也不會產生新品種
+	e.clock.Advance(float64(seedlab.Current().SameSpeciesMinutes * 60))
+	if r = e.ok(e.s.CollectLab(e.ctx, pid)); !strings.Contains(r.Message, "沒有產生新品種，得到小麥種子") {
+		t.Fatal(r.Message)
+	}
+	if e.qty(pid, seedlab.MatResin) != 1 {
+		t.Fatal("試驗沒有結果時材料要退回")
 	}
 	e.invariant()
 }
@@ -228,7 +257,7 @@ func TestSeedLabMutationAndPlant(t *testing.T) {
 		t.Fatalf("%+v", seed)
 	}
 
-	// 種下：突變直接帶到作物上，產量基因 2 級不加數量（每 2 級 +1，要 3 級）
+	// 種下：突變直接帶到作物上
 	r = e.ok(e.s.PlantLabSeed(e.ctx, pid, seed.ID, 1))
 	if !strings.Contains(r.Message, "特殊小麥種子") {
 		t.Fatal(r.Message)
@@ -238,9 +267,9 @@ func TestSeedLabMutationAndPlant(t *testing.T) {
 	}
 	_, err = e.s.PlantLabSeed(e.ctx, pid, seed.ID, 2)
 	wantKind(t, err, gameerr.NotFound) // 已經種下
-	// 澆水：生長基因 2 級 → -5%
+	// 澆水：生長基因 2 級 → -6%
 	e.ok(e.s.WaterCrop(e.ctx, pid, 1))
-	if n := e.scalar("SELECT count(*)::int FROM game_transactions WHERE event_type = 'water' AND description LIKE '%生長基因 -5%'"); n != 1 {
+	if n := e.scalar("SELECT count(*)::int FROM game_transactions WHERE event_type = 'water' AND description LIKE '%生長基因 -6%'"); n != 1 {
 		t.Fatal(n)
 	}
 	// 收成：水晶作物額外給水晶；u = 0 → 取回 1 顆同基因的種子
@@ -273,7 +302,7 @@ func TestSeedLabYieldAndGlow(t *testing.T) {
 	seed := e.identify(pid, "wheat")
 	e.exec("UPDATE lab_seeds SET gene_yield = 5, mutation = 'glow' WHERE id = $1", seed.ID)
 	e.ok(e.s.PlantLabSeed(e.ctx, pid, seed.ID, 1))
-	// 小麥每次收成 2 個 + 產量基因 5 級 +2
+	// 小麥每次收成 2 個 + 產量基因 5 級：2 × 15% × 4 = 1.2，無條件進位 +2
 	if n := e.scalar("SELECT remaining_quantity FROM farm_plots WHERE plot_number = 1 AND lab_seed_id IS NOT NULL"); n != 4 {
 		t.Fatal(n)
 	}

@@ -217,7 +217,7 @@ func (s *GameService) plantWith(ctx context.Context, t *db.Tx, farm *models.Farm
 	}
 	quantity := genetics.HarvestQuantity(crop.HarvestQuantity, mutation, settings, h.Value)
 	if labSeed != nil {
-		quantity += seedlab.YieldBonus(labSeed.GeneYield)
+		quantity += seedlab.YieldBonus(labSeed.GeneYield, crop.HarvestQuantity)
 	}
 	if err := farms.Plant(ctx, t, plot, crop.ID, quantity, now, quality, mutation); err != nil {
 		return "", nil, err

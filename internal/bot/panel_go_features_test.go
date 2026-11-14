@@ -5,6 +5,7 @@ package bot
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -57,7 +58,33 @@ func TestShopListsOnlyInSeasonSeedsAndPricesShowSeason(t *testing.T) {
 	}
 	contains(t, p.Text, "商店只賣當季可以種的種子")
 	p.goPage("prices")
-	contains(t, p.Text, fmt.Sprintf("📈 非當季售價 +%d%%", seasons.OffSeasonSellPct-100), "非當季的作物售價")
+	contains(t, p.Text, "非當季的作物售價")
+	// 價目表依單價由高到低分頁（2026-11-14）：胡蘿蔔便宜，在後面的頁面
+	want := fmt.Sprintf("📈 非當季售價 +%d%%", seasons.OffSeasonSellPct-100)
+	for i := 0; i < 5 && !strings.Contains(p.Text, want); i++ {
+		p.click("下一頁")
+	}
+	contains(t, p.Text, want)
+}
+
+// 價目表：作物多時分頁、依單價由高到低；商店不賣種子的作物不顯示種子價格（2026-11-14 玩家回報）。
+func TestPricesPagedAndHideUnbuyableSeedPrice(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "玩家")
+	p.goPage("prices")
+	contains(t, p.Text, "第 1/", "🧬 雜交作物（種子只能在種子實驗室培育）")
+	if strings.Contains(p.Text, "**小麥**") { // 最便宜的小麥不會在第 1 頁
+		t.Fatal(p.Text)
+	}
+	seen := p.Text
+	for i := 0; i < 5 && !strings.Contains(p.Text, "**小麥**　種子"); i++ {
+		p.click("下一頁")
+		seen += p.Text
+	}
+	contains(t, seen, "**小麥**　種子 ", "**月光花**　🔒 商店不賣種子")
+	if strings.Contains(seen, "**星夜花**　種子") {
+		t.Fatal("雜交作物不應該顯示種子價格")
+	}
 }
 
 func TestCellarPageFromPlots(t *testing.T) {

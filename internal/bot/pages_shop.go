@@ -16,6 +16,7 @@ import (
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/seasons"
+	"farmgm/internal/game/seedlab"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/services"
 )
@@ -318,8 +319,13 @@ func (p *Panel) buildPrices(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		return strings.Join(parts, "｜")
 	}
+	// 作物變多後一頁放不下（Embed 4000 字會截掉後面的高價作物）：依單價由高到低排序並分頁（2026-11-14）
+	list = slices.Clone(list)
+	sort.SliceStable(list, func(i, j int) bool { return list[i].SellPrice > list[j].SellPrice })
+	shown, page, pages := pageSlice(list, p.pricePage, pricesPerPage)
+	p.pricePage = page
 	var blocks []string
-	for _, c := range list {
+	for _, c := range shown {
 		season := ""
 		if c.SeasonText != "" {
 			season = "　" + c.SeasonText
@@ -327,19 +333,39 @@ func (p *Panel) buildPrices(_ context.Context, data any) (*ui.Embed, error) {
 		if c.SeasonSellPct > 100 { // 非當季：賣價較高（Go 版新增）
 			season += fmt.Sprintf("　📈 非當季售價 +%d%%", c.SeasonSellPct-100)
 		}
-		blocks = append(blocks, fmt.Sprintf("%s **%s**　種子 %d 金%s\n　⏱️ %s　🧺 收成 ×%d %s%s\n　🏷️ 一般：%s\n　🌟 黃金作物：%s\n　💎 珍稀變種「%s」：%s",
-			cropEmoji(c.Code), c.Name, c.SeedPrice, season, services.LongDuration(c.GrowSeconds), c.HarvestQuantity,
+		blocks = append(blocks, fmt.Sprintf("%s **%s**　%s%s\n　⏱️ %s　🧺 收成 ×%d %s%s\n　🏷️ 一般：%s\n　🌟 黃金作物：%s\n　💎 珍稀變種「%s」：%s",
+			cropEmoji(c.Code), c.Name, seedPriceText(c.CropInfo), season, services.LongDuration(c.GrowSeconds), c.HarvestQuantity,
 			cropEmoji(c.Code), c.Name, row(c.Prices, "none"), row(c.Prices, "golden"), c.VariantName, row(c.Prices, "variant")))
+	}
+	title := "作物（依單價由高到低）"
+	if pages > 1 {
+		title = fmt.Sprintf("作物（依單價由高到低，第 %d/%d 頁）", page+1, pages)
 	}
 	e := &ui.Embed{Title: "📈 ✦ 市場價格 ✦", Color: Gold, Description: sections(
 		fmt.Sprintf("每個農產品的單價依 **品質** 與 **突變** 而不同（金幣／個）。\n%s：當季作物照原價，非當季的作物售價 +%d%%（物以稀為貴）。",
 			seasons.NowText(time.Now()), seasons.OffSeasonSellPct-100),
-		Section{Title: "作物", Lines: blocks, Sep: "\n\n"},
+		Section{Title: title, Lines: blocks, Sep: "\n\n"},
 		"🍀 巨型作物：收成數量變多，單價同一般｜⚡ 快速生長：只縮短時間，單價同一般",
 	)}
 	p.nav("品質與突變", "genetics", btn{emoji: "🧬", row: 0})
 	p.navBack(0)
+	p.pageButtons("", &p.pricePage, pages, 1, "prices")
 	return e, nil
+}
+
+// pricesPerPage 作物價格每頁幾種（每種約 150 字，8 種約 1,300 字，遠低於 Embed 的 4,000 字）。
+const pricesPerPage = 8
+
+// seedPriceText 價目表的種子價格：商店不賣種子的作物不顯示價格，改說明取得方式。
+func seedPriceText(c services.CropInfo) string {
+	switch {
+	case c.ShopBuyable:
+		return fmt.Sprintf("種子 %d 金", c.SeedPrice)
+	case seedlab.IsHybrid(c.Code):
+		return "🧬 雜交作物（種子只能在種子實驗室培育）"
+	default:
+		return "🔒 商店不賣種子（山洞探險、每週特賣、稀有作物培育器）"
+	}
 }
 
 type geneticsData struct {
@@ -386,7 +412,7 @@ func (p *Panel) buildGenetics(_ context.Context, data any) (*ui.Embed, error) {
 			pct(t.LevelBonusBP), pct(t.LevelBonusMaxBP), level),
 		Section{Title: "🧪 突變（每批最多一種）", Lines: mutations, Sep: "\n\n"},
 	)}
-	p.nav("價目表", "prices", btn{emoji: "📈", row: 0})
+	p.navFirstPage("價目表", "prices", &p.pricePage, btn{emoji: "📈", row: 0})
 	p.navBack(0)
 	return e, nil
 }

@@ -4,6 +4,7 @@ package bot
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,9 +51,12 @@ func TestLabPageFlow(t *testing.T) {
 	contains(t, p.Text, "種子庫 3／25 顆")
 	p.button("種子庫（3）")
 
-	// 雜交：選小麥當母本，父本只列出相容的（小麥、玉米）
+	// 雜交：配方隱藏（2026-11-14），還沒發現的配方只顯示數量；父本列出其他所有種子（小麥、玉米）
 	p.click("雜交培育")
-	contains(t, p.Text, "雜交表", "小麥 × 玉米 → **黃金穀物**")
+	contains(t, p.Text, "雜交配方（已發現 0/12", "還有 **12** 種配方沒有發現")
+	if strings.Contains(p.Text, "黃金穀物") {
+		t.Fatal("沒發現的配方不應該顯示：" + p.Text)
+	}
 	mothers := p.options("選擇母本")
 	if len(mothers) != 3 {
 		t.Fatal(mothers)
@@ -63,9 +67,12 @@ func TestLabPageFlow(t *testing.T) {
 		t.Fatal(fathers)
 	}
 	p.choose("選擇父本", mothers[2]) // 玉米
-	contains(t, p.Text, "➡️ 雜交：**黃金穀物**　成功率 70%")
+	contains(t, p.Text, "➡️ 試驗雜交：**❔ 結果未知**")
 	p.click("開始培育")
-	contains(t, p.Text, "開始雜交：小麥 × 玉米 → 黃金穀物", "研究槽")
+	contains(t, p.Text, "開始試驗雜交：小麥 × 玉米 → ❔ 結果未知", "研究槽")
+	if strings.Contains(p.Text, "黃金穀物") {
+		t.Fatal("培育中也不應該洩漏結果：" + p.Text)
+	}
 	if !p.button("領取（0）").Disabled {
 		t.Fatal("還沒完成時領取按鈕應停用")
 	}
@@ -74,7 +81,11 @@ func TestLabPageFlow(t *testing.T) {
 	e.clock.Advance((3 * time.Hour).Seconds())
 	p.goPage("lab")
 	p.click("領取（1）")
-	contains(t, p.Text, "雜交成功", "黃金穀物")
+	contains(t, p.Text, "雜交成功", "黃金穀物", "📖 發現新配方：小麥 × 玉米 → 黃金穀物")
+	// 發現後配方表就看得到
+	p.goPage("lab_cross")
+	contains(t, p.Text, "雜交配方（已發現 1/12", "小麥 × 玉米 → **黃金穀物**", "還有 **11** 種配方沒有發現")
+	p.goPage("lab")
 
 	// 種子庫：選黃金穀物種到第 1 格
 	p.click("種子庫")

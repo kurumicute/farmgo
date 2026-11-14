@@ -365,6 +365,21 @@ func TestLogPageListsRecentTransactions(t *testing.T) {
 	p.click("買 1")
 	p.goPage("log")
 	contains(t, p.Text, "🧾 ✦ 最近的操作紀錄 ✦", "`-")
+
+	// 超過一頁（10 筆）時分頁，可以往回翻（2026-11-14：原本只顯示 15 筆，一下就被洗掉）
+	for i := 0; i < 11; i++ {
+		p.goPage("shop")
+		p.choose("選擇要買的商品", "seed:wheat")
+		p.click("買 1")
+	}
+	p.goPage("main")
+	p.click("紀錄")
+	p.button("上一頁（1/2）") // 翻頁按鈕標示目前頁數
+	p.click("下一頁")
+	p.button("上一頁（2/2）")
+	p.goPage("main")
+	p.click("紀錄") // 從總覽進來時回到第 1 頁
+	p.button("上一頁（1/2）")
 }
 
 func fmt64(n int64) string { return fmt.Sprint(n) }

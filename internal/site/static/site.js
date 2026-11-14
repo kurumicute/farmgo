@@ -222,7 +222,7 @@
     setText("g-lab-share-send", String(l.share_send));
     setText("g-lab-share-receive", String(l.share_receive));
     setText("g-lab-slots", String(l.max_slots));
-    fillRows("g-lab-genes", [["⏱️ 生長", `生長時間 -${l.growth_pct}%`], ["🧺 產量", `每 ${l.yield_levels} 級收成 +1`],
+    fillRows("g-lab-genes", [["⏱️ 生長", `生長時間 -${l.growth_pct}%`], ["🧺 產量", `收成數量 +${l.yield_pct}%（無條件進位）`],
       ["⭐ 品質", `品質加成 +${l.quality_pct}%`], ["🧬 突變", `突變機率 +${l.mutation_pct}%`]]);
     fillRows("g-lab-mutations", l.lab_mutations.map((m) => [m.name, m.effect]));
   }

@@ -204,3 +204,35 @@ func TestCraftUsesGiantCrops(t *testing.T) {
 	_, err := e.r.StartCraft(e.ctx, f, "flour", 1) // 只剩 1 個巨型小麥
 	wantKind(t, err, gameerr.InsufficientItems)
 }
+
+// 快速生長作物也能當加工原料（2026-11-14 使用者要求）：扣除順序 無突變 → 巨型 → 快速生長；黃金作物不算。
+func TestCraftUsesFastCrops(t *testing.T) {
+	e := setup(t)
+	f := e.rancher()
+	e.ok(e.r.Build(e.ctx, f, "磨坊"))
+	e.setInv(f, "wheat", "normal", "none", 1)
+	e.setInv(f, "wheat", "normal", "giant", 1)
+	e.setInv(f, "wheat", "normal", "fast", 5)
+	e.setInv(f, "wheat", "normal", "golden", 9)
+	stock := func(mutation string) int {
+		n := 0
+		if err := e.s.transaction(e.ctx, func(tx *dbTx) error {
+			var err error
+			n, err = inventory.GetQuantity(e.ctx, tx, must[FarmStatus](t)(e.s.GetFarmStatus(e.ctx, f)).FarmID, "wheat", "normal", mutation)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	pid := f
+	for _, r := range must[[]RecipeView](t)(e.r.Recipes(e.ctx, &pid)) {
+		if r.Code == "flour" && (r.CanMake == nil || *r.CanMake != 2) { // (1 + 1 + 5) / 3 = 2 份
+			t.Fatalf("可做份數不對：%+v", r.CanMake)
+		}
+	}
+	e.ok(e.r.StartCraft(e.ctx, f, "flour", 2)) // 需要 6 個：無突變 1 + 巨型 1 + 快速 4
+	if stock("none") != 0 || stock("giant") != 0 || stock("fast") != 1 || stock("golden") != 9 {
+		t.Fatal(stock("none"), stock("giant"), stock("fast"), stock("golden"))
+	}
+}

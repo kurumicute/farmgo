@@ -61,6 +61,7 @@ type LabJobView struct {
 	Father     *LabSeedView // 突變研究為 nil
 	ResultName string       // 雜交成功時的品種
 	SuccessPct float64      // 成功率（%）
+	Unknown    bool         // 未發現的配方（ResultName 是「結果未知」，SuccessPct 不顯示）
 	Materials  string       // 使用的材料說明
 	ReadyAt    time.Time
 	Ready      bool
@@ -105,6 +106,8 @@ type SeedLabView struct {
 	ReceivedFrom                  []string // 今天分享給自己的玩家
 	MaterialNames                 map[string]string
 	CropNames                     map[string]string // 作物代碼 → 名稱（雜交表用）
+	// KnownHybrids 已發現的雜交配方（雜交作物代碼；取得過這種雜交作物的種子才算發現，2026-11-14 配方隱藏）
+	KnownHybrids map[string]bool
 }
 
 // LabRecordView 一筆培育紀錄。
@@ -268,12 +271,15 @@ func (s *GameService) SeedLab(ctx context.Context, playerID int64) (SeedLabView,
 		}
 		v.Built = true
 		v.LabLevel, v.Exp, v.NextExp, v.Slots = lab.Level, lab.Exp, seedlab.NextLevelExp(lab.Level), seedlab.Slots(lab.Level)
+		if v.KnownHybrids, err = knownHybrids(ctx, t, farm.ID); err != nil {
+			return v, err
+		}
 		jobs, err := labrepo.OpenJobs(ctx, t, farm.ID)
 		if err != nil {
 			return v, err
 		}
 		for _, j := range jobs {
-			jv, err := s.jobView(ctx, t, j, byID, cropsByCode, names, now)
+			jv, err := s.jobView(ctx, t, j, byID, cropsByCode, names, v.KnownHybrids, now)
 			if err != nil {
 				return v, err
 			}
@@ -315,8 +321,37 @@ func (s *GameService) registerLabCodex(ctx context.Context, t *db.Tx, farmID int
 	return codex.Register(ctx, t, farmID, LabCodexPrefix+cropCode, 1, "normal", now)
 }
 
+// knownHybrids 已發現的雜交配方：特殊種子圖鑑登記過的雜交作物（雜交成功、收成取回或收到分享都算）。
+// 配方隱藏（2026-11-14 使用者要求）：沒發現的組合在面板只顯示「❔」，要自己把不同品種配對試驗。
+func knownHybrids(ctx context.Context, t *db.Tx, farmID int64) (map[string]bool, error) {
+	codes := make([]string, len(seedlab.Hybrids))
+	for i, h := range seedlab.Hybrids {
+		codes[i] = LabCodexPrefix + h.Code
+	}
+	rows, err := db.QueryValues[string](ctx, t,
+		"SELECT item_code FROM farm_codex WHERE farm_id = $1 AND item_code = ANY($2)", farmID, codes)
+	if err != nil {
+		return nil, err
+	}
+	known := make(map[string]bool, len(rows))
+	for _, code := range rows {
+		known[strings.TrimPrefix(code, LabCodexPrefix)] = true
+	}
+	return known, nil
+}
+
+// CrossKnown 這次配對的結果玩家知不知道：同品種（改良基因）一定知道；不同品種要已發現該雜交配方。
+// 不在雜交表中的組合也回傳 false，畫面上和沒發現的配方一樣顯示「結果未知」，不洩漏哪些組合可以雜交。
+func CrossKnown(mother, father string, known map[string]bool) bool {
+	if mother == father {
+		return true
+	}
+	h := seedlab.FindHybrid(mother, father)
+	return h != nil && known[h.Code]
+}
+
 func (s *GameService) jobView(ctx context.Context, t *db.Tx, j models.LabJob, byID map[int64]*models.LabSeed,
-	cropsByCode map[string]*models.CropType, names map[string]string, now time.Time) (LabJobView, error) {
+	cropsByCode map[string]*models.CropType, names map[string]string, known map[string]bool, now time.Time) (LabJobView, error) {
 	seedOf := func(id int64) (*models.LabSeed, error) {
 		if s, ok := byID[id]; ok {
 			return s, nil
@@ -348,6 +383,9 @@ func (s *GameService) jobView(ctx context.Context, t *db.Tx, j models.LabJob, by
 		jv.ResultName, jv.SuccessPct = code, float64(bp)/100
 		if c := cropsByCode[code]; c != nil {
 			jv.ResultName = c.Name
+		}
+		if !CrossKnown(mother.CropCode, father.CropCode, known) { // 未發現的配方：結果與成功率都不顯示
+			jv.ResultName, jv.SuccessPct, jv.Unknown = "❔ 結果未知", 0, true
 		}
 	} else {
 		core, _ := toInt(j.Materials[seedlab.MatAncientCore])
@@ -597,10 +635,11 @@ func (s *GameService) StartCross(ctx context.Context, playerID, motherID, father
 			mother, father = b, a
 		}
 		plan := seedlab.CrossPlan{Mother: mother.CropCode, Father: father.CropCode, Resin: resin, Herb: herb, Catalyst: catalyst}
-		code, bp, ok := plan.Result()
-		if !ok {
-			return ActionResult{}, gameerr.Validationf("%s和%s不能雜交。同品種一定可以配對；不同品種要查看雜交表。",
-				s.cropName(ctx, t, mother.CropCode), s.cropName(ctx, t, father.CropCode))
+		// 配方隱藏：任兩個品種都可以試驗配對；不在雜交表中的組合一定得到母本品種（和雜交失敗一樣，材料退回）
+		code, bp, _ := plan.Result()
+		known, err := knownHybrids(ctx, t, farm.ID)
+		if err != nil {
+			return ActionResult{}, err
 		}
 		mats := plan.Materials()
 		if err := s.removeMaterials(ctx, t, farm, mats, []string{seedlab.MatResin, seedlab.MatHerb, seedlab.MatCrystal}); err != nil {
@@ -624,9 +663,11 @@ func (s *GameService) StartCross(ctx context.Context, playerID, motherID, father
 		if _, err := labrepo.AddJob(ctx, t, farm.ID, slot, "cross", mother.ID, &father.ID, stored, now, readyAt); err != nil {
 			return ActionResult{}, err
 		}
-		resultName := s.cropName(ctx, t, code)
-		desc := fmt.Sprintf("研究槽 #%d 開始雜交：%s × %s → %s（成功率 %s%%）", slot,
-			s.cropName(ctx, t, mother.CropCode), s.cropName(ctx, t, father.CropCode), resultName, pctText(bp))
+		parents := fmt.Sprintf("%s × %s", s.cropName(ctx, t, mother.CropCode), s.cropName(ctx, t, father.CropCode))
+		desc := fmt.Sprintf("研究槽 #%d 開始試驗雜交：%s → ❔ 結果未知", slot, parents)
+		if CrossKnown(mother.CropCode, father.CropCode, known) {
+			desc = fmt.Sprintf("研究槽 #%d 開始雜交：%s → %s（成功率 %s%%）", slot, parents, s.cropName(ctx, t, code), pctText(bp))
+		}
 		if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(desc, 200), rec{}); err != nil {
 			return ActionResult{}, err
 		}
@@ -714,6 +755,10 @@ func (s *GameService) CollectLab(ctx context.Context, playerID int64) (ActionRes
 		var lines []string
 		var next *time.Time
 		exp := 0
+		known, err := knownHybrids(ctx, t, farm.ID) // 同時完成兩個相同的新配方時，只有第一個算「發現」
+		if err != nil {
+			return ActionResult{}, err
+		}
 		for _, j := range jobs {
 			if now.Before(j.ReadyAt) {
 				if next == nil || j.ReadyAt.Before(*next) {
@@ -725,7 +770,7 @@ func (s *GameService) CollectLab(ctx context.Context, playerID int64) (ActionRes
 			var line string
 			var gained int
 			if j.Kind == "cross" {
-				line, gained, err = s.collectCross(ctx, t, farm, j, now)
+				line, gained, err = s.collectCross(ctx, t, farm, j, known, now)
 			} else {
 				line, gained, err = s.collectMutation(ctx, t, farm, j, now)
 			}
@@ -752,7 +797,8 @@ func (s *GameService) CollectLab(ctx context.Context, playerID int64) (ActionRes
 	})
 }
 
-func (s *GameService) collectCross(ctx context.Context, t *db.Tx, farm *models.Farm, j models.LabJob, now time.Time) (string, int, error) {
+func (s *GameService) collectCross(ctx context.Context, t *db.Tx, farm *models.Farm, j models.LabJob, known map[string]bool,
+	now time.Time) (string, int, error) {
 	mother, err := labrepo.GetSeed(ctx, t, j.MotherSeedID, true)
 	if err != nil {
 		return "", 0, err
@@ -821,13 +867,24 @@ func (s *GameService) collectCross(ctx context.Context, t *db.Tx, farm *models.F
 				return "", 0, err
 			}
 		}
-		line = fmt.Sprintf("💥 #%d 雜交失敗（%s），得到%s種子 第 %d 代（%s）%s，培育材料已退回。", j.Slot, parents, name,
-			child.Generation, child.Genes.Text(), mut)
+		got := fmt.Sprintf("得到%s種子 第 %d 代（%s）%s，培育材料已退回。", name, child.Generation, child.Genes.Text(), mut)
+		switch {
+		case !ok: // 不在雜交表中的組合（配方隱藏後可以試驗）
+			line = fmt.Sprintf("🧪 #%d 試驗雜交（%s）沒有產生新品種，%s", j.Slot, parents, got)
+		case !CrossKnown(mother.CropCode, father.CropCode, known): // 有這個配方但還沒發現：給一點提示
+			line = fmt.Sprintf("💥 #%d 雜交失敗（%s），不過這個組合好像有反應，可以再試試！%s", j.Slot, parents, got)
+		default:
+			line = fmt.Sprintf("💥 #%d 雜交失敗（%s），%s", j.Slot, parents, got)
+		}
 	case code == mother.CropCode && code == father.CropCode:
 		line = fmt.Sprintf("🌱 #%d 改良完成：%s種子 第 %d 代（%s）%s。", j.Slot, name, child.Generation, child.Genes.Text(), mut)
 	default:
 		line = fmt.Sprintf("🎉 #%d 雜交成功（%s）：**%s**種子 第 %d 代（%s）%s！", j.Slot, parents, name, child.Generation,
 			child.Genes.Text(), mut)
+		if !known[code] {
+			known[code] = true
+			line += fmt.Sprintf("\n📖 發現新配方：%s → %s！之後在「🧬 雜交培育」的配方表就看得到。", parents, name)
+		}
 	}
 	if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(stripMarks(line), 200), rec{}); err != nil {
 		return "", 0, err

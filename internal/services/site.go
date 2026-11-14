@@ -773,7 +773,7 @@ func buildSeedLab() map[string]any {
 		"identify_multiplier": c.IdentifyFeeMultiplier, "identify_min": c.IdentifyFeeMin,
 		"min_minutes": minMin, "max_minutes": maxMin, "mutate_minutes": c.MutateMinutes, "mutate_crystal": c.MutateCrystal,
 		"mutate_base_pct": bpPct(c.MutateBaseBP), "mutate_level_pct": bpPct(c.MutatePerLevelBP), "mutate_max_pct": bpPct(c.MutateMaxBP),
-		"growth_pct": c.GrowthPctPerLevel, "yield_levels": c.YieldLevelsPerBonus, "quality_pct": bpPct(c.QualityBPPerLevel),
+		"growth_pct": c.GrowthPctPerLevel, "yield_pct": c.YieldPctPerLevel, "quality_pct": bpPct(c.QualityBPPerLevel),
 		"mutation_pct": bpPct(c.MutationBPPerLevel), "inherit_pct": bpPct(c.InheritBP),
 		"resin_pct": bpPct(c.ResinSuccessBP), "herb_pct": c.HerbTimePct, "catalyst_pct": bpPct(c.CatalystUpBP),
 		"share_send": c.ShareSendPerDay, "share_receive": c.ShareReceiveSenders, "max_slots": seedlab.MaxLevel,

@@ -38,6 +38,22 @@ func pageOf[T any](items []T, page int) ([]T, int, int) {
 	return items[min(len(items), page*ui.MaxOptions):min(len(items), (page+1)*ui.MaxOptions)], page, pages
 }
 
+// pageSlice 每頁 size 項時第 page 頁的內容、修正後的頁碼與總頁數（文字清單分頁用，例如紀錄、價目表）。
+func pageSlice[T any](items []T, page, size int) ([]T, int, int) {
+	pages := pageCount(len(items), size)
+	page = max(0, min(page, pages-1))
+	return items[min(len(items), page*size):min(len(items), (page+1)*size)], page, pages
+}
+
+// navFirstPage 前往有分頁的頁面，並從第 1 頁開始（從別頁進入時用；頁內翻頁用 pageButtons）。
+func (p *Panel) navFirstPage(label, page string, field *int, o btn) {
+	p.button(label, func(ctx context.Context, it ui.Interaction) error {
+		*field = 0
+		p.goTo(ctx, it, page, "")
+		return nil
+	}, o)
+}
+
 // pageButtons 上一頁／下一頁按鈕（循環翻頁）；只有一頁時不顯示。
 func (p *Panel) pageButtons(label string, page *int, pages, row int, target string) {
 	if pages <= 1 {
@@ -73,14 +89,25 @@ func labIntro() string {
 
 func geneEffects() string {
 	c := seedlab.Current()
-	return fmt.Sprintf("⏱️ 生長：每級生長時間 -%d%%　🧺 產量：每 %d 級收成 +1　⭐ 品質：每級品質加成 +%s%%　🧬 突變：每級突變機率 +%s%%（1 級沒有加成）",
-		c.GrowthPctPerLevel, c.YieldLevelsPerBonus, bpPct(c.QualityBPPerLevel), bpPct(c.MutationBPPerLevel))
+	return fmt.Sprintf("⏱️ 生長：每級生長時間 -%d%%　🧺 產量：每級收成數量 +%d%%（無條件進位）　⭐ 品質：每級品質加成 +%s%%　🧬 突變：每級突變機率 +%s%%（1 級沒有加成）",
+		c.GrowthPctPerLevel, c.YieldPctPerLevel, bpPct(c.QualityBPPerLevel), bpPct(c.MutationBPPerLevel))
 }
 
 // bpPct 萬分比 → 百分比文字（例如 50 → 0.5）。
 func bpPct(bp int) string { return strconv.FormatFloat(float64(bp)/100, 'f', -1, 64) }
 
 // labCodexButtons 實驗室頁的圖鑑按鈕：特殊種子與菇類（開啟圖鑑頁的對應分類）。
+// labSeedSources 特殊種子與雜交種子的取得方式（2026-11-14 玩家詢問後加上）。
+func labSeedSources() []string {
+	return []string{
+		"🔬 **鑑定**：背包的一般種子 → 特殊種子（商店不賣的稀有種子，例如琥珀瓜、月光花，基因比較高）",
+		"🧬 **雜交／改良**：兩顆特殊種子培育出一顆新的；不同品種配對成功會得到雜交作物",
+		fmt.Sprintf("🌾 **收成取回**：種下特殊種子，收成時有 %s%% 機率取回 1 顆同基因的種子", bpPct(seedlab.Current().InheritBP)),
+		fmt.Sprintf("🎁 **朋友分享**：同伺服器的玩家每天最多送 %d 顆，沒有實驗室也能收", seedlab.Current().ShareSendPerDay),
+		"🍈 稀有的一般種子（琥珀瓜、月光花）來自⛰️ 山洞探險、🎁 每週特賣與🧬 稀有作物培育器，拿到後可以鑑定；雜交作物的種子只能靠雜交、收成取回或朋友分享。",
+	}
+}
+
 func (p *Panel) labCodexButtons(row int) {
 	for _, c := range []struct{ key, label, emoji string }{{"lab", "特殊種子圖鑑", "📖"}, {"mushroom", "菇類圖鑑", "🍄"}} {
 		key := c.key
@@ -143,14 +170,16 @@ func (p *Panel) buildLab(_ context.Context, data any) (*ui.Embed, error) {
 	e := &ui.Embed{Title: "🧪 ✦ 種子實驗室 ✦", Color: Teal}
 	if !v.Unlocked || !v.Built {
 		if !v.Unlocked {
-			e.Description = fmt.Sprintf("🔒 種子實驗室在農場 **Lv.%d** 開放（目前 Lv.%d）。\n\n%s", v.UnlockLevel, v.Level, labIntro())
+			e.Description = sections(fmt.Sprintf("🔒 種子實驗室在農場 **Lv.%d** 開放（目前 Lv.%d）。", v.UnlockLevel, v.Level), labIntro(),
+				Section{Title: "特殊種子怎麼來", Lines: labSeedSources()})
 		} else {
 			mark := "✅"
 			if v.Gold < v.BuildGold {
 				mark = "❌"
 			}
 			e.Description = sections(labIntro(), Section{Title: "建造需要",
-				Lines: []string{fmt.Sprintf("%s 💰 金幣 %s／%s", mark, money(v.Gold), money(v.BuildGold))}})
+				Lines: []string{fmt.Sprintf("%s 💰 金幣 %s／%s", mark, money(v.Gold), money(v.BuildGold))}},
+				Section{Title: "特殊種子怎麼來", Lines: labSeedSources()})
 			confirming := p.confirm == "lab_build"
 			label, style := "建造實驗室", ui.Success
 			if confirming {
@@ -192,9 +221,12 @@ func (p *Panel) buildLab(_ context.Context, data any) (*ui.Embed, error) {
 			state = "✅ **可以領取**"
 		}
 		var what string
-		if j.Kind == "cross" && j.Father != nil {
+		switch {
+		case j.Kind == "cross" && j.Father != nil && j.Unknown:
+			what = fmt.Sprintf("🧬 %s × %s → %s", j.Mother.CropName, j.Father.CropName, j.ResultName)
+		case j.Kind == "cross" && j.Father != nil:
 			what = fmt.Sprintf("🧬 %s × %s → %s（成功率 %s%%）", j.Mother.CropName, j.Father.CropName, j.ResultName, fmtPct(j.SuccessPct))
-		} else {
+		default:
 			what = fmt.Sprintf("☢️ 突變研究：%s（成功率 %s%%）", j.Mother.CropName, fmtPct(j.SuccessPct))
 		}
 		slots = append(slots, fmt.Sprintf("#%d　%s　%s\n　%s", j.Slot, bar(int(j.Progress*100), 100, 6), state, what))
@@ -219,6 +251,7 @@ func (p *Panel) buildLab(_ context.Context, data any) (*ui.Embed, error) {
 		Section{Title: "研究槽", Lines: slots},
 		fmt.Sprintf("🌰 種子庫 %d／%d 顆（培育中 %d）　%s", len(v.Seeds), v.Capacity, busy, share),
 		"🧰 "+labMaterialLine(v, seedlab.MatResin, seedlab.MatHerb, seedlab.MatCrystal, seedlab.MatAncientCore),
+		Section{Title: "特殊種子怎麼來", Lines: labSeedSources()},
 	)
 	e.Footer = "研究在背景計時，完成後回來按「領取」。鑑定：一般種子 → 特殊種子（有基因）。"
 
@@ -234,7 +267,7 @@ func (p *Panel) buildLab(_ context.Context, data any) (*ui.Embed, error) {
 	}, btn{emoji: "🔄", row: 0})
 	p.nav(fmt.Sprintf("種子庫（%d）", stored), "lab_seeds", btn{emoji: "🌰", style: ui.Primary, row: 1})
 	p.nav("雜交培育", "lab_cross", btn{emoji: "🧬", style: ui.Primary, row: 1, disabled: stored < 2 || v.FreeSlots == 0})
-	p.nav("培育紀錄", "lab_records", btn{emoji: "📜", row: 1})
+	p.navFirstPage("培育紀錄", "lab_records", &p.labRecordPage, btn{emoji: "📜", row: 1})
 	p.labCodexButtons(1)
 
 	var options []option
@@ -418,7 +451,8 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 		mother, st.mother = nil, 0
 	}
 	father := findSeed(v, st.father)
-	if father == nil || father.Busy || mother == nil || father.ID == mother.ID || !seedlab.Compatible(mother.CropCode, father.CropCode) {
+	// 配方隱藏（2026-11-14）：任兩顆種子都能試驗配對，不再只列出相容的種子
+	if father == nil || father.Busy || mother == nil || father.ID == mother.ID {
 		father, st.father = nil, 0
 	}
 	if st.resin && v.Materials[seedlab.MatResin] == 0 {
@@ -442,17 +476,20 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 	if mother != nil && father != nil {
 		plan := seedlab.CrossPlan{Mother: mother.CropCode, Father: father.CropCode, Resin: st.resin, Herb: st.herb, Catalyst: st.catalyst}
 		code, bp, _ := plan.Result()
-		kind := "改良基因"
-		if mother.CropCode != father.CropCode {
-			kind = "雜交"
-		}
-		preview = append(preview, fmt.Sprintf("➡️ %s：**%s**　成功率 %s%%　約 %s", kind, name(code), fmtPct(float64(bp)/100),
-			services.LongDuration(int(plan.Duration().Seconds()))))
-		if mother.CropCode != father.CropCode {
-			preview = append(preview, fmt.Sprintf("失敗時得到%s種子（基因照樣繼承），培育材料退回。", mother.CropName))
+		switch {
+		case mother.CropCode == father.CropCode:
+			preview = append(preview, fmt.Sprintf("➡️ 改良基因：**%s**　成功率 100%%　約 %s", name(code),
+				services.LongDuration(int(plan.Duration().Seconds()))))
+		case services.CrossKnown(mother.CropCode, father.CropCode, v.KnownHybrids):
+			preview = append(preview, fmt.Sprintf("➡️ 雜交：**%s**　成功率 %s%%　約 %s", name(code), fmtPct(float64(bp)/100),
+				services.LongDuration(int(plan.Duration().Seconds()))),
+				fmt.Sprintf("失敗時得到%s種子（基因照樣繼承），培育材料退回。", mother.CropName))
+		default:
+			preview = append(preview, "➡️ 試驗雜交：**❔ 結果未知**（成功率、時間培育後才知道）",
+				fmt.Sprintf("如果這兩種不能雜交或雜交失敗，會得到%s種子（基因照樣繼承），培育材料退回。", mother.CropName))
 		}
 	} else {
-		preview = append(preview, "先選母本，再選父本（只會列出能配對的種子）。")
+		preview = append(preview, "先選母本，再選父本。不同品種的組合要自己試驗，成功雜交出新作物就會記進配方表。")
 	}
 	var mats []string
 	if st.resin {
@@ -467,16 +504,25 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 	if len(mats) == 0 {
 		mats = []string{"沒有使用（材料都是選用的）"}
 	}
+	// 配方表只列出已發現的配方（取得過該雜交作物的種子），其餘只顯示數量
 	var table []string
-	for _, h := range seedlab.CurrentHybrids() {
-		table = append(table, fmt.Sprintf("%s × %s → **%s**（%s%%、%s）", name(h.A), name(h.B), name(h.Code), bpPct(h.SuccessBP),
-			services.LongDuration(h.Minutes*60)))
+	hybrids := seedlab.CurrentHybrids()
+	for _, h := range hybrids {
+		if v.KnownHybrids[h.Code] {
+			table = append(table, fmt.Sprintf("%s × %s → **%s**（%s%%、%s）", name(h.A), name(h.B), name(h.Code), bpPct(h.SuccessBP),
+				services.LongDuration(h.Minutes*60)))
+		}
 	}
+	found := len(table)
+	if hidden := len(hybrids) - found; hidden > 0 {
+		table = append(table, fmt.Sprintf("❔ 還有 **%d** 種配方沒有發現：把兩種**不同的一般作物或稀有作物**配對試試看！", hidden))
+	}
+	tableTitle := fmt.Sprintf("雜交配方（已發現 %d/%d；同品種一定可以配對，用來改良基因）", found, len(hybrids))
 	e.Description = runes(sections(
 		Section{Title: "這次培育", Lines: preview},
 		Section{Title: "培育材料", Lines: mats},
 		"🧰 "+labMaterialLine(v, seedlab.MatResin, seedlab.MatHerb, seedlab.MatCrystal),
-		Section{Title: "雜交表（同品種一定可以配對，用來改良基因）", Lines: table},
+		Section{Title: tableTitle, Lines: table},
 	), 4000)
 	e.Footer = fmt.Sprintf("每個基因 50%% 繼承母本或父本，再有 %s%% 升級、%s%% 退化；世代 = 較大的世代 + 1。研究槽空 %d 個。",
 		bpPct(seedlab.Current().GeneUpBP), bpPct(seedlab.Current().GeneDownBP), v.FreeSlots)
@@ -507,13 +553,14 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 	if mother != nil {
 		var fathers []option
 		for _, s := range v.Seeds {
-			if s.Busy || s.ID == mother.ID || !seedlab.Compatible(mother.CropCode, s.CropCode) {
+			if s.Busy || s.ID == mother.ID {
 				continue
 			}
-			result := name(mother.CropCode)
+			result := "改良" + name(mother.CropCode)
 			if s.CropCode != mother.CropCode {
-				if h := seedlab.FindHybrid(mother.CropCode, s.CropCode); h != nil {
-					result = name(h.Code)
+				result = "❔ 試驗雜交"
+				if services.CrossKnown(mother.CropCode, s.CropCode, v.KnownHybrids) {
+					result = name(seedlab.FindHybrid(mother.CropCode, s.CropCode).Code)
 				}
 			}
 			fathers = append(fathers, option{seedOptionLabel(s), fmt.Sprint(s.ID), "→ " + result + "　" + seedOptionDesc(s), cropEmoji(s.CropCode)})
@@ -524,7 +571,7 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 		}
 		if len(fathers) == 0 {
 			fathers = nil
-			e.Description += "\n\n⚠️ 種子庫沒有能和這顆母本配對的種子。"
+			e.Description += "\n\n⚠️ 種子庫沒有其他可以配對的種子。"
 		}
 		fathers, fPage, fPages := pageOf(fathers, st.fatherPage)
 		st.fatherPage = fPage
@@ -587,11 +634,16 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 // ---------- 培育紀錄 ----------
 
 func (p *Panel) loadLabRecords(ctx context.Context) (any, error) {
-	return p.svc().LabRecords(ctx, p.playerID, 15)
+	return p.svc().LabRecords(ctx, p.playerID, logMaxRecords)
 }
 
+// labRecordsPerPage 培育紀錄每頁幾筆（每筆一行，最長約 150 字）。
+const labRecordsPerPage = 15
+
 func (p *Panel) buildLabRecords(_ context.Context, data any) (*ui.Embed, error) {
-	rows := data.([]services.LabRecordView)
+	all := data.([]services.LabRecordView)
+	rows, page, pages := pageSlice(all, p.labRecordPage, labRecordsPerPage)
+	p.labRecordPage = page
 	e := &ui.Embed{Title: "📜 ✦ 培育紀錄 ✦", Color: Teal}
 	var lines []string
 	for _, r := range rows {
@@ -602,9 +654,10 @@ func (p *Panel) buildLabRecords(_ context.Context, data any) (*ui.Embed, error) 
 	} else {
 		e.Description = runes(strings.Join(lines, "\n"), 4000)
 	}
-	e.Footer = fmt.Sprintf("顯示最近 %d 筆。突變：%s。", len(rows), labMutationNames())
+	e.Footer = fmt.Sprintf("第 %d/%d 頁，共 %d 筆（可翻閱最近 %d 筆）。突變：%s。", page+1, pages, len(all), logMaxRecords, labMutationNames())
 	p.labNav(0)
 	p.navBack(0)
+	p.pageButtons("", &p.labRecordPage, pages, 0, "lab_records")
 	return e, nil
 }
 

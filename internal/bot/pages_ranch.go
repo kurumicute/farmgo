@@ -484,7 +484,7 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	othersNote := ""
 	if len(others) > 0 {
-		othersNote = "📋 另外還有 " + strings.Join(others, "、") + "的配方沒有列出（各設施能做的配方在「🏗️ 建造設施」頁）。巨型作物也能當原料。"
+		othersNote = "📋 另外還有 " + strings.Join(others, "、") + "的配方沒有列出（各設施能做的配方在「🏗️ 建造設施」頁）。巨型作物、快速生長作物也能當原料。"
 	}
 	if len(recipes) == 0 && len(built) > 0 {
 		recipes = []string{"目前的原料一份都做不了，先去收成或購買原料吧。"}
