@@ -130,13 +130,16 @@ func TestLavalinkClientConnectsAndControlsPlayer(t *testing.T) {
 	_ = c.Destroy(ctx, "100")
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
-	want := []string{"GET /v4/loadtracks?identifier=ytsearch%3A%E6%96%B0+%E6%AD%8C", "PATCH /v4/sessions/S1/players/100?noReplace=false",
+	want := []string{"PATCH /v4/sessions/S1", "GET /v4/loadtracks?identifier=ytsearch%3A%E6%96%B0+%E6%AD%8C", "PATCH /v4/sessions/S1/players/100?noReplace=false",
 		"PATCH /v4/sessions/S1/players/100?noReplace=false", "PATCH /v4/sessions/S1/players/100?noReplace=false",
 		"PATCH /v4/sessions/S1/players/100?noReplace=false", "DELETE /v4/sessions/S1/players/100"}
 	if strings.Join(fake.reqs, "\n") != strings.Join(want, "\n") {
 		t.Fatal(fake.reqs)
 	}
-	play, stop, pause, voice := fake.body[1], fake.body[2], fake.body[3], fake.body[4]
+	if r := fake.body[0]; r["resuming"] != true || r["timeout"] != float64(ResumeTimeout) {
+		t.Fatal("連上後要開啟 Session 續接", r)
+	}
+	play, stop, pause, voice := fake.body[2], fake.body[3], fake.body[4], fake.body[5]
 	if play["track"].(map[string]any)["encoded"] != "e1" || play["volume"] != float64(15) || play["paused"] != false {
 		t.Fatal(play)
 	}
@@ -153,6 +156,61 @@ func TestLavalinkClientConnectsAndControlsPlayer(t *testing.T) {
 		if a != "pw" {
 			t.Fatal("每個請求都要帶密碼")
 		}
+	}
+}
+
+// TestLavalinkResumesSessionAfterDisconnect WebSocket 斷線（例如 Cloudflare 斷開）後帶 Session-Id 重連，接回原本的 Session。
+func TestLavalinkResumesSessionAfterDisconnect(t *testing.T) {
+	var mu sync.Mutex
+	var hdrs []string
+	conns := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v4/websocket" {
+			w.Write([]byte(`{}`))
+			return
+		}
+		mu.Lock()
+		conns++
+		n := conns
+		hdrs = append(hdrs, r.Header.Get("Session-Id"))
+		mu.Unlock()
+		c, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		if n == 1 {
+			_ = c.WriteMessage(websocket.TextMessage, []byte(`{"op":"ready","resumed":false,"sessionId":"S1"}`))
+			time.Sleep(50 * time.Millisecond)
+			return // 斷線
+		}
+		_ = c.WriteMessage(websocket.TextMessage, []byte(`{"op":"ready","resumed":true,"sessionId":"S1"}`))
+		for {
+			if _, _, err := c.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+	h := &recordHandler{readyCh: make(chan struct{}, 2)}
+	c := NewClient(srv.URL, "pw", "999", h, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+	for i := 0; i < 2; i++ {
+		select {
+		case <-h.readyCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("沒有重新連上")
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(hdrs) < 2 || hdrs[0] != "" || hdrs[1] != "S1" {
+		t.Fatal("重連時要帶上一個 Session-Id", hdrs)
+	}
+	if !c.Ready() || c.session() != "S1" {
+		t.Fatal("續接後應沿用原本的 Session")
 	}
 }
 

@@ -102,7 +102,7 @@
   - 世界 Boss 領獎發放的物品登記圖鑑（`codex.Register`，和領取探險相同），Boss 獎勵的素材也會算進山洞素材圖鑑。**之前已經領過的 Boss 素材不會補登記**。
   - 測試：`services/exploration_test.go` 的 `TestSeedMakerTwoSeedsPerCrop`（任何品質、停用的機器也能用）、`services/worldboss_test.go` 的 `TestBossRewardsClaimedOnce`（圖鑑）、`bot/panel_social_test.go` 的 `TestMachinesPageBuildAndUseSeedMaker`、`TestSeedMakerPageFromPlotsAcceptsAnyQuality`。
 - **偷菜名單隱藏全是空地的玩家**（`SocialService.StealPlayers`）；2026-11-12 起只有空地與乾枯作物的玩家也不列出（有成長中或成熟的作物才列出）。
-- **音樂改寫成 Go（`internal/music`）**：Lavalink v4（REST＋WebSocket，30 秒看門狗自動重連）、Spotify 連結解析、16 個斜線指令（名稱與參數與 Python 相同）、播放控制按鈕與佇列分頁；各伺服器音量與前綴沿用 `data/music_guild_settings.json`。設定 `LAVALINK_URI`、`LAVALINK_PASSWORD`；`MUSIC_ENABLED` 且沒有 `MUSIC_BOT_TOKEN` 時在農場 Bot 內執行。只支援斜線指令（前綴指令需要 Message Content 特權 Intent）。實機測試：`TestRealLavalink`（讀 `FARMGM_TEST_LAVALINK_URL`／`PASSWORD`）。
+- **音樂改寫成 Go（`internal/music`）**：Lavalink v4（REST＋WebSocket，30 秒看門狗自動重連；2026-11-15 起開啟 Session 續接 120 秒，WebSocket 斷線重連時接回原本的播放器，不再中斷播放）、Spotify 連結解析、16 個斜線指令（名稱與參數與 Python 相同）、播放控制按鈕與佇列分頁；各伺服器音量與前綴沿用 `data/music_guild_settings.json`。設定 `LAVALINK_URI`、`LAVALINK_PASSWORD`；`MUSIC_ENABLED` 且沒有 `MUSIC_BOT_TOKEN` 時在農場 Bot 內執行。只支援斜線指令（前綴指令需要 Message Content 特權 Intent）。實機測試：`TestRealLavalink`（讀 `FARMGM_TEST_LAVALINK_URL`／`PASSWORD`）。
 
 ## 正式環境切換（2026-11-12）
 
@@ -493,7 +493,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 
 ## 附錄：檔案清單與 SHA-256
 
-共 310 列（2026-11-14 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
+共 310 列（2026-11-15 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
 
 | 檔案 | SHA-256 |
 | --- | --- |
@@ -640,8 +640,8 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/game/worldboss/worldboss_test.go` | `ecf564a6af0ad5184b6787a03e4a06651374fc86316473e216dbc78a22bcaec2` |
 | `internal/music/commands.go` | `247f82de1ca87ae5428c1becdbd69e369f0d8711c519cc07ed3ad64af4eeeeae` |
 | `internal/music/format.go` | `e13108c2306f10d9d5b194aa5c618ceb7c9183650485d6ac1e47b6a5e8636ba0` |
-| `internal/music/lavalink.go` | `834cd5936b581f5ed92929a1e6d7e1fb8e4951695621f7673b1371d8e48723d4` |
-| `internal/music/lavalink_test.go` | `2b2e8b7b77edde00e74fc8cbc1f22d1918e7f6b4f1e27dc6ee6bd805f8f665dc` |
+| `internal/music/lavalink.go` | `6287e01748898a9671e38f2c9bef34f5a532411d761a5c727f65fba3e4125bb5` |
+| `internal/music/lavalink_test.go` | `2a9245988e6e6d554f3a5f69457e4370550d3879f929ffcfbd5a5a47e0c5ef8d` |
 | `internal/music/music.go` | `0db721a7b213663a2dedaeb1ac58cd7eb4cfa71fed9f49d8dfc89a05cd7a4251` |
 | `internal/music/music_test.go` | `c3ddb2175800cf276672ac41a76f35b0804a06f7f8562e0a74dbba35e7e597e2` |
 | `internal/music/spotify.go` | `e9fd065a5162df93269849e5a7eadd033f1d1e90fa4364e444563cf532a60a42` |

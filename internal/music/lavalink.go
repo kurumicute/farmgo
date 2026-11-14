@@ -2,7 +2,9 @@ package music
 
 // Lavalink v4 客戶端（對應 Python 使用的 wavelink）：REST（解析音軌、更新／刪除播放器）與 WebSocket（ready、事件、統計）。
 //
-//   - WebSocket 斷線時自動重連（1 秒起，最多 30 秒間隔）；每次連上都是新的 Session。
+//   - WebSocket 斷線時自動重連（1 秒起，最多 30 秒間隔）。連上後開啟 Session 續接（ResumeTimeout 秒）：
+//     重連時帶上一個 Session-Id，Lavalink 會接回原本的播放器（音樂不中斷）；超過時間或 Lavalink 重啟才是新的 Session。
+//     （2026-11-15：經 Cloudflare 連線時 WebSocket 每隔一兩小時會被斷開，沒有續接時每次都會中斷播放。）
 //   - 監看：每 30 秒以 REST 確認 Session 仍有效，Lavalink 回 404（例如 Lavalink 重啟）時關閉連線重連
 //     （Python 以 _lavalink_watchdog 處理 wavelink 沒有重連的情況）。
 //   - 事件以 Handler 回呼，在 WebSocket 讀取的 goroutine 依序執行。
@@ -26,6 +28,9 @@ import (
 
 // WatchdogInterval 確認 Session 仍有效的間隔。
 const WatchdogInterval = 30 * time.Second
+
+// ResumeTimeout WebSocket 斷線後 Lavalink 保留 Session（與播放器）的秒數。
+const ResumeTimeout = 120
 
 // TrackInfo 音軌資料。
 type TrackInfo struct {
@@ -109,6 +114,7 @@ type Client struct {
 
 	mu        sync.RWMutex
 	sessionID string
+	resumeID  string // 上一個 Session（斷線後重連時用來續接）
 	conn      *websocket.Conn
 }
 
@@ -187,6 +193,11 @@ func (c *Client) connect(ctx context.Context, reconnected bool) error {
 	h.Set("Authorization", c.password)
 	h.Set("User-Id", c.userID)
 	h.Set("Client-Name", "farmgm-go/1.0")
+	c.mu.RLock()
+	if c.resumeID != "" {
+		h.Set("Session-Id", c.resumeID)
+	}
+	c.mu.RUnlock()
 	dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second}
 	conn, resp, err := dialer.DialContext(ctx, addr, h)
 	if resp != nil && resp.Body != nil {
@@ -203,6 +214,9 @@ func (c *Client) connect(ctx context.Context, reconnected bool) error {
 	defer func() {
 		conn.Close()
 		c.mu.Lock()
+		if c.sessionID != "" {
+			c.resumeID = c.sessionID
+		}
 		c.conn, c.sessionID = nil, ""
 		c.mu.Unlock()
 	}()
@@ -231,9 +245,18 @@ func (c *Client) dispatch(data []byte, reconnected bool) {
 	switch msg.Op {
 	case "ready":
 		c.mu.Lock()
-		c.sessionID = msg.SessionID
+		c.sessionID, c.resumeID = msg.SessionID, ""
 		c.mu.Unlock()
 		c.log.Info("已連線 Lavalink", "uri", c.base, "resumed", msg.Resumed)
+		if !msg.Resumed { // 新的 Session：開啟續接（失敗只記錄，播放照常）
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			status, _, err := c.do(ctx, http.MethodPatch, "/v4/sessions/"+msg.SessionID,
+				map[string]any{"resuming": true, "timeout": ResumeTimeout})
+			cancel()
+			if err != nil || status >= 300 {
+				c.log.Warn("開啟 Lavalink Session 續接失敗", "status", status, "type", fmt.Sprintf("%T", err))
+			}
+		}
 		c.handler.OnReady(msg.SessionID, msg.Resumed, reconnected)
 	case "event":
 		var e Event
@@ -266,6 +289,7 @@ func (c *Client) watchdog(ctx context.Context) {
 			if c.conn != nil {
 				c.conn.Close()
 			}
+			c.sessionID = "" // 不要續接已失效的 Session
 			c.mu.Unlock()
 		}
 	}
