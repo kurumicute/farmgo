@@ -65,7 +65,7 @@ type Music struct {
 
 // DefaultMusic Python create_site_app 的預設值。
 func DefaultMusic() Music {
-	return Music{Enabled: true, Prefix: "!", PlaylistLimit: 20, IdleTimeout: 300, Volume: 0.1}
+	return Music{Enabled: true, Prefix: "!", PlaylistLimit: 20, IdleTimeout: 300, Volume: 1.0}
 }
 
 // Options 建立網站的設定（Python create_site_app 的參數）。

@@ -192,7 +192,7 @@ func FromLookup(get func(string) string) (Settings, error) {
 		MusicPrefix:                  p.strLen("MUSIC_PREFIX", "!", 1, 5),
 		MusicPlaylistLimit:           p.int("MUSIC_PLAYLIST_LIMIT", 20, 1, 200),
 		MusicIdleTimeout:             p.int("MUSIC_IDLE_TIMEOUT", 300, 30, 3600),
-		MusicVolume:                  p.float("MUSIC_VOLUME", 0.1, 0, 2, false),
+		MusicVolume:                  p.float("MUSIC_VOLUME", 1.0, 0, 2, false), // 預設 100%：Lavalink 音量 100 且沒有濾鏡時直接轉送 YouTube 的 Opus，不重新編碼（省 CPU、比較不會卡）
 		LavalinkURI:                  p.str("LAVALINK_URI", "http://127.0.0.1:2333"),
 		LavalinkPassword:             p.str("LAVALINK_PASSWORD", ""),
 		MusicSettingsFile:            p.str("MUSIC_SETTINGS_FILE", "data/music_guild_settings.json"),

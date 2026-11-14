@@ -102,7 +102,7 @@
   - 世界 Boss 領獎發放的物品登記圖鑑（`codex.Register`，和領取探險相同），Boss 獎勵的素材也會算進山洞素材圖鑑。**之前已經領過的 Boss 素材不會補登記**。
   - 測試：`services/exploration_test.go` 的 `TestSeedMakerTwoSeedsPerCrop`（任何品質、停用的機器也能用）、`services/worldboss_test.go` 的 `TestBossRewardsClaimedOnce`（圖鑑）、`bot/panel_social_test.go` 的 `TestMachinesPageBuildAndUseSeedMaker`、`TestSeedMakerPageFromPlotsAcceptsAnyQuality`。
 - **偷菜名單隱藏全是空地的玩家**（`SocialService.StealPlayers`）；2026-11-12 起只有空地與乾枯作物的玩家也不列出（有成長中或成熟的作物才列出）。
-- **音樂改寫成 Go（`internal/music`）**：Lavalink v4（REST＋WebSocket，30 秒看門狗自動重連；2026-11-15 起開啟 Session 續接 120 秒，WebSocket 斷線重連時接回原本的播放器，不再中斷播放）、Spotify 連結解析、16 個斜線指令（名稱與參數與 Python 相同）、播放控制按鈕與佇列分頁；各伺服器音量與前綴沿用 `data/music_guild_settings.json`。設定 `LAVALINK_URI`、`LAVALINK_PASSWORD`；`MUSIC_ENABLED` 且沒有 `MUSIC_BOT_TOKEN` 時在農場 Bot 內執行。只支援斜線指令（前綴指令需要 Message Content 特權 Intent）。實機測試：`TestRealLavalink`（讀 `FARMGM_TEST_LAVALINK_URL`／`PASSWORD`）。
+- **音樂改寫成 Go（`internal/music`）**：Lavalink v4（REST＋WebSocket，30 秒看門狗自動重連；2026-11-15 起開啟 Session 續接 120 秒，WebSocket 斷線重連時接回原本的播放器，不再中斷播放）。2026-11-15 起預設音量 100%（`MUSIC_VOLUME` 預設由 0.1 改為 1.0）：Lavalink 音量 100 且沒有濾鏡時直接轉送 Opus，不重新編碼、Spotify 連結解析、16 個斜線指令（名稱與參數與 Python 相同）、播放控制按鈕與佇列分頁；各伺服器音量與前綴沿用 `data/music_guild_settings.json`。設定 `LAVALINK_URI`、`LAVALINK_PASSWORD`；`MUSIC_ENABLED` 且沒有 `MUSIC_BOT_TOKEN` 時在農場 Bot 內執行。只支援斜線指令（前綴指令需要 Message Content 特權 Intent）。實機測試：`TestRealLavalink`（讀 `FARMGM_TEST_LAVALINK_URL`／`PASSWORD`）。
 
 ## 正式環境切換（2026-11-12）
 
@@ -575,7 +575,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/cachebus/cachebus.go` | `6d5d4b825383dc1d20509d859e7ad5cf6b9f7f9aa2cfc82899c655646193053a` |
 | `internal/cachebus/cachebus_test.go` | `b33d1ad0c0783797170a18aba19508056bc9229745c6ee3ab600c8d345d2a1da` |
 | `internal/clock/clock.go` | `0017235591ecf1d508aecc3c361e4d7c4a51258fea9c78d7e1049e61e8a4c7be` |
-| `internal/config/config.go` | `41cf3d24d28f9c41f752fb26cbef35d626ea97e0624d4cfdd708bf77a9dae88d` |
+| `internal/config/config.go` | `d10fb04704974ab9c52eeaa08d79775c5bb7a091a5b04d64fb6f7fff54d4dad2` |
 | `internal/config/config_test.go` | `1b6ad60f0ea2703b97ed3afdaf171d4fbbb6c9058e587734a54e4435d3c49989` |
 | `internal/db/catalog.go` | `911a747fb253112b8f2363225e2dad82997330ed40a407edabe39f26a11c5d57` |
 | `internal/db/check.go` | `abd43ee75b7c67ea966acbf7d1a26f30bf772852ef651289f5cf16eb911207b8` |
@@ -780,10 +780,10 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/svctest/svctest.go` | `e4072ad8b251f44494dcb81366a8cd78ffc4c73071984385239b5d49b1f07ebd` |
 | `internal/services/worldboss.go` | `7eba30ea237b67f0925b667ad91ef482d4e5a2f93dc191249ce030aa2c2c014e` |
 | `internal/services/worldboss_test.go` | `6d67a18555fe0fc42247a4c06a121167f83e89b1af776d1fdf89fe08313adaca` |
-| `internal/site/site.go` | `0a9e3ca033e155902bed4bebf92dd2bc1ad0d7950d8869941e6a34f5947a70d2` |
+| `internal/site/site.go` | `55322015208738b37413e5fa2246a87f1508539fb9f6ef11ea7c0baa674a7576` |
 | `internal/site/site_test.go` | `d32d811fab425aec97b03c61863775249c64c2b8d544bd1683d439b109aea457` |
 | `internal/site/static/favicon.svg` | `bba4123b033483f9ca309a1031c36a6459679843def75245bca83d74575bc292` |
-| `internal/site/static/index.html` | `bb6108f2eb58f9fbc221f5473adfc4bc5e7143c632fbe80999d6f1cd094f2d60` |
+| `internal/site/static/index.html` | `5c52833d07510b627a2dec1307422bf39c39181fa19cac8b441a93826bd15f0a` |
 | `internal/site/static/site.css` | `b6542200f867362330ba84dbb417878761f75a886b3af7c18681a2300d2b4ee7` |
 | `internal/site/static/site.js` | `e5a0a33e6290715da656ea02ef3687d2130b9ccf817871d2af44282a69b06cb0` |
 | `internal/web/admin.go` | `fff4ac767c289753fdbe578ecfd142d6a345498e7f5dced26b14c3f41ed1c050` |
