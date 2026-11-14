@@ -31,6 +31,7 @@ import (
 	"farmgm/internal/game/rules"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/catalog"
+	"farmgm/internal/repositories/codex"
 	"farmgm/internal/repositories/community"
 	"farmgm/internal/repositories/crops"
 	"farmgm/internal/repositories/groups"
@@ -1401,6 +1402,10 @@ func (w *WorldBossService) BossClaim(ctx context.Context, groupID *int64, player
 			qty := reward.Items[c]
 			total += qty
 			if err := inventory.Add(ctx, t, farm.ID, c, qty, "normal", "none"); err != nil {
+				return ActionResult{}, err
+			}
+			// 和領取探險一樣登記圖鑑，Boss 獎勵的素材也算進山洞素材圖鑑（Go 版修正，2026-11-14）
+			if err := codex.Register(ctx, t, farm.ID, c, qty, "", now); err != nil {
 				return ActionResult{}, err
 			}
 			n, ok := names[c]

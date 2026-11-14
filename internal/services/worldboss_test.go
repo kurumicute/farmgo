@@ -472,6 +472,9 @@ func TestBossRewardsClaimedOnce(t *testing.T) {
 		e.scalar("SELECT count(*) FROM farm_titles WHERE title = '屠龍英雄' AND source = 'world_boss'") != 1 {
 		t.Fatal("物品或稱號不對")
 	}
+	if e.scalar("SELECT coalesce(sum(quantity), 0) FROM farm_codex WHERE item_code = 'wood'") != 1 { // Boss 獎勵的素材要登記圖鑑
+		t.Fatal("圖鑑沒有登記 Boss 獎勵的素材")
+	}
 	_, err = e.wb.BossClaim(e.ctx, &home, a, eid)
 	wantKind(t, err, gameerr.AlreadyExists)
 	_, err = e.wb.BossClaim(e.ctx, &home, c, eid)

@@ -342,18 +342,44 @@ func TestMachinesPageBuildAndUseSeedMaker(t *testing.T) {
 	e.setInventory(pid, "gear", 3)
 	p.click("返回")
 	p.choose("製作機器", "seed_maker")
-	contains(t, p.Text, "種子製造機製作完成")
-	if !slices.Contains(p.labels(), "停用種子製造機") {
+	contains(t, p.Text, "種子製造機製作完成", "從「🌱 農田」→「🌱 種子製造」使用")
+	if slices.Contains(p.labels(), "停用種子製造機") { // 種子製造機沒有啟用／停用開關
 		t.Fatal(p.labels())
 	}
-	p.choose("使用機器", "seed:wheat")
+	p.click("種子製造")
+	contains(t, p.Text, "種子製造機", "小麥")
+	p.choose("選擇要做成種子的作物", "seed:wheat:normal:none")
 	p.click("用 1")
 	contains(t, p.Text, "做出 2 顆小麥種子")
-	p.click("停用種子製造機")
-	contains(t, p.Text, "已擁有，已停用")
-	if !slices.Contains(p.labels(), "啟用種子製造機") {
+	e.checkLedger()
+}
+
+func TestSeedMakerPageFromPlotsAcceptsAnyQuality(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "玩家")
+	pid := p.panel.playerID
+	p.goPage("plots")
+	if slices.Contains(p.labels(), "種子製造") { // 沒有機器時不顯示入口
 		t.Fatal(p.labels())
 	}
+	e.setLevel(pid, 3)
+	for item, n := range map[string]int{"wood": 10, "stone": 10, "copper_ore": 5, "gear": 3} {
+		e.setInventory(pid, item, n)
+	}
+	p.goPage("machines")
+	p.choose("製作機器", "seed_maker")
+	if _, err := e.admin.SetInventory(e.ctx, "root", pid, "carrot", "good", "none", 12); err != nil {
+		t.Fatal(err)
+	}
+	p.goPage("plots")
+	p.click("種子製造")
+	contains(t, p.Text, "胡蘿蔔【優良】", "×**12**")
+	p.choose("選擇要做成種子的作物", "seed:carrot:good:none")
+	if !slices.Contains(p.labels(), "用 12") { // 超過 10 個時多一個「全部」
+		t.Fatal(p.labels())
+	}
+	p.click("用 5")
+	contains(t, p.Text, "做出 10 顆胡蘿蔔種子")
 	e.checkLedger()
 }
 

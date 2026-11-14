@@ -95,6 +95,7 @@ func BuildBackpack(ctx context.Context, t *db.Tx, farm *models.Farm, now time.Ti
 	for i := range tools {
 		owned[tools[i].ToolCode] = &tools[i]
 	}
+	bp.SeedMaker = owned["seed_maker"] != nil
 	for _, code := range balance.ItemOrder {
 		it := balance.Items[code]
 		switch it.Kind {

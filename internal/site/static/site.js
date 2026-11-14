@@ -493,7 +493,7 @@
     fillRows("g-area-events", x.areas.map((a) => [`${a.emoji} ${a.name}`,
       a.events.map((e) => `${e.name}（${lv(Math.max(e.min_level, a.unlock_level))}）`).join("、")]));
     fillRows("g-materials", x.materials.map((m) => [m.name, m.rarity, m.usage]));
-    setText("g-seed-ratio", `1 個普通作物 = ${x.seed_maker_ratio} 顆種子`);
+    setText("g-seed-ratio", `1 個作物 = ${x.seed_maker_ratio} 顆種子`);
     setText("g-incubator-max", String(x.incubator_max));
     fillRows("g-machines", x.machines.map((m) => [`${m.emoji} ${m.name}`, lv(m.unlock_level), qty(m.materials),
       m.description]));

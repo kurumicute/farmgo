@@ -118,10 +118,10 @@ type Panel struct {
 	confirm           string
 	lab               labState // 種子實驗室：選取的種子與雜交設定
 	// 文字清單的頁碼：作物價格、操作紀錄、培育紀錄（2026-11-14 改成分頁，避免資料一多就被截掉或洗掉）
-	pricePage, logPage, labRecordPage int
-	checkinNextAt                     time.Time
-	welcomed                          bool
-	marks                             *services.ProgressMarks
+	pricePage, logPage, labRecordPage, seedMakerPage int
+	checkinNextAt                                    time.Time
+	welcomed                                         bool
+	marks                                            *services.ProgressMarks
 
 	// 圖片：本次畫面要附上的檔案與內容雜湊；面板訊息上目前掛著的圖的雜湊（相同時沿用，不重新上傳）
 	files       []ui.File

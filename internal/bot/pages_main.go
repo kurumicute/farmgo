@@ -56,6 +56,7 @@ func (p *Panel) registerPages() {
 		"cave_result":     {p.loadCaveResult, p.buildCaveResult},
 		"cave_log":        {p.loadCaveLog, p.buildCaveLog},
 		"machines":        {p.loadMachines, p.buildMachines},
+		"seedmaker":       {p.loadSeedMaker, p.buildSeedMaker},
 		"log":             {p.loadLog, p.buildLog},
 		"shop_special":    {p.loadShopSpecial, p.buildShopSpecial},
 		"progress":        {p.loadProgress, p.buildProgress},
@@ -516,6 +517,9 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	p.nav("地下菇房", "cellar", btn{emoji: "🍄", row: 4, style: ui.Primary})
 	p.nav("種子實驗室", "lab", btn{emoji: "🧪", row: 4, style: ui.Primary})
+	if bp.SeedMaker {
+		p.navFirstPage("種子製造", "seedmaker", &p.seedMakerPage, btn{emoji: "🌱", row: 4, style: ui.Primary})
+	}
 	p.navBack(4)
 	return e, nil
 }

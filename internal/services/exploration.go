@@ -1344,14 +1344,15 @@ func (x *ExplorationService) MakeSeeds(ctx context.Context, playerID int64, crop
 	}
 	quality, mutation = genetics.ParseQuality(quality), genetics.ParseMutation(mutation)
 	if !slices.Contains(exploration.SeedMakerQualities, quality) || !slices.Contains(exploration.SeedMakerMutations, mutation) {
-		return ActionResult{}, gameerr.Validationf("種子製造機只能使用普通品質、沒有突變的作物。")
+		return ActionResult{}, gameerr.Validationf("種子製造機不能使用這種品質或突變的作物。")
 	}
 	return inTx(ctx, x.GameService, func(t *db.Tx) (ActionResult, error) {
 		farm, err := x.lockedFarm(ctx, t, playerID)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		if _, err := x.machine(ctx, t, farm, "seed_maker", true); err != nil {
+		// 種子製造機只在玩家手動使用時運作，不看啟用狀態（Go 版，2026-11-14 拿掉啟用／停用開關）
+		if _, err := x.machine(ctx, t, farm, "seed_maker", false); err != nil {
 			return ActionResult{}, err
 		}
 		crop, err := x.crop(ctx, t, cropKey, true)

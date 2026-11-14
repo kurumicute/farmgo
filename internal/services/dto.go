@@ -191,6 +191,7 @@ type Backpack struct {
 	Materials        []BackpackLine // 山洞探索素材與假幣（Price 為假幣兌換價，素材為 0）
 	MaterialUsed     int            // 素材背包（不佔倉庫）
 	MaterialCapacity int
+	SeedMaker        bool // 已製作種子製造機（農田頁顯示「🌱 種子製造」入口）
 }
 
 func (b Backpack) IsEmpty() bool {

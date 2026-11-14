@@ -505,15 +505,16 @@ func TestSeedMakerTwoSeedsPerCrop(t *testing.T) {
 	}
 	_, err = e.x.MakeSeeds(e.ctx, pid, "wheat", 1, "normal", "none")
 	wantKind(t, err, gameerr.InsufficientItems)
-	e.giveQ(pid, "wheat", 2, "rare")
-	_, err = e.x.MakeSeeds(e.ctx, pid, "wheat", 1, "rare", "none")
-	wantMsg(t, err, gameerr.Validation, "普通品質")
+	e.giveQ(pid, "wheat", 2, "rare") // 2026-11-14 起任何品質都能做，做出來的是普通種子
+	if r := e.ok(e.x.MakeSeeds(e.ctx, pid, "wheat", 2, "rare", "none")); r.Quantity != 4 || e.bpQty(pid, "seed_wheat") != 10 {
+		t.Fatalf("%+v", r)
+	}
 	e.give(pid, "amber_melon", 1)
 	_, err = e.x.MakeSeeds(e.ctx, pid, "琥珀瓜", 1, "normal", "none")
 	wantMsg(t, err, gameerr.Validation, "稀有作物")
-	e.ok(e.x.SetMachineEnabled(e.ctx, pid, "seed_maker", false))
-	_, err = e.x.MakeSeeds(e.ctx, pid, "wheat", 1, "normal", "none")
-	wantMsg(t, err, gameerr.Validation, "停用")
+	e.ok(e.x.SetMachineEnabled(e.ctx, pid, "seed_maker", false)) // 舊資料可能是停用狀態：不影響手動使用
+	e.give(pid, "wheat", 1)
+	e.ok(e.x.MakeSeeds(e.ctx, pid, "wheat", 1, "normal", "none"))
 }
 
 func TestSeedMakerRareCropRuleIsConfigurable(t *testing.T) {

@@ -368,7 +368,6 @@ func (p *Panel) buildCaveLog(_ context.Context, data any) (*ui.Embed, error) {
 
 type machinesData struct {
 	status    services.MachinesStatus
-	backpack  services.Backpack
 	incubator []services.IncubatorRecipeView
 	recipes   []services.RecipeView
 }
@@ -378,9 +377,6 @@ func (p *Panel) loadMachines(ctx context.Context) (any, error) {
 	var d machinesData
 	var err error
 	if d.status, err = svc.MachinesStatus(ctx, pid); err != nil {
-		return nil, err
-	}
-	if d.backpack, err = svc.GetBackpack(ctx, pid); err != nil {
 		return nil, err
 	}
 	if d.incubator, err = svc.IncubatorRecipes(ctx); err != nil {
@@ -403,13 +399,15 @@ func missingText(m services.MachineView, sep string) []string {
 
 func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 	d := data.(machinesData)
-	st, bp := d.status, d.backpack
+	st := d.status
 	machines := map[string]services.MachineView{}
 	var blocks []string
 	for _, m := range st.Machines {
 		machines[m.Code] = m
 		var state string
 		switch {
+		case m.Owned && m.Code == "seed_maker": // 只在手動使用時運作，沒有啟用／停用
+			state = "✅ 已擁有，從「🌱 農田」→「🌱 種子製造」使用"
 		case m.Owned:
 			state = "✅ 已擁有，已停用"
 			if m.Enabled {
@@ -473,17 +471,7 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 		return nil
 	}, 0, "")
 
-	var options []option
-	if machines["seed_maker"].Owned {
-		for _, x := range bp.Produce {
-			rare := slices.ContainsFunc(exploration.RareCrops, func(c exploration.RareCrop) bool { return c.Code == x.Code })
-			if slices.Contains(exploration.SeedMakerQualities, x.Quality) && slices.Contains(exploration.SeedMakerMutations, x.Mutation) &&
-				(exploration.SeedMakerRareCrops || !rare) {
-				options = append(options, option{fmt.Sprintf("種子製造：%s（持有 %d）", x.Name, x.Quantity), "seed:" + x.Code,
-					fmt.Sprintf("1 個%s → %d 顆種子", x.Name, exploration.SeedMakerRatio), "🌱"})
-			}
-		}
-	}
+	var options []option // 種子製造改到「🌱 種子製造」頁（2026-11-14）
 	if machines["rare_incubator"].Owned {
 		for _, r := range d.incubator {
 			inputs := make([]string, len(r.InputOrder))
@@ -508,18 +496,6 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 				return p.svc().SetProcessorRecipe(ctx, p.playerID, code)
 			}), actOpts{})
 			return nil
-		case "seed":
-			name, have := code, 1
-			if i := slices.IndexFunc(bp.Produce, func(x services.BackpackLine) bool {
-				return x.Code == code && x.Quality == "normal" && x.Mutation == "none"
-			}); i >= 0 {
-				name, have = bp.Produce[i].Name, bp.Produce[i].Quantity
-			}
-			p.picker = &Picker{Key: value, Label: fmt.Sprintf("🌱 種子製造：%s（1 個 → %d 顆）", name, exploration.SeedMakerRatio), Verb: "用",
-				Max: max(1, min(have, exploration.SeedMakerMax)), Presets: []int{1, 5, 10},
-				Run: p.callQty("make_seeds", func(ctx context.Context, q int) (services.ActionResult, error) {
-					return p.svc().MakeSeeds(ctx, p.playerID, code, q, "normal", "none")
-				})}
 		default:
 			i := slices.IndexFunc(d.incubator, func(r services.IncubatorRecipeView) bool { return r.Code == code })
 			if i < 0 {
@@ -541,7 +517,7 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 	p.selectMenu("⚙️ 使用機器…", options, use, 1, selected)
 	p.quantityButtons(2)
 	for _, m := range st.Machines {
-		if !m.Owned {
+		if !m.Owned || m.Code == "seed_maker" {
 			continue
 		}
 		verb := "啟用"
@@ -555,6 +531,9 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 			}), actOpts{})
 			return nil
 		}, btn{emoji: m.Emoji, row: 3})
+	}
+	if machines["seed_maker"].Owned {
+		p.navFirstPage("種子製造", "seedmaker", &p.seedMakerPage, btn{emoji: "🌱", row: 4})
 	}
 	p.nav("加工", "craft", btn{emoji: "🏭", row: 4})
 	p.nav("山洞", "cave", btn{emoji: "⛰️", row: 4})

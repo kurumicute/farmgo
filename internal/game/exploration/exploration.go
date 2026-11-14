@@ -311,7 +311,7 @@ type Machine struct {
 var Machines = map[string]Machine{
 	"seed_maker": {"seed_maker", "🌱", "種子製造機", 3,
 		map[string]int{"wood": 10, "stone": 10, "copper_ore": 5, "gear": 3}, []string{"wood", "stone", "copper_ore", "gear"},
-		"把收成的作物做成種子：1 個作物 = 2 顆對應種子"},
+		"把收成的作物做成種子：1 個作物 = 2 顆對應種子（從「🌱 農田」→「🌱 種子製造」選作物與數量）"},
 	"auto_harvester": {"auto_harvester", "🚜", "自動收割機", 5,
 		map[string]int{"wood": 20, "iron_ore": 10, "gear": 5}, []string{"wood", "iron_ore", "gear"},
 		"開啟面板時自動收成成熟的作物（含成熟後才乾枯的作物）"},
@@ -327,15 +327,16 @@ var Machines = map[string]Machine{
 
 var MachineOrder = []string{"seed_maker", "auto_harvester", "auto_processor", "rare_incubator"}
 
-// 種子製造機：1 個作物 = 2 顆種子；只接受下列品質與突變
+// 種子製造機：1 個作物 = 2 顆種子；只接受下列品質與突變（做出來的種子一律是普通種子）
 const (
 	SeedMakerRatio = 2
 	SeedMakerMax   = 999
 )
 
 var (
-	SeedMakerQualities = []string{"normal"}
-	SeedMakerMutations = []string{"none"}
+	// Go 版放寬（2026-11-14）：原本只接受普通品質、沒有突變的作物，玩家收成大多是優良以上，選單常常是空的
+	SeedMakerQualities = []string{"normal", "good", "rare", "legendary"}
+	SeedMakerMutations = []string{"none", "giant", "golden", "fast", "variant"}
 	// SeedMakerRareCrops true：琥珀瓜、月光花等稀有作物也能製造種子（模組層級可變狀態，測試會修改）
 	SeedMakerRareCrops = false
 )
