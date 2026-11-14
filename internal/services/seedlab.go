@@ -21,6 +21,7 @@ import (
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
+	"farmgm/internal/game/seasons"
 	"farmgm/internal/game/seedlab"
 	"farmgm/internal/repositories/catalog"
 	"farmgm/internal/repositories/codex"
@@ -42,6 +43,7 @@ type LabSeedView struct {
 	MutationName string // 沒有突變時為 ""
 	Busy         bool   // 培育中
 	Hybrid       bool   // 雜交作物
+	OffSeason    string // 現在不是這個作物的季節時，說明為什麼不能種（可以種時為 ""）
 }
 
 // Label 例如「紫莓 第 3 代 ✨夜光作物」。
@@ -237,9 +239,15 @@ func (s *GameService) SeedLab(ctx context.Context, playerID int64) (SeedLabView,
 			return v, err
 		}
 		byID := map[int64]*models.LabSeed{}
+		now := s.now()
 		for i := range seeds {
 			byID[seeds[i].ID] = &seeds[i]
-			v.Seeds = append(v.Seeds, seedView(&seeds[i], cropsByCode))
+			sv := seedView(&seeds[i], cropsByCode)
+			if c := cropsByCode[seeds[i].CropCode]; c != nil && !seasons.Available(c.Seasons, c.HourStart, c.HourEnd, now) {
+				sv.OffSeason = fmt.Sprintf("%s是%s的作物，現在不能種植（%s）", c.Name,
+					seasons.Describe(c.Seasons, c.HourStart, c.HourEnd), seasons.NowText(now))
+			}
+			v.Seeds = append(v.Seeds, sv)
 		}
 		plots, err := farms.ListPlots(ctx, t, farm.ID, false)
 		if err != nil {
@@ -250,7 +258,6 @@ func (s *GameService) SeedLab(ctx context.Context, playerID int64) (SeedLabView,
 				v.EmptyPlots = append(v.EmptyPlots, p.PlotNumber)
 			}
 		}
-		now := s.now()
 		day := taipeiDay(now)
 		if v.SentToday, err = labrepo.SentCount(ctx, t, farm.ID, day); err != nil {
 			return v, err

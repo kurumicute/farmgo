@@ -197,3 +197,31 @@ func TestLabSeedPages(t *testing.T) {
 		t.Fatal(len(got))
 	}
 }
+
+// 農田沒有空地時，種子庫仍顯示停用的「種下」選單與原因（以前選單會整個消失，玩家以為特殊種子不能種）。
+func TestLabSeedNoEmptyPlot(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	pid := p.panel.playerID
+	e.setLevel(pid, 5)
+	e.setGold(pid, 100_000)
+	p.goPage("lab")
+	p.click("建造實驗室")
+	p.click("確認建造")
+	e.setInventory(pid, "seed_wheat", 1)
+	p.goPage("lab")
+	p.choose("鑑定一般種子", "wheat")
+	p.goPage("plots")
+	p.choose("選擇作物，種到", "wheat") // 種滿所有空地
+
+	p.goPage("lab_seeds")
+	p.choose("選擇種子", p.options("選擇種子")[0])
+	contains(t, p.Text, "農田目前沒有空地")
+	s := p.selectMenu("農田沒有空地")
+	if s == nil || !s.Disabled {
+		t.Fatal("沒有空地時應顯示停用的種下選單")
+	}
+	if p.selectMenu("🌱 種下這顆種子（空地") != nil {
+		t.Fatal("沒有空地時不應出現可用的種下選單")
+	}
+}

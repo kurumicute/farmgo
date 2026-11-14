@@ -349,6 +349,12 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 		if sel.Hybrid {
 			detail = append(detail, "🌟 雜交作物：商店買不到，只能自己培育或由朋友分享。")
 		}
+		switch {
+		case sel.OffSeason != "":
+			detail = append(detail, "⚠️ "+sel.OffSeason+"。可以先留在種子庫、拿去雜交或分享給朋友。")
+		case len(v.EmptyPlots) == 0:
+			detail = append(detail, "⚠️ 農田目前沒有空地：收成後空出來的土地就能種下這顆種子。")
+		}
 		if v.Built {
 			detail = append(detail, fmt.Sprintf("☢️ 突變研究成功率 %s%%（使用古代核心 %s%%），需要💎水晶 ×%d，約 %s。",
 				bpPct(seedlab.MutateChanceBP(sel.Genes.Mutation, false)), bpPct(seedlab.MutateChanceBP(sel.Genes.Mutation, true)),
@@ -387,6 +393,21 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 		var plots []option
 		for _, n := range v.EmptyPlots {
 			plots = append(plots, option{fmt.Sprintf("種到第 %d 格", n), fmt.Sprint(n), sel.CropName, "🌱"})
+		}
+		// 不能種的時候留一個停用的選單說明原因（以前沒有空地時選單會整個消失，玩家以為不能種）
+		blocked := ""
+		switch {
+		case sel.OffSeason != "":
+			blocked = "🌱 現在不是" + sel.CropName + "的季節，不能種下"
+		case len(plots) == 0:
+			blocked = "🌱 農田沒有空地，收成後才能種下這顆種子"
+		}
+		if blocked != "" {
+			if s := p.selectMenu(blocked, []option{{"目前不能種下", "none", "", "🌱"}},
+				func(context.Context, ui.Interaction, string) error { return nil }, 1, ""); s != nil {
+				s.Disabled = true
+			}
+			plots = nil
 		}
 		p.selectMenu(fmt.Sprintf("🌱 種下這顆種子（空地 %d 格）…", len(v.EmptyPlots)), plots, func(ctx context.Context, it ui.Interaction, value string) error {
 			n, _ := strconv.Atoi(value)
