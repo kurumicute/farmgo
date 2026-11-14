@@ -91,7 +91,25 @@ func (s *SiteService) Stats(ctx context.Context) (SiteStats, error) {
 func (s *SiteService) Guide(ctx context.Context) (*OrderedMap, error) {
 	var out *OrderedMap
 	err := s.db.InTx(ctx, db.TxOptions{ReadOnly: true}, func(t *db.Tx) error {
-		g, err := buildGuide(ctx, t, s.now())
+		g, err := buildGuide(ctx, t, s.now(), nil)
+		out = g
+		return err
+	})
+	return out, err
+}
+
+// ErrUnknownGuidePart 沒有這個手冊部分（GuideParts 沒有的名稱）。
+var ErrUnknownGuidePart = fmt.Errorf("沒有這個手冊部分")
+
+// GuidePart 操作手冊的其中一部分（GuideParts），只查詢這部分需要的資料。
+func (s *SiteService) GuidePart(ctx context.Context, part string) (*OrderedMap, error) {
+	keys, ok := GuideParts[part]
+	if !ok {
+		return nil, ErrUnknownGuidePart
+	}
+	var out *OrderedMap
+	err := s.db.InTx(ctx, db.TxOptions{ReadOnly: true}, func(t *db.Tx) error {
+		g, err := buildGuide(ctx, t, s.now(), keys)
 		out = g
 		return err
 	})
@@ -131,42 +149,92 @@ type nameChance struct {
 	ChancePct float64 `json:"chance_pct"`
 }
 
-func buildGuide(ctx context.Context, t *db.Tx, now time.Time) (*OrderedMap, error) {
-	if err := featuresettings.Refresh(ctx, t, false); err != nil { // 管理網站調整過的簽到、寵物、特賣與成就數值
-		return nil, err
+// guideEnv 建立手冊資料時共用的查詢結果（只在需要時才查，同一次請求內只查一次）。
+type guideEnv struct {
+	ctx context.Context
+	t   *db.Tx
+	now time.Time
+
+	cropsLoaded bool
+	allCrops    []models.CropType
+	activeCrops []models.CropType // 啟用中、而且不是雜交作物
+	names       map[string]string // 作物與加工品代碼 → 名稱
+
+	itemNames map[string]string
+
+	geneticsLoaded  bool
+	geneticsVersion int
+	gs              balance.GeneticsSettings
+}
+
+func (e *guideEnv) loadCrops() error {
+	if e.cropsLoaded {
+		return nil
 	}
-	allCrops, err := crops.ListAll(ctx, t, false)
+	all, err := crops.ListAll(e.ctx, e.t, false)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var activeCrops []models.CropType
-	names := map[string]string{}
-	for _, c := range allCrops {
-		names[c.Code] = c.Name
+	e.allCrops, e.names = all, map[string]string{}
+	for _, c := range all {
+		e.names[c.Code] = c.Name
 		// 雜交作物不在介紹網站列出（只介紹「可以雜交出新作物」，不公開組合與品種），也不放進特賣
 		if c.Active && !seedlab.IsHybrid(c.Code) {
-			activeCrops = append(activeCrops, c)
+			e.activeCrops = append(e.activeCrops, c)
 		}
 	}
 	for code, g := range balance.Goods {
-		names[code] = g.Name
+		e.names[code] = g.Name
 	}
-	allAnimals, err := animals.ListAll(ctx, t, false)
-	if err != nil {
-		return nil, err
-	}
-	version, gs, err := genetics.Current(ctx, t)
-	if err != nil {
-		return nil, err
-	}
-	itemNames, err := catalog.ItemNames(ctx, t)
-	if err != nil {
-		return nil, err
-	}
+	e.cropsLoaded = true
+	return nil
+}
 
-	g := NewOrderedMap()
-	g.Set("genetics_version", version)
-	g.Set("start", map[string]any{
+func (e *guideEnv) loadItemNames() error {
+	if e.itemNames != nil {
+		return nil
+	}
+	n, err := catalog.ItemNames(e.ctx, e.t)
+	e.itemNames = n
+	return err
+}
+
+func (e *guideEnv) loadGenetics() error {
+	if e.geneticsLoaded {
+		return nil
+	}
+	v, gs, err := genetics.Current(e.ctx, e.t)
+	if err != nil {
+		return err
+	}
+	e.geneticsVersion, e.gs, e.geneticsLoaded = v, gs, true
+	return nil
+}
+
+// rareSeedCrops 商店不賣種子的稀有作物（不含雜交作物）。
+func (e *guideEnv) rareSeedCrops() []string {
+	out := []string{}
+	for _, c := range e.activeCrops {
+		if !c.ShopBuyable {
+			out = append(out, c.Name)
+		}
+	}
+	return out
+}
+
+// guideKey 手冊的一個頂層欄位與它的建立函式。
+type guideKey struct {
+	key   string
+	needs []func(*guideEnv) error
+	build func(e *guideEnv) (any, error)
+}
+
+func needCrops(e *guideEnv) error    { return e.loadCrops() }
+func needItems(e *guideEnv) error    { return e.loadItemNames() }
+func needGenetics(e *guideEnv) error { return e.loadGenetics() }
+func guideOK(v any) (any, error)     { return v, nil }
+func guideStart() map[string]any {
+	return map[string]any{
 		"gold": balance.InitialGold, "plots": balance.InitialPlots, "warehouse": balance.InitialWarehouseCapacity,
 		"rename_cost": balance.RenameFarmCost, "upgrade_prices": balance.UpgradePrices,
 		"upgrade_plots": balance.UpgradePlotsAdded, "max_plots": balance.MaxPlots,
@@ -177,143 +245,356 @@ func buildGuide(ctx context.Context, t *db.Tx, now time.Time) (*OrderedMap, erro
 		"barn_slots": balance.BarnSlots, "craft_max": balance.CraftMaxQuantity,
 		"warehouse_step": balance.WarehouseExpansionStep, "warehouse_prices": balance.WarehouseExpansionPrices,
 		"warehouse_max": balance.WarehouseMaxCapacity,
-	})
-	cropRows := []map[string]any{}
-	for _, c := range activeCrops {
-		cropRows = append(cropRows, map[string]any{
-			"name": c.Name, "seed_price": c.SeedPrice, "grow_seconds": c.GrowSeconds, "harvest_quantity": c.HarvestQuantity,
-			"sell_price": c.SellPrice, "variant_name": c.VariantName, "shop_buyable": c.ShopBuyable,
-			"season_text": seasons.Describe(c.Seasons, c.HourStart, c.HourEnd),
-			"in_season":   seasons.Available(c.Seasons, c.HourStart, c.HourEnd, now),
-		})
+		// 所有種子和探險素材一樣放素材背包（Go 版新增）
+		"material_bag_capacity": exploration.BagCapacity(),
 	}
-	g.Set("crops", cropRows)
-	g.Set("exploration", buildExploration(names))
-	g.Set("ruins", buildRuins(itemNames))
-	g.Set("news", buildNews())
-	g.Set("seasons", buildSeasons(now))
-	fish, err := buildFishing(ctx, t)
-	if err != nil {
-		return nil, err
-	}
-	g.Set("fishing", fish)
-	boss, err := buildWorldBoss(ctx, t, itemNames, now)
-	if err != nil {
-		return nil, err
-	}
-	g.Set("world_boss", boss)
-	g.Set("progress", buildProgress())
-	g.Set("special_shop", buildSpecialShop(activeCrops, now))
-	g.Set("pets", buildPets(activeCrops))
-	g.Set("mushroom", buildMushroom(names))
-	g.Set("seedlab", buildSeedLab())
+}
 
-	qualities := []map[string]any{}
-	for _, code := range balance.QualityOrder {
-		qualities = append(qualities, map[string]any{"name": balance.Qualities[code],
-			"chance_pct": bpPct(gs.QualityBP[code]), "price_mul": float64(gs.QualityPricePct[code]) / 100})
+// guideKeys 手冊所有頂層欄位（依 Python build_guide 的順序；Go 版新增的欄位放在後面）。
+var guideKeys = []guideKey{
+	{"genetics_version", []func(*guideEnv) error{needGenetics}, func(e *guideEnv) (any, error) { return guideOK(e.geneticsVersion) }},
+	{"start", nil, func(e *guideEnv) (any, error) { return guideOK(guideStart()) }},
+	{"crops", []func(*guideEnv) error{needCrops}, func(e *guideEnv) (any, error) {
+		rows := []map[string]any{}
+		for _, c := range e.activeCrops {
+			rows = append(rows, map[string]any{
+				"name": c.Name, "seed_price": c.SeedPrice, "grow_seconds": c.GrowSeconds, "harvest_quantity": c.HarvestQuantity,
+				"sell_price": c.SellPrice, "variant_name": c.VariantName, "shop_buyable": c.ShopBuyable,
+				"season_text": seasons.Describe(c.Seasons, c.HourStart, c.HourEnd),
+				"in_season":   seasons.Available(c.Seasons, c.HourStart, c.HourEnd, e.now),
+			})
+		}
+		return rows, nil
+	}},
+	{"exploration", []func(*guideEnv) error{needCrops}, func(e *guideEnv) (any, error) { return guideOK(buildExploration(e.names)) }},
+	{"ruins", []func(*guideEnv) error{needItems}, func(e *guideEnv) (any, error) { return guideOK(buildRuins(e.itemNames)) }},
+	{"news", nil, func(e *guideEnv) (any, error) { return guideOK(buildNews()) }},
+	{"seasons", nil, func(e *guideEnv) (any, error) { return guideOK(buildSeasons(e.now)) }},
+	{"fishing", nil, func(e *guideEnv) (any, error) { return buildFishing(e.ctx, e.t) }},
+	{"world_boss", []func(*guideEnv) error{needItems}, func(e *guideEnv) (any, error) {
+		return buildWorldBoss(e.ctx, e.t, e.itemNames, e.now)
+	}},
+	{"progress", nil, func(e *guideEnv) (any, error) { return guideOK(buildProgress()) }},
+	{"special_shop", []func(*guideEnv) error{needCrops}, func(e *guideEnv) (any, error) {
+		return guideOK(buildSpecialShop(e.activeCrops, e.now))
+	}},
+	{"pets", []func(*guideEnv) error{needCrops}, func(e *guideEnv) (any, error) { return guideOK(buildPets(e.activeCrops)) }},
+	{"mushroom", []func(*guideEnv) error{needCrops}, func(e *guideEnv) (any, error) { return guideOK(buildMushroom(e.names)) }},
+	{"seedlab", []func(*guideEnv) error{needCrops}, func(e *guideEnv) (any, error) { return guideOK(buildSeedLab(e.rareSeedCrops())) }},
+	{"qualities", []func(*guideEnv) error{needGenetics}, func(e *guideEnv) (any, error) {
+		qualities := []map[string]any{}
+		for _, code := range balance.QualityOrder {
+			qualities = append(qualities, map[string]any{"name": balance.Qualities[code],
+				"chance_pct": bpPct(e.gs.QualityBP[code]), "price_mul": float64(e.gs.QualityPricePct[code]) / 100})
+		}
+		return qualities, nil
+	}},
+	{"level_bonus_pct", []func(*guideEnv) error{needGenetics}, func(e *guideEnv) (any, error) { return guideOK(bpPct(e.gs.LevelBonusBP)) }},
+	{"level_bonus_max_pct", []func(*guideEnv) error{needGenetics}, func(e *guideEnv) (any, error) {
+		return guideOK(bpPct(e.gs.LevelBonusMaxBP))
+	}},
+	{"mutations", []func(*guideEnv) error{needGenetics}, func(e *guideEnv) (any, error) {
+		gs := e.gs
+		effects := map[string]string{
+			"giant":  fmt.Sprintf("收成數量 ×%d", gs.GiantMultiplier),
+			"golden": fmt.Sprintf("售價 ×%s", pyG(float64(gs.GoldenPricePct)/100)),
+			"fast": fmt.Sprintf("生長時間減少 %s（最短 %s，仍需澆水）", siteDuration(gs.FastReductionSeconds),
+				siteDuration(balance.MinGrowSeconds)),
+			"variant": fmt.Sprintf("長成獨立的稀有作物，售價 ×%s", pyG(float64(gs.VariantPricePct)/100)),
+		}
+		mutations := []map[string]any{}
+		for _, code := range []string{"giant", "golden", "fast", "variant"} {
+			mutations = append(mutations, map[string]any{"name": balance.Mutations[code],
+				"chance_pct": bpPct(gs.MutationBP[code]), "effect": effects[code]})
+		}
+		return mutations, nil
+	}},
+	{"items", nil, func(e *guideEnv) (any, error) {
+		items := []map[string]any{}
+		for _, code := range balance.ItemOrder {
+			it := balance.Items[code]
+			items = append(items, map[string]any{"name": it.Name, "price": it.Price, "kind": it.Kind, "description": it.Desc})
+		}
+		return items, nil
+	}},
+	{"defenses", nil, func(e *guideEnv) (any, error) {
+		defenses := []map[string]any{}
+		for _, code := range balance.DefenseOrder {
+			d := balance.Defenses[code]
+			defenses = append(defenses, map[string]any{"name": d.Name, "price": d.Price, "max": d.MaxPerFarm,
+				"chance_pct": numfmt.Round(d.BlockChance * 100), "range": d.Range})
+		}
+		return defenses, nil
+	}},
+	{"buildings", nil, func(e *guideEnv) (any, error) {
+		buildings := []map[string]any{}
+		for _, code := range balance.BuildingOrder {
+			b := balance.Buildings[code]
+			buildings = append(buildings, map[string]any{"name": b.Name, "price": b.Price, "max": b.MaxPerFarm})
+		}
+		return buildings, nil
+	}},
+	{"animals", nil, func(e *guideEnv) (any, error) {
+		allAnimals, err := animals.ListAll(e.ctx, e.t, false)
+		if err != nil {
+			return nil, err
+		}
+		rows := []map[string]any{}
+		for _, a := range allAnimals {
+			if !a.Active {
+				continue
+			}
+			rows = append(rows, map[string]any{"name": a.Name, "price": a.Price, "feed_cost": a.FeedCost,
+				"cycle_seconds": a.CycleSeconds, "product_name": a.ProductName, "product_quantity": a.ProductQuantity,
+				"product_price": a.ProductPrice})
+		}
+		return rows, nil
+	}},
+	{"recipes", []func(*guideEnv) error{needCrops}, func(e *guideEnv) (any, error) {
+		recipes := []map[string]any{}
+		for _, code := range balance.RecipeOrder {
+			rc := balance.Recipes[code]
+			inputs := []siteNameQty{}
+			for _, item := range rc.InputOrder {
+				inputs = append(inputs, siteNameQty{nameOr(e.names, item), rc.Inputs[item]})
+			}
+			recipes = append(recipes, map[string]any{"name": rc.Name, "building": balance.Buildings[rc.Building].Name,
+				"building_price": balance.Buildings[rc.Building].Price, "inputs": inputs, "output_quantity": rc.OutputQty,
+				"seconds": rc.Seconds, "sell_price": balance.Goods[rc.Output].SellPrice})
+		}
+		return recipes, nil
+	}},
+	{"gamble", nil, func(e *guideEnv) (any, error) {
+		gambleQ, gambleM := []string{}, []string{}
+		for _, q := range balance.GambleQualities {
+			gambleQ = append(gambleQ, balance.Qualities[q])
+		}
+		for _, m := range balance.GambleMutations {
+			gambleM = append(gambleM, balance.Mutations[m])
+		}
+		return map[string]any{"min": balance.GambleMin, "max": balance.GambleMax, "big_from": balance.GambleBigFrom,
+			"hilo_multiplier": balance.GambleHiloMultiplier, "exact_multiplier": balance.GambleExactMultiplier,
+			"qualities": gambleQ, "mutations": gambleM}, nil
+	}},
+	{"events", nil, func(e *guideEnv) (any, error) {
+		// 只列啟用中的活動（名稱、效果與時段本來就會在 Discord 面板公開顯示）
+		evs, err := events.ListAll(e.ctx, e.t)
+		if err != nil {
+			return nil, err
+		}
+		slices.SortFunc(evs, func(a, b models.GameEvent) int { return int(a.ID - b.ID) })
+		rows := []map[string]any{}
+		for i := range evs {
+			if !evs[i].Enabled {
+				continue
+			}
+			r := events.ToRule(&evs[i])
+			rows = append(rows, map[string]any{"name": r.Name, "description": r.Description,
+				"effects_text": eventrules.EffectsText(r), "schedule_text": eventrules.ScheduleText(r),
+				"active_now": eventrules.IsActive(r, e.now)})
+		}
+		return rows, nil
+	}},
+	{"rankings", nil, func(e *guideEnv) (any, error) {
+		// 只列啟用中的排名獎勵規則（規則本身會在 Discord「🎁 排名獎勵」公開顯示，不含任何得獎紀錄）
+		rules, err := db.QueryStructs[models.RankingRewardRule](e.ctx, e.t, "SELECT * FROM ranking_reward_rules WHERE enabled ORDER BY id")
+		if err != nil {
+			return nil, err
+		}
+		rows := []map[string]any{}
+		for _, r := range rules {
+			texts := []string{}
+			for _, x := range r.Rewards {
+				texts = append(texts, ranking.RewardText(ranking.Reward{RewardType: x.RewardType, Amount: x.Amount}))
+			}
+			rows = append(rows, map[string]any{"name": r.Name, "scope": r.Scope, "metric": ranking.Metrics[r.Metric],
+				"period": ranking.Periods[r.Period], "rewards": texts})
+		}
+		return map[string]any{"settle_grace_seconds": balance.RankingSettleGraceSeconds, "rules": rows}, nil
+	}},
+	// ---------- Go 版新增 ----------
+	{"craft", nil, func(e *guideEnv) (any, error) { return guideOK(buildCraft()) }},
+	{"groups", nil, func(e *guideEnv) (any, error) { return guideOK(buildGroups()) }},
+	{"cards", []func(*guideEnv) error{needCrops}, buildCards},
+}
+
+// GuideParts 介紹網站分段讀取（2026-11-14）：首頁只讀 summary（功能卡片），操作手冊的每個欄位打開時才讀對應的部分。
+// 值是這個部分包含的頂層欄位（與完整 /api/guide 相同的鍵與格式）。
+var GuideParts = map[string][]string{
+	"summary":      {"cards"},
+	"farm":         {"start", "crops", "seasons"},
+	"genetics":     {"genetics_version", "qualities", "level_bonus_pct", "level_bonus_max_pct", "mutations"},
+	"shop":         {"start", "items"},
+	"ranch":        {"start", "buildings", "animals"},
+	"craft":        {"start", "recipes", "craft"},
+	"fishing":      {"fishing"},
+	"exploration":  {"exploration"},
+	"mushroom":     {"mushroom"},
+	"seedlab":      {"seedlab"},
+	"ruins":        {"ruins"},
+	"news":         {"news"},
+	"steal":        {"start", "defenses"},
+	"gamble":       {"gamble"},
+	"activities":   {"events", "groups"},
+	"world_boss":   {"world_boss"},
+	"pets":         {"pets"},
+	"special_shop": {"special_shop"},
+	"progress":     {"progress"},
+	"rankings":     {"rankings"},
+}
+
+// buildGuide keys 為 nil 時建立全部欄位（完整 /api/guide），否則只建立指定的欄位（依 guideKeys 的順序）。
+func buildGuide(ctx context.Context, t *db.Tx, now time.Time, keys []string) (*OrderedMap, error) {
+	if err := featuresettings.Refresh(ctx, t, false); err != nil { // 管理網站調整過的簽到、寵物、特賣與成就數值
+		return nil, err
 	}
-	g.Set("qualities", qualities)
-	g.Set("level_bonus_pct", bpPct(gs.LevelBonusBP))
-	g.Set("level_bonus_max_pct", bpPct(gs.LevelBonusMaxBP))
-	effects := map[string]string{
-		"giant":  fmt.Sprintf("收成數量 ×%d", gs.GiantMultiplier),
-		"golden": fmt.Sprintf("售價 ×%s", pyG(float64(gs.GoldenPricePct)/100)),
-		"fast": fmt.Sprintf("生長時間減少 %s（最短 %s，仍需澆水）", siteDuration(gs.FastReductionSeconds),
-			siteDuration(balance.MinGrowSeconds)),
-		"variant": fmt.Sprintf("長成獨立的稀有作物，售價 ×%s", pyG(float64(gs.VariantPricePct)/100)),
-	}
-	mutations := []map[string]any{}
-	for _, code := range []string{"giant", "golden", "fast", "variant"} {
-		mutations = append(mutations, map[string]any{"name": balance.Mutations[code],
-			"chance_pct": bpPct(gs.MutationBP[code]), "effect": effects[code]})
-	}
-	g.Set("mutations", mutations)
-	items := []map[string]any{}
-	for _, code := range balance.ItemOrder {
-		it := balance.Items[code]
-		items = append(items, map[string]any{"name": it.Name, "price": it.Price, "kind": it.Kind, "description": it.Desc})
-	}
-	g.Set("items", items)
-	defenses := []map[string]any{}
-	for _, code := range balance.DefenseOrder {
-		d := balance.Defenses[code]
-		defenses = append(defenses, map[string]any{"name": d.Name, "price": d.Price, "max": d.MaxPerFarm,
-			"chance_pct": numfmt.Round(d.BlockChance * 100), "range": d.Range})
-	}
-	g.Set("defenses", defenses)
-	buildings := []map[string]any{}
-	for _, code := range balance.BuildingOrder {
-		b := balance.Buildings[code]
-		buildings = append(buildings, map[string]any{"name": b.Name, "price": b.Price, "max": b.MaxPerFarm})
-	}
-	g.Set("buildings", buildings)
-	animalRows := []map[string]any{}
-	for _, a := range allAnimals {
-		if !a.Active {
+	e := &guideEnv{ctx: ctx, t: t, now: now}
+	g := NewOrderedMap()
+	for _, k := range guideKeys {
+		if keys != nil && !slices.Contains(keys, k.key) {
 			continue
 		}
-		animalRows = append(animalRows, map[string]any{"name": a.Name, "price": a.Price, "feed_cost": a.FeedCost,
-			"cycle_seconds": a.CycleSeconds, "product_name": a.ProductName, "product_quantity": a.ProductQuantity,
-			"product_price": a.ProductPrice})
-	}
-	g.Set("animals", animalRows)
-	recipes := []map[string]any{}
-	for _, code := range balance.RecipeOrder {
-		rc := balance.Recipes[code]
-		inputs := []siteNameQty{}
-		for _, item := range rc.InputOrder {
-			inputs = append(inputs, siteNameQty{nameOr(names, item), rc.Inputs[item]})
+		for _, need := range k.needs {
+			if err := need(e); err != nil {
+				return nil, err
+			}
 		}
-		recipes = append(recipes, map[string]any{"name": rc.Name, "building": balance.Buildings[rc.Building].Name,
-			"building_price": balance.Buildings[rc.Building].Price, "inputs": inputs, "output_quantity": rc.OutputQty,
-			"seconds": rc.Seconds, "sell_price": balance.Goods[rc.Output].SellPrice})
-	}
-	g.Set("recipes", recipes)
-	gambleQ, gambleM := []string{}, []string{}
-	for _, q := range balance.GambleQualities {
-		gambleQ = append(gambleQ, balance.Qualities[q])
-	}
-	for _, m := range balance.GambleMutations {
-		gambleM = append(gambleM, balance.Mutations[m])
-	}
-	g.Set("gamble", map[string]any{"min": balance.GambleMin, "max": balance.GambleMax, "big_from": balance.GambleBigFrom,
-		"hilo_multiplier": balance.GambleHiloMultiplier, "exact_multiplier": balance.GambleExactMultiplier,
-		"qualities": gambleQ, "mutations": gambleM})
-
-	// 只列啟用中的活動（名稱、效果與時段本來就會在 Discord 面板公開顯示）
-	evs, err := events.ListAll(ctx, t)
-	if err != nil {
-		return nil, err
-	}
-	slices.SortFunc(evs, func(a, b models.GameEvent) int { return int(a.ID - b.ID) })
-	eventRows := []map[string]any{}
-	for i := range evs {
-		if !evs[i].Enabled {
-			continue
+		v, err := k.build(e)
+		if err != nil {
+			return nil, err
 		}
-		e := events.ToRule(&evs[i])
-		eventRows = append(eventRows, map[string]any{"name": e.Name, "description": e.Description,
-			"effects_text": eventrules.EffectsText(e), "schedule_text": eventrules.ScheduleText(e),
-			"active_now": eventrules.IsActive(e, now)})
+		g.Set(k.key, v)
 	}
-	g.Set("events", eventRows)
-	// 只列啟用中的排名獎勵規則（規則本身會在 Discord「🎁 排名獎勵」公開顯示，不含任何得獎紀錄）
-	rules, err := db.QueryStructs[models.RankingRewardRule](ctx, t, "SELECT * FROM ranking_reward_rules WHERE enabled ORDER BY id")
-	if err != nil {
-		return nil, err
-	}
-	ruleRows := []map[string]any{}
-	for _, r := range rules {
-		texts := []string{}
-		for _, x := range r.Rewards {
-			texts = append(texts, ranking.RewardText(ranking.Reward{RewardType: x.RewardType, Amount: x.Amount}))
-		}
-		ruleRows = append(ruleRows, map[string]any{"name": r.Name, "scope": r.Scope, "metric": ranking.Metrics[r.Metric],
-			"period": ranking.Periods[r.Period], "rewards": texts})
-	}
-	g.Set("rankings", map[string]any{"settle_grace_seconds": balance.RankingSettleGraceSeconds, "rules": ruleRows})
 	return g, nil
+}
+
+// buildCraft 加工的規則（Go 版新增的欄位）：排隊上限、可以當原料的突變、取消訂單。
+func buildCraft() map[string]any {
+	mutations := []string{}
+	for _, m := range CraftMutations {
+		if m != "none" {
+			mutations = append(mutations, balance.Mutations[m])
+		}
+	}
+	return map[string]any{"queue_max": balance.CraftQueueMax, "mutations": mutations, "max_quantity": balance.CraftMaxQuantity}
+}
+
+// buildGroups 群組共同任務與競賽的種類（任務與競賽本身由管理員建立，這裡只有種類與規則）。
+func buildGroups() map[string]any {
+	metricNames := map[string]string{"quantity": "數量", "amount": "金額"}
+	rewardNames := map[string]string{"gold": "金幣"}
+	for _, code := range balance.QuestRewardTypes {
+		if it, ok := balance.Items[code]; ok {
+			rewardNames[code] = it.Name
+		}
+	}
+	quests := []map[string]any{}
+	for _, code := range balance.QuestTypeOrder {
+		q := balance.QuestTypes[code]
+		metrics := []string{}
+		for _, m := range q.Metrics {
+			metrics = append(metrics, metricNames[m])
+		}
+		quests = append(quests, map[string]any{"name": q.Name, "metrics": metrics})
+	}
+	rewards := []string{}
+	for _, code := range balance.QuestRewardTypes {
+		rewards = append(rewards, nameOr(rewardNames, code))
+	}
+	modes := []string{}
+	for _, code := range balance.QuestRewardModeOrder {
+		modes = append(modes, balance.QuestRewardModes[code])
+	}
+	comps := []map[string]any{}
+	for _, code := range balance.CompetitionTypeOrder {
+		c := balance.CompetitionTypes[code]
+		comps = append(comps, map[string]any{"name": c.Name, "scoring": c.Desc})
+	}
+	return map[string]any{"quests": quests, "quest_rewards": rewards, "quest_reward_modes": modes,
+		"competitions": comps, "competition_reward_ranks": balance.CompetitionRewardRanks,
+		"max_days": balance.EventMaxDays, "transfer_cooldown_days": balance.GroupTransferCooldownSeconds / 86400}
+}
+
+// buildCards 首頁功能卡片需要的名稱與數字（一次載入，資料量小；詳細數值在操作手冊打開時才讀）。
+func buildCards(e *guideEnv) (any, error) {
+	names := func(order []string, name func(string) string) []string {
+		out := []string{}
+		for _, c := range order {
+			out = append(out, name(c))
+		}
+		return out
+	}
+	allAnimals, err := animals.ListAll(e.ctx, e.t, false)
+	if err != nil {
+		return nil, err
+	}
+	animalNames := []string{}
+	for _, a := range allAnimals {
+		if a.Active {
+			animalNames = append(animalNames, a.Name)
+		}
+	}
+	buildings := []string{}
+	for _, code := range balance.RecipeOrder {
+		if n := balance.Buildings[balance.Recipes[code].Building].Name; !slices.Contains(buildings, n) {
+			buildings = append(buildings, n)
+		}
+	}
+	tools := []string{}
+	for _, code := range balance.ItemOrder {
+		if it := balance.Items[code]; it.Kind == "tool" {
+			tools = append(tools, it.Name)
+		}
+	}
+	cropTimes := []map[string]any{}
+	for _, c := range e.activeCrops {
+		cropTimes = append(cropTimes, map[string]any{"name": c.Name, "grow_seconds": c.GrowSeconds})
+	}
+	fishRarities := names(fishing.Rarities, func(r string) string { return fishing.RarityNames[r] })
+	// 首頁的世界 Boss 出現時間：第一個啟用中的全服排程（沒有時用第一個排程）
+	var boss any
+	scheds, err := db.QueryStructs[models.WorldBossSchedule](e.ctx, e.t,
+		"SELECT * FROM world_boss_schedules WHERE enabled ORDER BY (group_id IS NOT NULL), id LIMIT 1")
+	if err != nil {
+		return nil, err
+	}
+	if len(scheds) > 0 {
+		sc := scheds[0]
+		boss = map[string]any{"name": sc.Name, "interval_days": sc.IntervalDays,
+			"time": fmt.Sprintf("%02d:%02d", sc.SpawnHour, sc.SpawnMinute)}
+	}
+	return map[string]any{
+		"qualities":     names(balance.QualityOrder, func(q string) string { return balance.Qualities[q] }),
+		"mutations":     names([]string{"giant", "golden", "fast", "variant"}, func(m string) string { return balance.Mutations[m] }),
+		"animals":       animalNames,
+		"buildings":     buildings,
+		"recipes":       names(balance.RecipeOrder, func(c string) string { return balance.Recipes[c].Name }),
+		"defenses":      names(balance.DefenseOrder, func(c string) string { return balance.Defenses[c].Name }),
+		"tools":         tools,
+		"areas":         names(exploration.AreaOrder, func(c string) string { return exploration.AreaOf(c).Name }),
+		"machines":      names(exploration.MachineOrder, func(c string) string { return exploration.Machines[c].Name }),
+		"rare_seeds":    e.rareSeedCrops(),
+		"crop_times":    cropTimes,
+		"fish_rarities": fishRarities,
+		"boss":          boss,
+		"hilo":          balance.GambleHiloMultiplier, "exact": balance.GambleExactMultiplier,
+		"transfer_days": balance.GroupTransferCooldownSeconds / 86400,
+		"achievements":  len(achievements.Active()),
+		"checkin_days":  len(checkin.Rewards()),
+		"codex":         codexNames(),
+		"rename_cost":   balance.RenameFarmCost,
+		"cellar_level":  mushroom.Current().UnlockLevel,
+		"lab_level":     seedlab.Unlock(),
+	}, nil
+}
+
+// codexNames 圖鑑分類名稱（與 Discord「📖 圖鑑」相同）。
+func codexNames() []string {
+	out := []string{}
+	for _, c := range CodexCategories {
+		out = append(out, c.Name)
+	}
+	return out
 }
 
 func nameOr(names map[string]string, code string) string {
@@ -457,7 +738,9 @@ func buildSeasons(now time.Time) map[string]any {
 	months.Set("秋", "9–11 月")
 	months.Set("冬", "12–2 月")
 	return map[string]any{"now_text": seasons.NowText(now), "current": seasons.SeasonNames[seasons.SeasonOf(now)],
-		"months": months}
+		"months": months,
+		// 非當季的作物售價加成（Go 版新增；商店只賣當季可以種的種子）
+		"off_season_sell_pct": seasons.OffSeasonSellPct - 100}
 }
 
 // buildFishing 釣魚手冊：稀有度機率與售價、基礎成功率、時間設定、啟用中的釣具與魚種（只有規則與目錄，沒有玩家資料）。
@@ -522,7 +805,8 @@ func buildFishing(ctx context.Context, t *db.Tx) (map[string]any, error) {
 		"settings_version": version, "base_success_pct": s.BaseSuccessPct,
 		"bite_wait": []int{s.BiteWaitMinSeconds, s.BiteWaitMaxSeconds}, "reaction_seconds": s.ReactionSeconds,
 		"action_timeout_seconds": s.ActionTimeoutSeconds, "basket_capacity": s.BasketCapacity,
-		"rarities": rarities, "gear": gear, "fish": fish,
+		"escape_distance": fishing.EscapeDistance, // 距離達到這個值魚就逃走
+		"rarities":        rarities, "gear": gear, "fish": fish,
 	}, nil
 }
 
@@ -702,8 +986,15 @@ func buildProgress() map[string]any {
 		list = append(list, map[string]any{"category": c.Emoji + " " + c.Name, "name": a.Emoji + " " + a.Name,
 			"description": a.Description(), "reward": achievements.RewardText(a), "title": title})
 	}
-	return map[string]any{"checkin": days, "achievements": list,
-		"codex": []string{"作物（含珍稀變種）", "動物產品", "加工品", "山洞素材", "魚類"}}
+	codex := []string{}
+	for _, c := range CodexCategories { // 與 Discord「📖 圖鑑」的分類相同（含 Go 版新增的菇類、特殊種子）
+		name := c.Name
+		if c.Key == "crop" {
+			name += "（含珍稀變種）"
+		}
+		codex = append(codex, c.Emoji+" "+name)
+	}
+	return map[string]any{"checkin": days, "achievements": list, "codex": codex}
 }
 
 // buildPets 寵物規則；cat_odds：每種啟用中的作物在貓咪 Lv0～最高級時，每格實際多收多少（與遊戲相同算法）。
@@ -725,7 +1016,9 @@ func buildPets(activeCrops []models.CropType) map[string]any {
 	}
 	return map[string]any{"cat_odds": odds, "buy_price": pets.BuyPrice(), "upgrade_prices": pets.UpgradePrices(),
 		"base_pct": pets.BasePct(), "pct_per_level": pets.PctPerLevel(), "max_level": maxLevel,
-		"max_pct": pets.BonusPct(&maxLevel), "pets": list}
+		"max_pct": pets.BonusPct(&maxLevel), "pets": list,
+		// 狗狗不受防守設施整體阻止機率上限的限制
+		"defense_cap_pct": numfmt.Round(balance.DefenseMaxBlockChance * 100)}
 }
 
 // buildSpecialShop 商店「特賣與升級」：溫室價格、本週特賣（所有玩家相同）與稱號商店（沒有玩家資料）。
@@ -747,14 +1040,16 @@ func buildSpecialShop(activeCrops []models.CropType, now time.Time) map[string]a
 	return map[string]any{
 		"greenhouse": map[string]any{"per_level": specialshop.GreenhousePctPerLevel(), "prices": specialshop.GreenhousePrices()},
 		"weekly": map[string]any{"week_start": start.Format("2006-01-02"),
-			"ends_at": specialshop.WeekEndsAt(start).In(clock.TaipeiTZ).Format(time.RFC3339), "offers": offers},
+			"ends_at": specialshop.WeekEndsAt(start).In(clock.TaipeiTZ).Format(time.RFC3339), "offers": offers,
+			// 每週特賣的規則（管理網站可調整）
+			"normal_deals": specialshop.ConfigInt("normal_deals"), "normal_discount_pct": specialshop.ConfigInt("normal_discount_pct"),
+			"normal_limit": specialshop.ConfigInt("normal_limit"), "rare_limit": specialshop.ConfigInt("rare_limit")},
 		"titles": titles,
 	}
 }
 
-// buildMushroom 地下菇房（Go 版新增）：開放等級、生長時間、養分對應的作物與菇、木屑的稀有機率、菇與料理的售價。
-// buildSeedLab 種子實驗室的規則（不列出雜交組合與雜交作物）。
-func buildSeedLab() map[string]any {
+// buildSeedLab 種子實驗室的規則（不列出雜交組合與雜交作物）。rareSeeds：商店不賣種子的稀有作物（特殊種子的來源說明）。
+func buildSeedLab(rareSeeds []string) map[string]any {
 	c := seedlab.Current()
 	minMin, maxMin := c.SameSpeciesMinutes, c.SameSpeciesMinutes
 	for _, h := range seedlab.CurrentHybrids() {
@@ -778,9 +1073,15 @@ func buildSeedLab() map[string]any {
 		"resin_pct": bpPct(c.ResinSuccessBP), "herb_pct": c.HerbTimePct, "catalyst_pct": bpPct(c.CatalystUpBP),
 		"share_send": c.ShareSendPerDay, "share_receive": c.ShareReceiveSenders, "max_slots": seedlab.MaxLevel,
 		"hybrid_count": len(seedlab.Hybrids), "lab_mutations": mutations,
+		// 2026-11-14 起：基因升降、突變遺傳、研究經驗與等級、雜交作物售價、稀有種子來源
+		"gene_up_pct": bpPct(c.GeneUpBP), "gene_down_pct": bpPct(c.GeneDownBP),
+		"inherit_mutation_pct": bpPct(c.InheritMutationBP), "hybrid_price_mul": 1.5,
+		"exp":       map[string]any{"identify": c.ExpIdentify, "cross": c.ExpCross, "cross_fail": c.ExpCrossFail, "mutate": c.ExpMutate},
+		"level_exp": []int{c.LevelExp[2], c.LevelExp[3]}, "rare_seeds": rareSeeds,
 	}
 }
 
+// buildMushroom 地下菇房（Go 版新增）：開放等級、生長時間、養分對應的作物與菇、木屑的稀有機率、菇與料理的售價。
 func buildMushroom(names map[string]string) map[string]any {
 	cfg := mushroom.Current()
 	nutrients := []map[string]any{}

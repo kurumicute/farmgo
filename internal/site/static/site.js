@@ -112,7 +112,14 @@
     return span;
   }
 
-  function renderGuide(g) {
+  function liList(id, texts) {
+    const node = $(id);
+    if (!node) return;
+    node.replaceChildren(...texts.map((t) => { const li = document.createElement("li"); li.textContent = t; return li; }));
+  }
+
+  // 每個欄位一個渲染函式；needs 的欄位都讀到後才執行（同一部分可能分好幾次讀到）
+  function renderStart(g) {
     const s = g.start;
     setText("g-start", `${num.format(s.gold)} 金幣、${s.plots} 格農田、倉庫 ${s.warehouse} 格`);
     if (s.rename_cost != null) {
@@ -126,62 +133,123 @@
     if (s.steal_thieves_per_day) setText("g-steal-thieves", String(s.steal_thieves_per_day));
     setText("g-transfer", `${s.transfer_cooldown_days} 天`);
     setText("g-craft-max", String(s.craft_max));
-    const barn = g.buildings.find((b) => b.name === "畜舍");
-    if (barn) setText("g-barn", `${num.format(barn.price)} 金幣，每座 ${s.barn_slots} 個欄位，最多 ${barn.max} 座`);
     setText("g-wh-price", `${num.format(s.warehouse_prices[0])} 起`);
     setText("g-wh-desc", `每次 +${s.warehouse_step} 格：${s.warehouse_prices.map((p) => num.format(p)).join(" → ")}，最大 ${s.warehouse_max} 格`);
+    if (s.material_bag_capacity) setText("g-seed-bag", num.format(s.material_bag_capacity));
+  }
 
-    setText("crop-times", g.crops.length
-      ? g.crops.map((c) => `${c.name} ${duration(c.grow_seconds)}`).join("、")
-      : "目前沒有開放種植的作物");
+  function renderBarn(g) {
+    const barn = g.buildings.find((b) => b.name === "畜舍");
+    if (barn) setText("g-barn", `${num.format(barn.price)} 金幣，每座 ${g.start.barn_slots} 個欄位，最多 ${barn.max} 座`);
+  }
+
+  function renderCrops(g) {
     fillRows("g-crops", g.crops.length
       ? g.crops.map((c) => [c.name, c.shop_buyable ? num.format(c.seed_price) : "不販售（探索／培育）",
         duration(c.grow_seconds), `×${c.harvest_quantity}`, num.format(c.sell_price), c.variant_name,
         c.season_text ? `${c.season_text}${c.in_season ? "（現在可種）" : ""}` : "四季"])
       : [["目前沒有開放種植的作物", "", "", "", "", "", ""]]);
-    if (g.seasons) setText("g-season-now", `現在是${g.seasons.current}季`);
-    if (g.ruins) renderRuins(g.ruins);
-    if (g.news) renderNews(g.news);
+  }
+
+  function renderSeasons(g) {
+    const se = g.seasons;
+    setText("g-season-now", `現在是${se.current}季`);
+    if (se.months) setText("g-season-months", Object.entries(se.months).map(([k, v]) => `${k} ${v}`).join("、"));
+    if (se.off_season_sell_pct != null) {
+      setText("g-offseason", String(se.off_season_sell_pct));
+      setText("g-offseason-sell", String(se.off_season_sell_pct));
+    }
+  }
+
+  function renderQualities(g) {
     fillRows("g-qualities", g.qualities.map((q) => [q.name, pct(q.chance_pct), mul(q.price_mul)]));
     setText("g-level-note", `農場每升 1 級，有 ${pct(g.level_bonus_pct)} 機率從普通升到較高品質（最多 ${pct(g.level_bonus_max_pct)}）。`);
-    fillRows("g-mutations", g.mutations.map((m) => [m.name, pct(m.chance_pct), m.effect]));
-    fillRows("g-items", g.items.map((i) => [i.name, num.format(i.price), i.description]));
-    fillRows("g-animals", g.animals.length
-      ? g.animals.map((a) => [a.name, num.format(a.price), num.format(a.feed_cost), duration(a.cycle_seconds),
-        `${a.product_name} ×${a.product_quantity}（${num.format(a.product_price)} / 個）`])
-      : [["目前沒有開放購買的動物", "", "", "", ""]]);
-    fillRows("g-recipes", g.recipes.map((r) => [r.name, `${r.building}（${num.format(r.building_price)}）`,
-      r.inputs.map((i) => `${i.name} ×${i.quantity}`).join("、"), duration(r.seconds), num.format(r.sell_price)]));
+  }
+
+  function renderDefenses(g) {
     fillRows("g-defenses", g.defenses.map((d) => [d.name, num.format(d.price), String(d.max), `${d.chance_pct}%`,
       d.range === null ? "全部農田" : `連續 ${d.range} 格（可調整）`]));
-    setText("g-defense-note", `判定順序：${g.defenses.map((d) => d.name).join(" → ")}，整體阻止機率最高 ${s.max_block_pct}%。`
-      + `「📍 調整守護範圍」輸入起始農田編號；「🔦 巡查」消耗 1 張巡查券，可以看到近 ${s.patrol_days} 天是誰來偷。`);
+    setText("g-defense-note", `判定順序：${g.defenses.map((d) => d.name).join(" → ")}，整體阻止機率最高 ${g.start.max_block_pct}%。`
+      + `「📍 調整守護範圍」輸入起始農田編號；「🔦 巡查」消耗 1 張巡查券，可以看到近 ${g.start.patrol_days} 天是誰來偷。`);
+  }
 
-    renderExploration(g.exploration);
-
+  function renderGamble(g) {
     const gm = g.gamble;
     const half = gm.big_from - gm.min;
     const span = gm.max - gm.min + 1;
-    $("g-gamble").replaceChildren(...[
+    liList("g-gamble", [
       `只能押 ${gm.qualities.join("、")} 品質，或 ${gm.mutations.join("、")} 的作物。`,
       `系統從 ${gm.min}–${gm.max} 擲一個數字：比大（${gm.big_from}–${gm.max}）／比小（${gm.min}–${gm.big_from - 1}）`
         + `贏了價值 ×${gm.hilo_multiplier}（機率 ${Math.round(((span - half) / span) * 100)}%）；`
         + `猜數字猜中價值 ×${gm.exact_multiplier}（機率 ${Math.round(100 / span)}%）。`,
       "輸了下注的作物會被沒收；贏了存成「🏆 賭場獎品」，可以在販售頁賣掉，也可以留著展示。",
-    ].map((t) => { const li = document.createElement("li"); li.textContent = t; return li; }));
-
-    fillRows("g-events", g.events.length
-      ? g.events.map((e) => [e.name, e.effects_text, e.schedule_text, statusTag(e.active_now)])
-      : [["目前沒有排定的活動", "", "", ""]]);
-
-    if (g.rankings) renderRankings(g.rankings);
-    if (g.world_boss) renderWorldBoss(g.world_boss);
-    if (g.progress) renderProgress(g.progress);
-    if (g.special_shop) renderSpecialShop(g.special_shop);
-    if (g.pets) renderPets(g.pets);
-    if (g.mushroom) renderMushroom(g.mushroom);
-    if (g.seedlab) renderSeedLab(g.seedlab);
+    ]);
   }
+
+  // 加工：排隊上限、可以當原料的突變（Go 版新增）
+  function renderCraft(g) {
+    const c = g.craft;
+    setText("g-craft-queue", String(c.queue_max));
+    if (c.mutations.length) setText("g-craft-mutations", c.mutations.join("、"));
+  }
+
+  // 群組共同任務與競賽的種類
+  function renderGroups(g) {
+    const gr = g.groups;
+    fillRows("g-quests", gr.quests.map((q) => [q.name, q.metrics.join("或")]));
+    fillRows("g-competitions", gr.competitions.map((c) => [c.name, c.scoring]));
+    setText("g-quest-rewards", gr.quest_rewards.join("、"));
+    setText("g-quest-modes", gr.quest_reward_modes.join("；"));
+    setText("g-comp-ranks", String(gr.competition_reward_ranks));
+    setText("g-event-days", String(gr.max_days));
+  }
+
+  const RENDERERS = [
+    [["start"], renderStart],
+    [["start", "buildings"], renderBarn],
+    [["crops"], renderCrops],
+    [["seasons"], renderSeasons],
+    [["qualities", "level_bonus_pct", "level_bonus_max_pct"], renderQualities],
+    [["mutations"], (g) => fillRows("g-mutations", g.mutations.map((m) => [m.name, pct(m.chance_pct), m.effect]))],
+    [["items"], (g) => fillRows("g-items", g.items.map((i) => [i.name, num.format(i.price), i.description]))],
+    [["animals"], (g) => fillRows("g-animals", g.animals.length
+      ? g.animals.map((a) => [a.name, num.format(a.price), num.format(a.feed_cost), duration(a.cycle_seconds),
+        `${a.product_name} ×${a.product_quantity}（${num.format(a.product_price)} / 個）`])
+      : [["目前沒有開放購買的動物", "", "", "", ""]])],
+    [["recipes"], (g) => fillRows("g-recipes", g.recipes.map((r) => [r.name, `${r.building}（${num.format(r.building_price)}）`,
+      r.inputs.map((i) => `${i.name} ×${i.quantity}`).join("、"), duration(r.seconds), num.format(r.sell_price)]))],
+    [["craft"], renderCraft],
+    [["start", "defenses"], renderDefenses],
+    [["exploration"], (g) => renderExploration(g.exploration)],
+    [["gamble"], renderGamble],
+    [["events"], (g) => fillRows("g-events", g.events.length
+      ? g.events.map((e) => [e.name, e.effects_text, e.schedule_text, statusTag(e.active_now)])
+      : [["目前沒有排定的活動", "", "", ""]])],
+    [["groups"], renderGroups],
+    [["rankings"], (g) => renderRankings(g.rankings)],
+    [["world_boss"], (g) => renderWorldBoss(g.world_boss)],
+    [["progress"], (g) => renderProgress(g.progress)],
+    [["special_shop"], (g) => renderSpecialShop(g.special_shop)],
+    [["pets"], (g) => renderPets(g.pets)],
+    [["mushroom"], (g) => renderMushroom(g.mushroom)],
+    [["seedlab"], (g) => renderSeedLab(g.seedlab)],
+    [["ruins"], (g) => renderRuins(g.ruins)],
+    [["news"], (g) => renderNews(g.news)],
+    [["fishing"], (g) => renderFishing(g.fishing)],
+    [["cards"], (g) => renderCards(g.cards)],
+  ];
+
+  const guideData = {};
+
+  // 合併新讀到的欄位，執行用到這些欄位、而且需要的欄位都已讀到的渲染函式
+  function applyGuide(data) {
+    const fresh = Object.keys(data).filter((k) => k !== "cached_seconds");
+    Object.assign(guideData, data);
+    for (const [needs, fn] of RENDERERS) {
+      if (needs.some((k) => fresh.includes(k)) && needs.every((k) => k in guideData)) fn(guideData);
+    }
+  }
+
 
   // 地下菇房：開放等級、生長時間、養分對應的作物與菇、木屑的稀有機率與各區域帶回的木屑（管理網站可調整）
   function renderMushroom(m) {
@@ -222,6 +290,20 @@
     setText("g-lab-share-send", String(l.share_send));
     setText("g-lab-share-receive", String(l.share_receive));
     setText("g-lab-slots", String(l.max_slots));
+    if (l.gene_up_pct != null) {
+      setText("g-lab-gene-up", String(l.gene_up_pct));
+      setText("g-lab-gene-down", String(l.gene_down_pct));
+      setText("g-lab-inherit-mut", String(l.inherit_mutation_pct));
+      setText("g-lab-hybrid-mul", String(l.hybrid_price_mul));
+      setText("g-lab-inherit-2", String(l.inherit_pct));
+      if (l.rare_seeds && l.rare_seeds.length) setText("g-lab-rare-seeds", l.rare_seeds.join("、"));
+      fillRows("g-lab-levels", [
+        ["研究經驗", `鑑定 +${l.exp.identify}、雜交成功 +${l.exp.cross}、雜交失敗 +${l.exp.cross_fail}、突變研究 +${l.exp.mutate}`],
+        ["Lv.1", "1 個研究槽"],
+        [`Lv.2（累積 ${num.format(l.level_exp[0])} 經驗）`, "2 個研究槽"],
+        [`Lv.3（累積 ${num.format(l.level_exp[1])} 經驗）`, "3 個研究槽"],
+      ]);
+    }
     fillRows("g-lab-genes", [["⏱️ 生長", `生長時間 -${l.growth_pct}%`], ["🧺 產量", `收成數量 +${l.yield_pct}%（無條件進位）`],
       ["⭐ 品質", `品質加成 +${l.quality_pct}%`], ["🧬 突變", `突變機率 +${l.mutation_pct}%`]]);
     fillRows("g-lab-mutations", l.lab_mutations.map((m) => [m.name, m.effect]));
@@ -236,6 +318,19 @@
     setText("g-pet-max", String(p.max_level));
     setText("g-pet-maxpct", String(p.max_pct));
     fillRows("g-pets", p.pets.map((x) => [x.name, x.role, x.effect]));
+    if (p.defense_cap_pct != null) setText("g-pet-dogcap", String(p.defense_cap_pct));
+    // 貓咪表格的表頭（Lv0～最高級）與舉例都依目前設定
+    const head = $("g-cat-head");
+    if (head) {
+      const ths = ["作物"];
+      for (let lv = 0; lv <= p.max_level; lv++) ths.push(`Lv${lv}（+${p.base_pct + p.pct_per_level * lv}%）`);
+      head.replaceChildren(...ths.map((t) => { const th = document.createElement("th"); th.textContent = t; return th; }));
+    }
+    const ex = (p.cat_odds || [])[0];
+    if (ex) {
+      const extra = (ex.quantity * p.max_pct) / 100;
+      setText("g-cat-example", `例如${ex.name}每格 ${ex.quantity} 個、滿級 +${p.max_pct}% = ${Number(extra.toFixed(2))} 個 → 滿級時${ex.levels[ex.levels.length - 1]}。`);
+    }
     if (p.cat_odds) {
       fillRows("g-cat-odds", p.cat_odds.length
         ? p.cat_odds.map((c) => [`${c.name}（每格 ${c.quantity} 個）`, ...c.levels])
@@ -249,6 +344,13 @@
     setText("g-gh-pct", String(sp.greenhouse.per_level));
     setText("g-gh-prices", sp.greenhouse.prices.map((p) => num.format(p)).join(" → "));
     const w = sp.weekly;
+    if (w.normal_deals != null) {
+      const left = 100 - w.normal_discount_pct; // 打折後剩幾成：70 → 7 折、85 → 85 折
+      setText("g-weekly-deals", String(w.normal_deals));
+      setText("g-weekly-discount", `${left % 10 === 0 ? left / 10 : left} 折`);
+      setText("g-weekly-normal-limit", num.format(w.normal_limit));
+      setText("g-weekly-rare-limit", num.format(w.rare_limit));
+    }
     fillRows("g-weekly", w.offers.length
       ? w.offers.map((o) => [`${o.rare ? "🌟 " : "🌰 "}${o.name}`, num.format(o.price),
         o.rare ? "平常不販售" : num.format(o.original_price), `${o.limit} 顆`])
@@ -261,6 +363,8 @@
   // 每日簽到、成就與圖鑑（固定規則，沒有玩家資料）
   function renderProgress(p) {
     fillRows("g-checkin", p.checkin.map((c) => [`第 ${c.day} 天`, c.reward]));
+    setText("g-checkin-days", String(p.checkin.length));
+    setText("g-checkin-days-2", String(p.checkin.length));
     fillRows("g-achievements", p.achievements.map((a) => [a.category, a.name, a.description, a.reward]));
     setText("g-codex-cats", p.codex.join("、"));
     setText("c-achievements", String(p.achievements.length));
@@ -400,32 +504,51 @@
       u.level > x.max_level ? `${u.text}（尚未開放）` : u.text]));
   }
 
-  // 「農場」功能卡片：名稱與數字取自同一份遊戲設定；清單是空的就保留頁面上的預設文字
+  // 「農場」功能卡片：/api/guide/summary（名稱與數字，資料量小）；清單是空的就保留頁面上的預設文字
   function listText(items) {
     if (items.length <= 1) return items.join("");
     return `${items.slice(0, -1).join("、")}與${items[items.length - 1]}`;
   }
 
   function setList(id, items, joiner = "、") {
-    if (items.length) setText(id, joiner ? items.join(joiner) : listText(items));
+    if (items && items.length) setText(id, joiner ? items.join(joiner) : listText(items));
   }
 
-  function renderCards(g) {
-    setList("c-qualities", g.qualities.map((q) => q.name));
-    setList("c-mutations", g.mutations.map((m) => m.name));
-    setList("c-animals", g.animals.map((a) => a.name));
-    setList("c-buildings", [...new Set(g.recipes.map((r) => r.building))]);
-    setList("c-recipes", g.recipes.map((r) => r.name));
-    setList("c-defenses", g.defenses.map((d) => d.name));
-    setText("c-hilo", String(g.gamble.hilo_multiplier));
-    setText("c-exact", String(g.gamble.exact_multiplier));
-    setList("c-tools", g.items.filter((i) => i.kind === "tool").map((i) => i.name));
-    setList("c-areas", g.exploration.areas.map((a) => a.name));
-    setList("c-rare-seeds", g.crops.filter((c) => !c.shop_buyable).map((c) => c.name));
-    setList("c-machines", g.exploration.machines.map((m) => m.name), null);
-    setText("c-transfer", String(g.start.transfer_cooldown_days));
-    const r = g.fishing ? g.fishing.rarities : [];
-    if (r.length) setText("c-fish-rarities", `${r[0].name}到${r[r.length - 1].name}共 ${r.length} 種稀有度`);
+  function bossTime(t) {
+    const [h, m] = t.split(":").map(Number);
+    const part = h < 5 ? "凌晨" : h < 11 ? "早上" : h < 13 ? "中午" : h < 18 ? "下午" : "晚上";
+    return `${part} ${h % 12 || 12} 點${m ? ` ${m} 分` : ""}`;
+  }
+
+  function renderCards(c) {
+    setText("crop-times", c.crop_times.length
+      ? c.crop_times.map((x) => `${x.name} ${duration(x.grow_seconds)}`).join("、")
+      : "目前沒有開放種植的作物");
+    setList("c-qualities", c.qualities);
+    setList("c-mutations", c.mutations);
+    setList("c-animals", c.animals);
+    setList("c-buildings", c.buildings);
+    setList("c-recipes", c.recipes);
+    setList("c-defenses", c.defenses);
+    setText("c-hilo", String(c.hilo));
+    setText("c-exact", String(c.exact));
+    setList("c-tools", c.tools);
+    setList("c-areas", c.areas);
+    setList("c-rare-seeds", c.rare_seeds);
+    setList("c-machines", c.machines, null);
+    setText("c-transfer", String(c.transfer_days));
+    const r = c.fish_rarities || [];
+    if (r.length) setText("c-fish-rarities", `${r[0]}到${r[r.length - 1]}共 ${r.length} 種稀有度`);
+    if (c.boss) {
+      const freq = c.boss.interval_days === 1 ? "每天" : `每 ${c.boss.interval_days} 天`;
+      setText("c-boss", `${c.boss.name}${freq}${bossTime(c.boss.time)}出現`);
+    }
+    setText("c-achievements", String(c.achievements));
+    if (c.checkin_days) setText("c-checkin-days", String(c.checkin_days));
+    if (c.codex) setText("c-codex", listText(c.codex));
+    setText("c-cellar-level", `Lv.${c.cellar_level}`);
+    setText("c-lab-level", `Lv.${c.lab_level}`);
+    if (c.rename_cost != null) setText("g-rename-quick", `${num.format(c.rename_cost)} 金幣`);
   }
 
   // 釣魚：稀有度機率與售價、基礎成功率、時間設定、釣具與魚類圖鑑
@@ -434,6 +557,8 @@
     setText("g-fish-react", `${f.reaction_seconds} 秒`);
     setText("g-fish-timeout", `${f.action_timeout_seconds} 秒`);
     setText("g-fish-basket", `最多 ${num.format(f.basket_capacity)} 隻`);
+    setText("g-fish-pulls", f.rarities.filter((r) => r.pulls).map((r) => `${r.name} ${r.pulls[0]}–${r.pulls[1]} 下`).join("、"));
+    if (f.escape_distance) setText("g-fish-escape", String(f.escape_distance));
     setText("g-fish-success", `基礎釣魚成功率 ${f.base_success_pct}%，所有稀有度都一樣。稀有度只決定出現哪種魚與拉扯有多難，`
       + "不會降低成功率；更好的魚竿和魚線能降低操作難度，魚餌能提高稀有魚的出現機率。");
     fillRows("g-fish-rarities", f.rarities.map((r) => [`${r.emoji} ${r.name}`, pct(r.chance_pct),
@@ -452,23 +577,103 @@
       : [["目前沒有開放的魚", "", "", "", "", ""]]);
   }
 
-  async function loadGuide() {
+  // ---------- 分段讀取（2026-11-14）：首頁只讀 summary，手冊欄位第一次打開時才讀對應的部分 ----------
+  const parts = new Map(); // 部分名稱 → 讀取中或已完成的 Promise
+
+  async function fetchPart(part) {
+    const res = await fetch(`/api/guide/${part}`, { headers: { Accept: "application/json" }, cache: "no-store" });
+    if (!res.ok) throw new Error(String(res.status));
+    applyGuide(await res.json());
+  }
+
+  function loadPart(part) {
+    if (!parts.has(part)) {
+      // 失敗時移除，下次打開欄位會重試
+      parts.set(part, fetchPart(part).catch((err) => { parts.delete(part); throw err; }));
+    }
+    return parts.get(part);
+  }
+
+  // 欄位上方的讀取狀態：讀取中／失敗（成功時移除）
+  function setPartNote(details, state) {
+    const body = details.querySelector(".guide-body");
+    let note = body.querySelector(":scope > .part-note");
+    if (state === "ok") {
+      if (note) note.remove();
+      details.dataset.loaded = "1";
+      return;
+    }
+    if (!note) {
+      note = document.createElement("p");
+      note.className = "data-source part-note";
+      note.setAttribute("role", "status");
+      body.prepend(note);
+    }
+    if (state === "loading") {
+      note.textContent = "讀取最新數值中…";
+      note.className = "data-source part-note";
+    } else {
+      note.textContent = "⚠ 暫時無法讀取最新遊戲設定，以下顯示預設值，實際數值請以遊戲內顯示為準（重新打開這個欄位會再試一次）。";
+      note.className = "data-source part-note warn";
+    }
+  }
+
+  const FAIL_ROWS = {
+    activities: () => fillRows("g-events", [["暫時無法讀取活動，請在 /farm 總覽查看目前的活動", "", "", ""]]),
+    rankings: () => fillRows("g-rankings", [["暫時無法讀取排名獎勵規則，請在 /farm 的「🏆 排行榜 → 🎁 排名獎勵」查看", "", "", "", ""]]),
+    special_shop: () => fillRows("g-weekly", [["暫時無法讀取本週特賣，請在 /farm 的「🏪 商店 → 🎁 特賣與升級」查看", "", "", ""]]),
+  };
+
+  function openPart(details) {
+    if (!details.open || !details.dataset.part) return;
+    const names = details.dataset.part.split(" ");
+    if (details.dataset.loaded && names.every((p) => parts.has(p))) return;
+    setPartNote(details, "loading");
+    Promise.all(names.map(loadPart))
+      .then(() => setPartNote(details, "ok"))
+      .catch(() => {
+        setPartNote(details, "error");
+        names.forEach((p) => { if (FAIL_ROWS[p]) FAIL_ROWS[p](); });
+      });
+  }
+
+  // 網址的 #錨點指向手冊欄位時直接打開（例如 #fishing）
+  function openFromHash() {
+    const id = decodeURIComponent(location.hash.slice(1));
+    const node = id && document.getElementById(id);
+    if (node && node.matches("details.guide")) {
+      node.open = true;
+      node.scrollIntoView({ block: "start" });
+    }
+  }
+
+  function initLazyGuide() {
+    document.querySelectorAll("#guide details.guide[data-part]").forEach((d) => {
+      d.addEventListener("toggle", () => openPart(d));
+      openPart(d);
+    });
+    window.addEventListener("hashchange", openFromHash);
+    openFromHash();
+  }
+
+  async function loadSummary() {
     const note = $("guide-source");
     try {
-      const res = await fetch("/api/guide", { headers: { Accept: "application/json" }, cache: "no-store" });
-      if (!res.ok) throw new Error(String(res.status));
-      const guide = await res.json();
-      renderGuide(guide);
-      if (guide.fishing) renderFishing(guide.fishing);
-      renderCards(guide);
-      note.textContent = `✓ 以下數值即時讀自遊戲設定（最後更新 ${time.format(new Date())}），管理員調整後會自動同步。`;
+      await fetchPart("summary");
+      note.textContent = "✓ 數值即時讀自遊戲設定：每個欄位打開時才讀取最新數值，管理員調整後會自動同步。";
       note.className = "data-source ok";
     } catch (err) {
       note.textContent = "⚠ 暫時無法讀取最新遊戲設定，以下顯示預設值，實際數值請以遊戲內顯示為準。";
       note.className = "data-source warn";
-      fillRows("g-events", [["暫時無法讀取活動，請在 /farm 總覽查看目前的活動", "", "", ""]]);
-      fillRows("g-rankings", [["暫時無法讀取排名獎勵規則，請在 /farm 的「🏆 排行榜 → 🎁 排名獎勵」查看", "", "", "", ""]]);
     }
+  }
+
+  // 已讀過的部分定期重新讀取（伺服器快取 60 秒）：只更新讀過的，沒打開過的欄位不會讀
+  function refreshGuide() {
+    const loaded = [...parts.keys()];
+    parts.clear();
+    for (const p of loaded) loadPart(p).catch(() => {});
+    if (!loaded.includes("summary")) loadSummary();
   }
 
   const STAT_IDS = ["stat-players", "s-players", "stat-servers", "s-servers", "stat-growing", "s-growing", "s-farms",
@@ -827,11 +1032,12 @@
   initMenu();
   initScrollSpy();
   initGuide();
+  initLazyGuide();
   loadInfo();
-  loadGuide();
+  loadSummary();
   loadStats();
   setInterval(loadStats, 30000);
-  // 手冊數值（作物、釣魚機率等）：伺服器快取 60 秒，頁面每分鐘重新讀取，切回分頁時也立即更新
-  setInterval(loadGuide, 60000);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) loadGuide(); });
+  // 手冊數值：伺服器快取 60 秒，頁面每分鐘重新讀取已打開過的部分，切回分頁時也立即更新
+  setInterval(refreshGuide, 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshGuide(); });
 })();

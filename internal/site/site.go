@@ -2,6 +2,7 @@
 //
 //   - 只提供彙總數字（玩家數、農場數、伺服器數、今日操作數等），不輸出任何玩家名稱、ID 或個別資料。
 //   - /api/guide 提供操作手冊用的遊戲設定，數值即時讀自資料庫與規則套件，管理員在後台調整後網站會跟著更新。
+//     /api/guide/{part} 只回傳其中一部分（services.GuideParts）：首頁只讀 summary，手冊欄位打開時才讀對應的部分。
 //   - 查詢都在唯讀交易中執行並快取（統計 StatsCacheSeconds、手冊 GuideCacheSeconds 秒），訪客再多也不會增加資料庫負擔；
 //     同一時間只有一個請求會查詢資料庫，其他請求等待並共用結果（與 Python 的 threading.Lock 相同）。
 //   - 沒有任何寫入端點；頁面為靜態檔（static 是 Python 前端的原樣複製，以 go:embed 打包），前端只用 textContent 填入資料。
@@ -83,6 +84,7 @@ type App struct {
 	music  Music
 	stats  *cache
 	guide  *cache
+	parts  map[string]*cache // 操作手冊的各部分（services.GuideParts），各自快取
 	mux    *http.ServeMux
 	static fs.FS
 	etags  map[string]string
@@ -101,6 +103,10 @@ func New(opt Options) *App {
 	a := &App{opt: opt, music: music, mux: http.NewServeMux(), static: static, etags: map[string]string{}}
 	a.stats = &cache{ttl: StatsCacheSeconds * time.Second, load: a.loadStats}
 	a.guide = &cache{ttl: GuideCacheSeconds * time.Second, load: a.loadGuide}
+	a.parts = map[string]*cache{}
+	for part := range services.GuideParts {
+		a.parts[part] = &cache{ttl: GuideCacheSeconds * time.Second, load: func(ctx context.Context) ([]byte, error) { return a.loadGuidePart(ctx, part) }}
+	}
 	_ = fs.WalkDir(static, ".", func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
 			if data, err := fs.ReadFile(static, p); err == nil {
@@ -113,6 +119,15 @@ func New(opt Options) *App {
 	a.mux.HandleFunc("GET /api/info", a.info)
 	a.mux.HandleFunc("GET /api/guide", func(w http.ResponseWriter, r *http.Request) {
 		a.serveCached(w, r, a.guide, "介紹網站手冊資料查詢失敗", guideUnavailable)
+	})
+	// 分段讀取：首頁只讀 summary，操作手冊的欄位打開時才讀對應的部分（2026-11-14）
+	a.mux.HandleFunc("GET /api/guide/{part}", func(w http.ResponseWriter, r *http.Request) {
+		c, ok := a.parts[r.PathValue("part")]
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"detail": "沒有這個手冊部分。"})
+			return
+		}
+		a.serveCached(w, r, c, "介紹網站手冊資料查詢失敗", guideUnavailable)
 	})
 	a.mux.HandleFunc("GET /api/stats", func(w http.ResponseWriter, r *http.Request) {
 		a.serveCached(w, r, a.stats, "介紹網站統計查詢失敗", statsUnavailable)
@@ -225,6 +240,17 @@ func (a *App) loadGuide(ctx context.Context) ([]byte, error) {
 		return nil, errNoService
 	}
 	g, err := a.opt.Service.Guide(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return marshal(g.Set("cached_seconds", GuideCacheSeconds))
+}
+
+func (a *App) loadGuidePart(ctx context.Context, part string) ([]byte, error) {
+	if a.opt.Service == nil {
+		return nil, errNoService
+	}
+	g, err := a.opt.Service.GuidePart(ctx, part)
 	if err != nil {
 		return nil, err
 	}

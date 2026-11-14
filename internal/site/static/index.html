@@ -171,7 +171,7 @@
         <article class="card">
           <span class="card-icon" aria-hidden="true">🏅</span>
           <h3>簽到、成就與圖鑑</h3>
-          <p>每天打開農場自動簽到，連續 7 天一輪；完成 <span id="c-achievements">43</span> 個成就領取道具與稱號，收集作物、動物產品、加工品、素材、魚類、菇類與特殊種子圖鑑。</p>
+          <p>每天打開農場自動簽到，連續 <span id="c-checkin-days">7</span> 天一輪；完成 <span id="c-achievements">43</span> 個成就領取道具與稱號，收集<span id="c-codex">作物、動物產品、加工品、山洞素材、魚類、菇類與特殊種子</span>圖鑑。</p>
         </article>
       </div>
     </section>
@@ -208,8 +208,10 @@
                   <tr><td>查作物價格、品質機率</td><td>「📈 作物價格」→「🧬 品質與突變」</td></tr>
                   <tr><td>養動物</td><td>「🐔 動物」→ 先蓋畜舍 →「🛒 購買動物」→「🍽️ 全部餵食」→「🧺 收集全部」</td></tr>
                   <tr><td>加工</td><td>「🏭 加工」→「🏗️ 建造設施」→ 回加工頁選配方 →「📥 領取完成品」</td></tr>
+                  <tr><td>取消排隊中的加工單</td><td>「🏭 加工」→「❌ 取消加工訂單」選訂單 → 再按一次確認（原料退回）</td></tr>
                   <tr><td>種菇</td><td>「🌱 農田」→「🍄 地下菇房」→「木屑全部補滿」或選菇床投入木屑 →「收成」（Lv.4 起）</td></tr>
                   <tr><td>培育種子</td><td>「🌱 農田」→「🧪 種子實驗室」→ 鑑定種子 →「🧬 雜交培育」選母本、父本 →「開始培育」→ 完成後「領取」；「🌰 種子庫」種下或分享</td></tr>
+                  <tr><td>找新的雜交配方</td><td>「🧬 雜交培育」選兩種<b>不同品種</b>的種子「試驗雜交」；成功就會記進配方表（📖 發現新配方）</td></tr>
                   <tr><td>偷朋友的菜</td><td>「🥷 偷菜」→ 用玩家選單打開朋友的農田，再選要偷哪一格；也可以直接從作物選單選一株（可翻頁、🔄 重新整理）</td></tr>
                   <tr><td>防止被偷、查誰來偷</td><td>「🛡️ 防守」→ 購買設施 →「📍 調整守護範圍」；「🔦 巡查」查看偷菜者</td></tr>
                   <tr><td>探索山洞</td><td>「⛰️ 山洞」→ 選區域 →「🧭 出發探險」→ 時間到回來後「📦 領取探險獎勵」；「📖 探索紀錄」看最近 10 次</td></tr>
@@ -236,7 +238,7 @@
           </div>
         </details>
 
-        <details class="guide">
+        <details class="guide" data-part="farm">
           <summary>🏠 建立農場與總覽</summary>
           <div class="guide-body">
             <ul>
@@ -250,7 +252,7 @@
           </div>
         </details>
 
-        <details class="guide">
+        <details class="guide" data-part="farm">
           <summary>🌱 農田：種植、澆水、收成</summary>
           <div class="guide-body">
             <ol>
@@ -264,26 +266,18 @@
               <table class="guide-table">
                 <thead><tr><th>作物</th><th>種子</th><th>生長時間</th><th>收成</th><th>售價（普通）</th><th>珍稀變種</th><th>可種季節</th></tr></thead>
                 <tbody id="g-crops">
-                  <tr><td>🌾 小麥</td><td>5</td><td>1 小時</td><td>×2</td><td>11</td><td>琥珀小麥</td><td>四季</td></tr>
-                  <tr><td>🥕 胡蘿蔔</td><td>12</td><td>2 小時</td><td>×3</td><td>15</td><td>紫晶胡蘿蔔</td><td>🍂❄️秋、冬季限定</td></tr>
-                  <tr><td>🍅 番茄</td><td>25</td><td>4 小時</td><td>×4</td><td>22</td><td>黑鑽番茄</td><td>❄️🌸冬、春季限定</td></tr>
-                  <tr><td>🍓 草莓</td><td>60</td><td>8 小時</td><td>×5</td><td>34</td><td>白雪草莓</td><td>❄️🌸冬、春季限定</td></tr>
-                  <tr><td>🌽 玉米</td><td>18</td><td>3 小時</td><td>×3</td><td>20</td><td>金粒玉米</td><td>🌸☀️春、夏季限定</td></tr>
-                  <tr><td>🎃 南瓜</td><td>80</td><td>12 小時</td><td>×4</td><td>55</td><td>月影南瓜</td><td>☀️🍂夏、秋季限定</td></tr>
-                  <tr><td>🍇 葡萄</td><td>120</td><td>16 小時</td><td>×6</td><td>45</td><td>水晶葡萄</td><td>☀️🍂夏、秋季限定</td></tr>
-                  <tr><td>🍉 西瓜</td><td>150</td><td>24 小時</td><td>×3</td><td>130</td><td>星紋西瓜</td><td>🌸☀️春、夏季限定</td></tr>
-                  <tr><td>🍈 琥珀瓜</td><td>不販售（探索／培育）</td><td>12 小時</td><td>×3</td><td>120</td><td>黃金琥珀瓜</td><td>🍂❄️秋、冬季限定</td></tr>
-                  <tr><td>🌙 月光花</td><td>不販售（探索／培育）</td><td>24 小時</td><td>×2</td><td>450</td><td>星辰花</td><td>❄️🌸冬、春季限定</td></tr>
+                  <tr><td colspan="7">打開欄位時讀取最新資料…</td></tr>
                 </tbody>
               </table>
             </div>
-            <p class="note">🗓️ <b>季節限定</b>：季節依台灣的真實月份（春 3–5 月、夏 6–8 月、秋 9–11 月、冬 12–2 月），<span id="g-season-now">現在是秋季</span>。
-              季節只限制<b>種下</b>的時間：種子隨時可以買，種下後過了季節照樣長大、收成；種植選單只列出現在能種的作物。</p>
+            <p class="note">🗓️ <b>季節限定</b>：季節依台灣的真實月份（<span id="g-season-months">春 3–5 月、夏 6–8 月、秋 9–11 月、冬 12–2 月</span>），<span id="g-season-now">現在是秋季</span>。
+              季節只限制<b>種下</b>的時間：種下後過了季節照樣長大、收成；種植選單只列出現在能種的作物，<b>商店也只賣當季可以種的種子</b>。</p>
+            <p class="note">📈 <b>物以稀為貴</b>：作物在<b>非當季</b>時，市場售價 +<span id="g-offseason">30</span>%（價目表、販售、背包估價都一樣）。囤一些當季作物，等過季再賣更划算。</p>
             <p class="note">標示「不販售」的是稀有作物：商店買不到種子，只能從「⛰️ 山洞」探索或用「🧬 稀有作物培育器」取得；一鍵種植也不會自動購買。</p>
           </div>
         </details>
 
-        <details class="guide">
+        <details class="guide" data-part="genetics">
           <summary>💎 品質與突變</summary>
           <div class="guide-body">
             <p>播種時就決定，之後不會改變。可在總覽「📈 作物價格」查看完整價目表。</p>
@@ -313,7 +307,7 @@
           </div>
         </details>
 
-        <details class="guide">
+        <details class="guide" data-part="shop">
           <summary>🏪 商店、道具與倉庫</summary>
           <div class="guide-body">
             <p>從「🛒 選擇要買的商品」選好後，按數量按鈕（1／5／10 或自訂）購買；工具與奢侈品要再按「確認購買」。</p>
@@ -335,22 +329,24 @@
               </table>
             </div>
             <p class="note">工具可以在「🎒 背包」啟用或停用（例如想自己加工作物時先停用自動販售機）。</p>
+            <p class="note">🌰 <b>所有種子都放在素材背包</b>（商店種子、種子製造機做的、特賣與稀有種子都一樣），<b>不佔倉庫</b>；素材背包和探險素材共用，上限 <span id="g-seed-bag">1,000</span> 個。</p>
           </div>
         </details>
 
-        <details class="guide">
+        <details class="guide" data-part="farm">
           <summary>💰 販售</summary>
           <div class="guide-body">
             <ul>
               <li>到「💰 販售」從選單選商品，再選賣 1、一半、全部或自訂數量。</li>
-              <li>單價 = 基本售價 × 品質倍率 × 突變倍率，再加上進行中的活動加成。</li>
+              <li>單價 = 基本售價 × 品質倍率 × 突變倍率，再加上進行中的活動加成；作物在<b>非當季</b>時售價再 +<span id="g-offseason-sell">30</span>%。</li>
+              <li>「📈 作物價格」依單價由高到低排序、分頁顯示，可以查每種作物各品質與突變的單價；商店買不到種子的作物會註明取得方式。</li>
               <li>想一次賣好幾種：用「☑️ 勾選多項一起賣出」選單勾選（每項賣全部，一次最多 25 項），再按「確認賣出」。</li>
               <li>「全部賣出」會賣掉所有農產品與商品（需再按一次確認），但<b>不會賣掉賭場獎品</b>。</li>
             </ul>
           </div>
         </details>
 
-        <details class="guide">
+        <details class="guide" data-part="ranch">
           <summary>🐔 動物養殖</summary>
           <div class="guide-body">
             <ol>
@@ -370,13 +366,15 @@
           </div>
         </details>
 
-        <details class="guide">
+        <details class="guide" data-part="craft">
           <summary>🏭 加工</summary>
           <div class="guide-body">
             <ol>
               <li>到「🏭 加工」→「🏗️ 建造設施」蓋磨坊、烘焙坊或果醬工坊。</li>
-              <li>回到加工頁，「開始加工」只會列出<b>現在做得出來</b>的配方（設施已建好、原料夠做 1 份以上），選好後按份數（最多 <span id="g-craft-max">10</span> 份）。普通品質的作物都能當原料，<b>巨型作物</b>、<b>快速生長</b>的作物也可以（先用沒有突變的）。</li>
-              <li>設施忙碌時新訂單會排隊，前一張完成後自動接著加工（每種設施最多 10 張）。完成後按「📥 領取完成品」。</li>
+              <li>回到加工頁，「開始加工」只會列出<b>現在做得出來</b>的配方（設施已建好、原料夠做 1 份以上），選好後按份數（最多 <span id="g-craft-max">10</span> 份）。普通品質的作物都能當原料，<b id="g-craft-mutations">巨型作物、快速生長</b>的作物也可以（先用沒有突變的）。</li>
+              <li>設施忙碌時新訂單會排隊，前一張完成後自動接著加工（每種設施最多 <span id="g-craft-queue">10</span> 張）。完成後按「📥 領取完成品」。</li>
+              <li><b>取消訂單</b>：「❌ 取消加工訂單」選一張還沒完成的訂單，再按一次確認，原料會退回（倉庫要放得下）；同一設施後面排隊的訂單自動往前遞補。</li>
+              <li>菇房收成的菇也能在烘焙坊加麵粉做成料理（見下表）。</li>
             </ol>
             <div class="table-scroll">
               <table class="guide-table">
@@ -391,14 +389,14 @@
           </div>
         </details>
 
-        <details class="guide" id="fishing">
+        <details class="guide" data-part="fishing" id="fishing">
           <summary>🎣 釣魚</summary>
           <div class="guide-body">
             <ol>
               <li>在總覽按「🎣 釣魚」進入釣魚中心；第一次先到「🛒 釣具商店」（商店頁也有「🎣 釣具商店」分頁）買<b>魚竿、魚線、魚餌</b>，買第一件時會自動裝備。全部使用農場金幣。</li>
               <li>按「🎣 開始釣魚」拋竿，每次用掉 1 個魚餌。等魚上鉤需要 <b id="g-fish-wait">5–12 秒</b>（魚餌可以縮短），等待時畫面會自動更新。</li>
               <li>畫面出現「‼️ 魚上鉤了！」時，要在 <b id="g-fish-react">5 秒</b>內按「🎣 拉竿」（魚竿可以延長），太慢魚會把餌吃掉跑走。</li>
-              <li>拉竿成功後進入<b>拉扯</b>：每條魚要<b>成功拉幾下</b>才上岸（普通 2–4 下、稀有 3–5、史詩 4–6、傳說 5–7），畫面會顯示還差幾下、🪢 魚線張力，以及 💬 魚接下來要做什麼。
+              <li>拉竿成功後進入<b>拉扯</b>：每條魚要<b>成功拉幾下</b>才上岸（<span id="g-fish-pulls">普通 2–4 下、稀有 3–5 下、史詩 4–6 下、傳說 5–7 下</span>），畫面會顯示還差幾下、🪢 魚線張力，以及 💬 魚接下來要做什麼。
                 <ul>
                   <li><b>🎣 收線</b>：張力撐得住就算 1 下，但張力會上升；<b>連續收線時張力越加越多</b>，魚衝刺時收線張力也會暴增。</li>
                   <li><b>⏳ 等待</b>：穩住魚竿，張力下降，並減少連續收線的累積。</li>
@@ -408,7 +406,7 @@
               </li>
               <li>拉滿需要的次數就釣起來了，魚會放進魚簍（<span id="g-fish-basket">最多 20 隻</span>）。</li>
               <li>偶爾會出現<b>人機確認</b>：按下題目指定的生物就會繼續釣魚；答錯會暫停釣魚一段時間，但不會扣金幣、魚或魚餌。</li>
-              <li>失敗的情況：<b>張力超過魚線上限</b>（斷線）、<b>距離達到 100</b>（魚逃走）、<b>沒有及時拉竿</b>、<b>拉扯時 <span id="g-fish-timeout">20 秒</span>沒有操作</b>，或魚鉤沒有咬牢（脫鉤）。</li>
+              <li>失敗的情況：<b>張力超過魚線上限</b>（斷線）、<b>距離達到 <span id="g-fish-escape">100</span></b>（魚逃走）、<b>沒有及時拉竿</b>、<b>拉扯時 <span id="g-fish-timeout">20 秒</span>沒有操作</b>，或魚鉤沒有咬牢（脫鉤）。</li>
               <li>小訣竅：看到魚竄向一邊就壓同方向；張力快滿或魚要「猛烈掙扎」時先等待；其他時候收線。依提示操作，任何稀有度的成功率都接近基礎成功率。</li>
             </ol>
             <div class="table-scroll">
@@ -427,17 +425,7 @@
               <table class="guide-table">
                 <thead><tr><th>釣具</th><th>類型</th><th>價格</th><th>需要等級</th><th>效果</th></tr></thead>
                 <tbody id="g-fish-gear">
-                  <tr><td>🎋 竹製魚竿</td><td>魚竿</td><td>100</td><td>Lv.1</td><td>收線力 10</td></tr>
-                  <tr><td>🎋 木製魚竿</td><td>魚竿</td><td>600</td><td>Lv.2</td><td>收線力 11、魚的衝擊張力 -5%、拉竿時間 +0.5 秒</td></tr>
-                  <tr><td>🎣 鐵製魚竿</td><td>魚竿</td><td>2,000</td><td>Lv.4</td><td>收線力 13、魚的衝擊張力 -10%、拉竿時間 +1 秒</td></tr>
-                  <tr><td>🎣 高級魚竿</td><td>魚竿</td><td>6,000</td><td>Lv.7</td><td>收線力 15、魚的衝擊張力 -18%、拉竿時間 +1.5 秒</td></tr>
-                  <tr><td>✨ 傳說魚竿</td><td>魚竿</td><td>20,000</td><td>Lv.10</td><td>收線力 18、魚的衝擊張力 -25%、拉竿時間 +2 秒</td></tr>
-                  <tr><td>🪢 普通魚線</td><td>魚線</td><td>50</td><td>Lv.1</td><td>最大張力 100</td></tr>
-                  <tr><td>🪢 強化魚線</td><td>魚線</td><td>800</td><td>Lv.3</td><td>最大張力 115</td></tr>
-                  <tr><td>🪢 高強度魚線</td><td>魚線</td><td>3,000</td><td>Lv.6</td><td>最大張力 130</td></tr>
-                  <tr><td>🪱 普通蚯蚓</td><td>魚餌</td><td>3／個</td><td>Lv.1</td><td>一般魚餌，沒有額外效果</td></tr>
-                  <tr><td>🦐 高級魚餌</td><td>魚餌</td><td>6／個</td><td>Lv.3</td><td>🔵稀有 +3%、🟣史詩 +1%、🟡傳說 +0.3%、上鉤快 20%</td></tr>
-                  <tr><td>🌟 特殊魚餌</td><td>魚餌</td><td>12／個</td><td>Lv.6</td><td>🔵稀有 +5%、🟣史詩 +3%、🟡傳說 +1.5%、上鉤快 40%</td></tr>
+                  <tr><td colspan="5">打開欄位時讀取最新資料…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -465,7 +453,7 @@
           </div>
         </details>
 
-        <details class="guide" id="cave">
+        <details class="guide" data-part="exploration" id="cave">
           <summary>⛰️ 山洞冒險</summary>
           <div class="guide-body">
             <ol>
@@ -514,25 +502,14 @@
               <table class="guide-table">
                 <thead><tr><th>素材</th><th>稀有度</th><th>用途</th></tr></thead>
                 <tbody id="g-materials">
-                  <tr><td>木材</td><td>普通</td><td>機器製作</td></tr>
-                  <tr><td>石塊</td><td>普通</td><td>機器製作</td></tr>
-                  <tr><td>銅礦</td><td>普通</td><td>機器製作</td></tr>
-                  <tr><td>鐵礦</td><td>稀有</td><td>機器製作</td></tr>
-                  <tr><td>樹脂</td><td>普通</td><td>機器製作</td></tr>
-                  <tr><td>藥草</td><td>普通</td><td>作物培育</td></tr>
-                  <tr><td>齒輪</td><td>稀有</td><td>自動化機器</td></tr>
-                  <tr><td>水晶</td><td>稀有</td><td>稀有作物培育</td></tr>
-                  <tr><td>古木核心</td><td>極稀有</td><td>高級機器製作</td></tr>
-                  <tr><td>機械核心</td><td>極稀有</td><td>高級機器製作</td></tr>
-                  <tr><td>木屑</td><td>普通</td><td>地下菇房</td></tr>
-                  <tr><td>假幣</td><td>特殊</td><td>兌換金幣</td></tr>
+                  <tr><td colspan="3">打開欄位時讀取最新資料…</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
         </details>
 
-        <details class="guide" id="cellar">
+        <details class="guide" data-part="mushroom" id="cellar">
           <summary>🍄 地下菇房</summary>
           <div class="guide-body">
             <ol>
@@ -578,19 +555,45 @@
           </div>
         </details>
 
-        <details class="guide" id="seedlab">
+        <details class="guide" data-part="seedlab" id="seedlab">
           <summary>🧪 種子實驗室</summary>
           <div class="guide-body">
             <ol>
               <li>農場 <b id="g-lab-level">Lv.5</b> 起，花 <b id="g-lab-gold">5,000</b> 金幣建造：「🌱 農田」→「🧪 種子實驗室」→「建造實驗室」。</li>
               <li><b>鑑定</b>：把背包裡的一般種子拿去鑑定（鑑定費是種子價格的 <span id="g-lab-fee-mul">1</span> 倍，最少 <span id="g-lab-fee-min">10</span> 金），就會變成有 4 種基因的<b>特殊種子</b>。稀有作物的種子鑑定出來的基因比較好。種子庫最多放 <span id="g-lab-capacity">25</span> 顆。</li>
-              <li><b>雜交</b>：選兩顆特殊種子當母本與父本，培育約 <b id="g-lab-time">30 分鐘–3 小時</b>。同品種一定能配對，用來改良基因；某些不同品種的組合能雜交出<b>商店買不到的全新作物</b>（共 <span id="g-lab-hybrids">12</span> 種，組合要自己摸索）。新作物的基礎售價是雙親售價總和的 <b>1.5 倍</b>。雜交失敗也不會白費，會得到母本品種的種子並退回材料。</li>
-              <li>每個基因各有一半機率繼承母本或父本，培育時還可能升級或退化；世代會一代代往上加。可以加入選用材料：🍯 樹脂（成功率 +<span id="g-lab-resin">15</span>%）、🌿 藥草（時間 -<span id="g-lab-herb">30</span>%）、💎 水晶（指定一個基因升級機率 +<span id="g-lab-catalyst">20</span>%）。</li>
+              <li><b>雜交</b>：選兩顆特殊種子當母本與父本，培育約 <b id="g-lab-time">30 分鐘–3 小時</b>。同品種一定能配對，用來改良基因；某些不同品種的組合能雜交出<b>商店買不到的全新作物</b>（共 <span id="g-lab-hybrids">12</span> 種，組合要自己摸索）。新作物的基礎售價是雙親售價總和的 <b id="g-lab-hybrid-mul">1.5</b> 倍。雜交失敗也不會白費，會得到母本品種的種子並退回材料。</li>
+              <li><b>❔ 配方要自己發現</b>：「🧬 雜交培育」的配方表只列出<b>你已經發現的配方</b>，其他只顯示還有幾種沒發現。任兩種種子都可以「<b>試驗雜交</b>」，沒發現的組合在培育前、培育中都不會顯示結果與成功率：
+                <ul>
+                  <li>組合不對：得到母本品種的種子（基因照樣繼承），培育材料退回。</li>
+                  <li>有這個配方但雜交失敗：會提示「這個組合好像有反應」，可以再試試。</li>
+                  <li>第一次成功：出現「📖 發現新配方」，之後配方表就看得到雙親、成功率與時間。收成時取回或朋友分享拿到雜交作物的種子，也算發現。</li>
+                </ul>
+              </li>
+              <li>每個基因各有一半機率繼承母本或父本，培育時再有 <span id="g-lab-gene-up">25</span>% 升級、<span id="g-lab-gene-down">5</span>% 退化；世代會一代代往上加。雙親有突變時，子代有 <span id="g-lab-inherit-mut">50</span>% 機率遺傳。可以加入選用材料：🍯 樹脂（成功率 +<span id="g-lab-resin">15</span>%）、🌿 藥草（時間 -<span id="g-lab-herb">30</span>%）、💎 水晶（指定一個基因升級機率 +<span id="g-lab-catalyst">20</span>%）。</li>
               <li><b>突變研究</b>：用 💎 水晶 ×<span id="g-lab-mutate-crystal">2</span> 研究約 <span id="g-lab-mutate-time">2 小時</span>，成功率 <span id="g-lab-mutate-base">30</span>%＋突變基因每級 <span id="g-lab-mutate-level">5</span>%（最高 <span id="g-lab-mutate-max">90</span>%，加古代核心加倍）。成功時種子會帶上突變，種下後作物一定是這種突變，而且會一直傳承下去。</li>
               <li><b>種下特殊種子</b>：從「種子庫」選種子和空地。收成時有 <span id="g-lab-inherit">60</span>% 機率取回 1 顆基因相同的種子。</li>
               <li><b>分享</b>：可以把特殊種子送給同伺服器的朋友（對方沒有實驗室也能收、也能種）。每人每天最多送出 <span id="g-lab-share-send">5</span> 顆，每人每天只能收 <span id="g-lab-share-receive">1</span> 位玩家的分享。</li>
-              <li>研究等級提升後研究槽會增加（最多 <span id="g-lab-slots">3</span> 個）。實驗室裡也能查看🍄菇類與🌰特殊種子圖鑑，收集與培育都有對應的成就。</li>
+              <li>研究等級提升後研究槽會增加（最多 <span id="g-lab-slots">3</span> 個，經驗見下表）。實驗室裡也能查看🍄菇類與🌰特殊種子圖鑑，收集與培育都有對應的成就。「📜 培育紀錄」可以往回翻閱最近 100 筆。</li>
             </ol>
+            <h4>🌰 特殊種子怎麼來</h4>
+            <ul>
+              <li>🔬 <b>鑑定</b>背包裡的一般種子；稀有種子（<span id="g-lab-rare-seeds">琥珀瓜、月光花</span>）來自 ⛰️ 山洞探險、🎁 每週特賣與 🧬 稀有作物培育器，拿到後也能鑑定，基因比較高。</li>
+              <li>🧬 <b>雜交／改良</b>：兩顆特殊種子培育出一顆新的。</li>
+              <li>🌾 <b>收成取回</b>：種下特殊種子，收成時有 <span id="g-lab-inherit-2">60</span>% 機率取回 1 顆基因相同的種子。</li>
+              <li>🎁 <b>朋友分享</b>：同伺服器的朋友送的（沒有實驗室也能收）。</li>
+              <li>雜交作物的種子商店不賣，只能靠雜交、收成取回或朋友分享取得。</li>
+            </ul>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>研究等級</th><th>內容</th></tr></thead>
+                <tbody id="g-lab-levels">
+                  <tr><td>研究經驗</td><td>鑑定 +2、雜交成功 +10、雜交失敗 +15、突變研究 +8</td></tr>
+                  <tr><td>Lv.1</td><td>1 個研究槽</td></tr>
+                  <tr><td>Lv.2（累積 100 經驗）</td><td>2 個研究槽</td></tr>
+                  <tr><td>Lv.3（累積 300 經驗）</td><td>3 個研究槽</td></tr>
+                </tbody>
+              </table>
+            </div>
             <div class="table-scroll">
               <table class="guide-table">
                 <thead><tr><th>基因</th><th>每高 1 級的效果（1 級沒有加成）</th></tr></thead>
@@ -615,7 +618,7 @@
           </div>
         </details>
 
-        <details class="guide" id="ruins">
+        <details class="guide" data-part="ruins" id="ruins">
           <summary>🏛️ 古代遺跡與守護者</summary>
           <div class="guide-body">
             <ol>
@@ -642,7 +645,7 @@
           </div>
         </details>
 
-        <details class="guide" id="news">
+        <details class="guide" data-part="news" id="news">
           <summary>📰 農場日報與傳聞寶藏</summary>
           <div class="guide-body">
             <ul id="g-news">
@@ -654,7 +657,7 @@
           </div>
         </details>
 
-        <details class="guide" id="machines">
+        <details class="guide" data-part="exploration" id="machines">
           <summary>🔧 機器與等級解鎖</summary>
           <div class="guide-body">
             <ul>
@@ -688,34 +691,19 @@
               <table class="guide-table">
                 <thead><tr><th>等級</th><th>解鎖內容</th></tr></thead>
                 <tbody id="g-level-unlocks">
-                  <tr><td>Lv.1</td><td>青青草原</td></tr>
-                  <tr><td>Lv.2</td><td>草原進階素材</td></tr>
-                  <tr><td>Lv.3</td><td>種子製造機</td></tr>
-                  <tr><td>Lv.4</td><td>草原稀有發現</td></tr>
-                  <tr><td>Lv.5</td><td>古老森林、自動收割機</td></tr>
-                  <tr><td>Lv.6</td><td>森林進階素材</td></tr>
-                  <tr><td>Lv.7</td><td>森林稀有發現</td></tr>
-                  <tr><td>Lv.8</td><td>自動加工機</td></tr>
-                  <tr><td>Lv.9</td><td>森林高級探索獎勵</td></tr>
-                  <tr><td>Lv.10</td><td>神秘礦坑</td></tr>
-                  <tr><td>Lv.11</td><td>礦坑進階素材</td></tr>
-                  <tr><td>Lv.12</td><td>稀有作物培育器</td></tr>
-                  <tr><td>Lv.13</td><td>礦坑稀有發現</td></tr>
-                  <tr><td>Lv.14</td><td>高級機器素材（尚未開放）</td></tr>
-                  <tr><td>Lv.15</td><td>極稀有探索事件（尚未開放）</td></tr>
-                  <tr><td>Lv.16</td><td>三個區域完整探索獎勵池（尚未開放）</td></tr>
+                  <tr><td colspan="2">打開欄位時讀取最新資料…</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
         </details>
 
-        <details class="guide">
+        <details class="guide" data-part="steal">
           <summary>🥷 偷菜與 🛡️ 防守</summary>
           <div class="guide-body">
             <ul>
               <li>「🥷 偷菜」可以選一位同伺服器的玩家，打開他的農田畫面再選要偷哪一格，也可以直接從可偷作物清單選一株；每次最多 <span id="g-steal-max">2</span> 個，每株每人只能偷一次；每天只能偷同一位玩家 <span id="g-steal-day">1</span> 格田；每位玩家每天最多被 <span id="g-steal-thieves">3</span> 個人偷（被防守設施擋下的都不算）。</li>
-              <li>只能偷同一伺服器的成員；對方的防守設施可能會擋下你。</li>
+              <li>只能偷同一伺服器的成員；對方的防守設施可能會擋下你。玩家選單只列出<b>有成長中或成熟作物</b>的玩家（只有空地或乾枯作物的不會出現）。</li>
             </ul>
             <div class="table-scroll">
               <table class="guide-table">
@@ -732,7 +720,7 @@
           </div>
         </details>
 
-        <details class="guide">
+        <details class="guide" data-part="gamble">
           <summary>🎰 幸運賭場</summary>
           <div class="guide-body">
             <ul id="g-gamble">
@@ -744,7 +732,7 @@
           </div>
         </details>
 
-        <details class="guide">
+        <details class="guide" data-part="activities">
           <summary>🏆 排行榜、任務、競賽與活動</summary>
           <div class="guide-body">
             <ul>
@@ -762,10 +750,39 @@
                 </tbody>
               </table>
             </div>
+            <h4>📜 伺服器共同任務與競賽</h4>
+            <ul>
+              <li>任務與競賽由管理員為伺服器建立，最長 <span id="g-event-days">90</span> 天；進度與獎勵在「📜 任務競賽」查看。</li>
+              <li><b>共同任務</b>：伺服器成員一起累積達到目標就完成，獎勵是 <span id="g-quest-rewards">金幣、化肥、人工養殖蚯蚓、巡查券</span>，發放方式：<span id="g-quest-modes">每位貢獻者固定獎勵；獎池依貢獻比例分配</span>。</li>
+              <li><b>競賽</b>：伺服器之間比分數，截止後前 <span id="g-comp-ranks">3</span> 名的伺服器得獎。</li>
+            </ul>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>任務種類</th><th>計算方式</th></tr></thead>
+                <tbody id="g-quests">
+                  <tr><td>共同收成</td><td>數量</td></tr>
+                  <tr><td>共同販售</td><td>數量或金額</td></tr>
+                  <tr><td>農場建設</td><td>數量</td></tr>
+                  <tr><td>動物生產</td><td>數量</td></tr>
+                  <tr><td>防守任務</td><td>數量</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>競賽種類</th><th>計分方式</th></tr></thead>
+                <tbody id="g-competitions">
+                  <tr><td>群組收成大賽</td><td>有效收成數量（每收成 1 個農產品 1 分）</td></tr>
+                  <tr><td>群組銷售大賽</td><td>成功販售收入（每 1 金幣 1 分）</td></tr>
+                  <tr><td>群組農場發展大賽</td><td>土地擴建每次 10 分、建造設施每座 5 分</td></tr>
+                  <tr><td>群組防守大賽</td><td>成功阻止偷菜每次 1 分</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </details>
 
-        <details class="guide" id="world-boss">
+        <details class="guide" data-part="world_boss" id="world-boss">
           <summary>🐉 世界 Boss（伺服器後勤活動）</summary>
           <div class="guide-body">
             <ul>
@@ -833,7 +850,7 @@
           </div>
         </details>
 
-        <details class="guide" id="pets">
+        <details class="guide" data-part="pets" id="pets">
           <summary>🐾 寵物（貓咪、狗狗）</summary>
           <div class="guide-body">
             <ul>
@@ -843,7 +860,7 @@
                 <span id="g-pet-ladder">10,000 → 20,000 → 30,000 → 40,000</span> 金幣，每升一級 X 再 +<span id="g-pet-pct">5</span>%，
                 最高 Lv<span id="g-pet-max">4</span>（X 最多 <span id="g-pet-maxpct">25</span>%）。</li>
               <li><b>貓咪</b>只加成主人自己收成的數量（自動收割機也算），被偷走的部分不會補回；小數部分依機率多給 1 個。</li>
-              <li><b>狗狗</b>在稻草人、警戒犬、防盜圍欄都沒擋住時再判定一次，不受防守設施整體 60% 上限限制；
+              <li><b>狗狗</b>在稻草人、警戒犬、防盜圍欄都沒擋住時再判定一次，不受防守設施整體 <span id="g-pet-dogcap">60</span>% 上限限制；
                 被狗狗擋下的偷菜一樣會出現在巡查紀錄。</li>
             </ul>
             <div class="table-scroll">
@@ -856,25 +873,20 @@
               </table>
             </div>
             <p class="note">🐱 貓咪每格實際多收：收成數量 × 加成的整數部分一定給，小數部分換成機率多 1 個。
-              例如小麥每格 2 個、滿級 +25% = 0.5 個 → 每格 50% 機率多 1 個。下表以每種作物的基本收成數量計算
+              <span id="g-cat-example">例如小麥每格 2 個、滿級 +25% = 0.5 個 → 每格 50% 機率多 1 個。</span>下表以每種作物的基本收成數量計算
               （巨型突變、活動加成、被偷或大風颳走時會不同）。</p>
             <div class="table-scroll">
               <table class="guide-table">
-                <thead><tr><th>作物</th><th>Lv0（+5%）</th><th>Lv1（+10%）</th><th>Lv2（+15%）</th><th>Lv3（+20%）</th><th>Lv4（+25%）</th></tr></thead>
+                <thead><tr id="g-cat-head"><th>作物</th><th>Lv0（+5%）</th><th>Lv1（+10%）</th><th>Lv2（+15%）</th><th>Lv3（+20%）</th><th>Lv4（+25%）</th></tr></thead>
                 <tbody id="g-cat-odds">
-                  <tr><td>小麥（每格 2 個）</td><td>10% 機率 +1</td><td>20% 機率 +1</td><td>30% 機率 +1</td><td>40% 機率 +1</td><td>50% 機率 +1</td></tr>
-                  <tr><td>胡蘿蔔（每格 3 個）</td><td>15% 機率 +1</td><td>30% 機率 +1</td><td>45% 機率 +1</td><td>60% 機率 +1</td><td>75% 機率 +1</td></tr>
-                  <tr><td>番茄（每格 4 個）</td><td>20% 機率 +1</td><td>40% 機率 +1</td><td>60% 機率 +1</td><td>80% 機率 +1</td><td>固定 +1</td></tr>
-                  <tr><td>草莓（每格 5 個）</td><td>25% 機率 +1</td><td>50% 機率 +1</td><td>75% 機率 +1</td><td>固定 +1</td><td>固定 +1，另有 25% 機率再 +1</td></tr>
-                  <tr><td>琥珀瓜（每格 3 個）</td><td>15% 機率 +1</td><td>30% 機率 +1</td><td>45% 機率 +1</td><td>60% 機率 +1</td><td>75% 機率 +1</td></tr>
-                  <tr><td>月光花（每格 2 個）</td><td>10% 機率 +1</td><td>20% 機率 +1</td><td>30% 機率 +1</td><td>40% 機率 +1</td><td>50% 機率 +1</td></tr>
+                  <tr><td colspan="6">打開欄位時讀取最新資料…</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
         </details>
 
-        <details class="guide" id="special-shop">
+        <details class="guide" data-part="special_shop" id="special-shop">
           <summary>🎁 特賣與升級（溫室、每週特賣、稱號商店）</summary>
           <div class="guide-body">
             <ul>
@@ -883,8 +895,8 @@
                 每一級讓<b>之後澆水</b>的作物生長時間再少 <span id="g-gh-pct">5</span>%
                 （與限時活動的加速相加，和蚯蚓、化肥可以一起用）。價格：<span id="g-gh-prices">5,000 → 15,000 → 40,000 → 100,000 → 250,000</span> 金幣。</li>
               <li><b>🎁 每週特賣</b>：台灣時間<b>每週一 00:00</b> 換一批，所有玩家看到的商品相同：
-                2 種一般種子打 7 折（每人每週每種限購 50 顆），
-                再加 1 種<b>平常商店不賣的稀有種子</b>（每人每週限購 3 顆，放素材背包）。</li>
+                <span id="g-weekly-deals">2</span> 種一般種子打 <span id="g-weekly-discount">7 折</span>（每人每週每種限購 <span id="g-weekly-normal-limit">50</span> 顆），
+                再加 1 種<b>平常商店不賣的稀有種子</b>（每人每週限購 <span id="g-weekly-rare-limit">3</span> 顆，放素材背包）。</li>
               <li><b>🎖️ 稱號商店</b>：用金幣買稱號，每個只能買一次；買到後到「🏅 成就圖鑑 → 🎖️ 稱號」選擇要顯示的稱號。</li>
             </ul>
             <div class="table-scroll">
@@ -910,12 +922,12 @@
           </div>
         </details>
 
-        <details class="guide" id="progress">
+        <details class="guide" data-part="progress" id="progress">
           <summary>🏅 每日簽到、成就與圖鑑</summary>
           <div class="guide-body">
             <ul>
               <li><b>每日簽到</b>：每天（台灣時間 00:00 換日）第一次打開 <code>/farm</code> 或在面板換頁時<b>自動簽到</b>，獎勵顯示在畫面頂端，
-                不用按任何按鈕。連續簽到 7 天一輪（第 7 天最多），<b>中斷一天就從第 1 天重新計算</b>；連續天數與明天的獎勵在「🏅 成就圖鑑」查看。</li>
+                不用按任何按鈕。連續簽到 <span id="g-checkin-days">7</span> 天一輪（第 <span id="g-checkin-days-2">7</span> 天最多），<b>中斷一天就從第 1 天重新計算</b>；連續天數與明天的獎勵在「🏅 成就圖鑑」查看。</li>
               <li><b>成就</b>：總覽「🏅 成就圖鑑」→「🏅 成就」依分類查看進度。<b>成就上線前的紀錄也會算進去</b>；
                 達成後按「🎁 領取全部」一次領完，每個成就只能領一次。</li>
               <li><b>稱號</b>：部分成就與世界 Boss（擊敗時名列前茅）會給稱號。到「🎖️ 稱號」選一個顯示，
@@ -942,56 +954,14 @@
               <table class="guide-table">
                 <thead><tr><th>分類</th><th>成就</th><th>條件</th><th>獎勵</th></tr></thead>
                 <tbody id="g-achievements">
-                  <tr><td>🌾 農耕</td><td>🌱 初出茅廬</td><td>取得作物達到 100 個</td><td>200 金幣</td></tr>
-                  <tr><td>🌾 農耕</td><td>🌾 勤勞農夫</td><td>取得作物達到 1,000 個</td><td>化肥 ×10、稱號「勤勞農夫」</td></tr>
-                  <tr><td>🌾 農耕</td><td>🚜 農業大亨</td><td>取得作物達到 10,000 個</td><td>2,000 金幣、人工養殖蚯蚓 ×3、稱號「農業大亨」</td></tr>
-                  <tr><td>🌾 農耕</td><td>⭐ 小有規模</td><td>農場等級達到 5 級</td><td>化肥 ×5</td></tr>
-                  <tr><td>🌾 農耕</td><td>🌟 資深農夫</td><td>農場等級達到 10 級</td><td>人工養殖蚯蚓 ×2、稱號「資深農夫」</td></tr>
-                  <tr><td>🌾 農耕</td><td>🗺️ 大地主</td><td>農田達到 16 格</td><td>1,000 金幣、稱號「大地主」</td></tr>
-                  <tr><td>🌾 農耕</td><td>👑 傳說農夫</td><td>取得傳說品質作物</td><td>巡查券 ×3、稱號「傳說農夫」</td></tr>
-                  <tr><td>🌾 農耕</td><td>💎 變種獵人</td><td>取得珍稀變種作物</td><td>人工養殖蚯蚓 ×1、稱號「變種獵人」</td></tr>
-                  <tr><td>💰 財富</td><td>🪙 小本生意</td><td>作物販售收入達到 10,000 金</td><td>300 金幣</td></tr>
-                  <tr><td>💰 財富</td><td>💵 生意興隆</td><td>作物販售收入達到 100,000 金</td><td>人工養殖蚯蚓 ×2、稱號「生意興隆」</td></tr>
-                  <tr><td>💰 財富</td><td>💰 富甲一方</td><td>作物販售收入達到 1,000,000 金</td><td>5,000 金幣、稱號「富甲一方」</td></tr>
-                  <tr><td>💰 財富</td><td>🏦 大富翁</td><td>持有金幣達到 500,000 金</td><td>稱號「大富翁」</td></tr>
-                  <tr><td>🐔 牧場與加工</td><td>🥚 小小牧場</td><td>收集動物產品達到 50 個</td><td>化肥 ×5</td></tr>
-                  <tr><td>🐔 牧場與加工</td><td>🐄 牧場主人</td><td>收集動物產品達到 500 個</td><td>人工養殖蚯蚓 ×2、稱號「牧場主人」</td></tr>
-                  <tr><td>🐔 牧場與加工</td><td>🍞 學徒工匠</td><td>領取加工品達到 20 份</td><td>300 金幣</td></tr>
-                  <tr><td>🐔 牧場與加工</td><td>🏭 工匠</td><td>領取加工品達到 200 份</td><td>人工養殖蚯蚓 ×2、稱號「工匠」</td></tr>
-                  <tr><td>⛰️ 冒險與釣魚</td><td>🔦 初探山洞</td><td>完成山洞探險達到 10 次</td><td>化肥 ×5</td></tr>
-                  <tr><td>⛰️ 冒險與釣魚</td><td>⛏️ 洞穴探險家</td><td>完成山洞探險達到 100 次</td><td>人工養殖蚯蚓 ×2、稱號「洞穴探險家」</td></tr>
-                  <tr><td>⛰️ 冒險與釣魚</td><td>🎣 第一次釣魚</td><td>釣到的魚達到 10 隻</td><td>巡查券 ×2</td></tr>
-                  <tr><td>⛰️ 冒險與釣魚</td><td>🐟 釣魚高手</td><td>釣到的魚達到 100 隻</td><td>1,000 金幣、稱號「釣魚高手」</td></tr>
-                  <tr><td>⛰️ 冒險與釣魚</td><td>🐋 傳說釣手</td><td>取得傳說魚</td><td>人工養殖蚯蚓 ×2、稱號「傳說釣手」</td></tr>
-                  <tr><td>🥷 社交與娛樂</td><td>🥷 神偷</td><td>偷菜成功達到 20 次</td><td>巡查券 ×3、稱號「神偷」</td></tr>
-                  <tr><td>🥷 社交與娛樂</td><td>🛡️ 守護者</td><td>防守成功達到 10 次</td><td>巡查券 ×3、稱號「守護者」</td></tr>
-                  <tr><td>🥷 社交與娛樂</td><td>🎰 幸運兒</td><td>賭場遊玩達到 50 次</td><td>200 金幣、稱號「幸運兒」</td></tr>
-                  <tr><td>🐉 世界 Boss</td><td>📦 後勤新兵</td><td>領取世界 Boss 獎勵達到 1 場</td><td>300 金幣</td></tr>
-                  <tr><td>🐉 世界 Boss</td><td>⚔️ 屠龍者</td><td>擊敗世界 Boss達到 1 場</td><td>人工養殖蚯蚓 ×1、稱號「屠龍者」</td></tr>
-                  <tr><td>🐉 世界 Boss</td><td>🐉 龍之剋星</td><td>擊敗世界 Boss達到 10 場</td><td>3,000 金幣、人工養殖蚯蚓 ×3、稱號「龍之剋星」</td></tr>
-                  <tr><td>📖 簽到與圖鑑</td><td>📅 一週全勤</td><td>最長連續簽到達到 7 天</td><td>化肥 ×5</td></tr>
-                  <tr><td>📖 簽到與圖鑑</td><td>🗓️ 全勤農夫</td><td>最長連續簽到達到 30 天</td><td>人工養殖蚯蚓 ×3、稱號「全勤農夫」</td></tr>
-                  <tr><td>📖 簽到與圖鑑</td><td>🌽 作物學者</td><td>作物圖鑑達到 100 %</td><td>2,000 金幣、稱號「作物學者」</td></tr>
-                  <tr><td>📖 簽到與圖鑑</td><td>🐠 垂釣大師</td><td>魚類圖鑑達到 100 %</td><td>2,000 金幣、稱號「垂釣大師」</td></tr>
-                  <tr><td>📖 簽到與圖鑑</td><td>📗 收藏家</td><td>全部圖鑑達到 50 %</td><td>人工養殖蚯蚓 ×2</td></tr>
-                  <tr><td>📖 簽到與圖鑑</td><td>📚 博物學家</td><td>全部圖鑑達到 100 %</td><td>5,000 金幣、稱號「博物學家」</td></tr>
-                  <tr><td>🧪 實驗室與菇房</td><td>🧪 實驗室落成</td><td>建造種子實驗室</td><td>化肥 ×5</td></tr>
-                  <tr><td>🧪 實驗室與菇房</td><td>🧬 育種學徒</td><td>雜交成功達到 10 次</td><td>人工養殖蚯蚓 ×2</td></tr>
-                  <tr><td>🧪 實驗室與菇房</td><td>🔬 育種專家</td><td>雜交成功達到 100 次</td><td>3,000 金幣、稱號「育種專家」</td></tr>
-                  <tr><td>🧪 實驗室與菇房</td><td>🌱 新品種誕生</td><td>取得雜交作物種子</td><td>人工養殖蚯蚓 ×1</td></tr>
-                  <tr><td>🧪 實驗室與菇房</td><td>🌈 雜交大師</td><td>雜交作物種子達到 12 種</td><td>5,000 金幣、稱號「雜交大師」</td></tr>
-                  <tr><td>🧪 實驗室與菇房</td><td>☢️ 突變研究員</td><td>突變研究成功達到 1 次</td><td>巡查券 ×2、稱號「突變研究員」</td></tr>
-                  <tr><td>🧪 實驗室與菇房</td><td>🎁 慷慨育種家</td><td>分享特殊種子達到 10 顆</td><td>500 金幣、稱號「慷慨育種家」</td></tr>
-                  <tr><td>🧪 實驗室與菇房</td><td>🌰 種子收藏家</td><td>特殊種子圖鑑達到 100 %</td><td>5,000 金幣、稱號「種子收藏家」</td></tr>
-                  <tr><td>🧪 實驗室與菇房</td><td>🍄 採菇人</td><td>收成菇類達到 100 朵</td><td>化肥 ×5</td></tr>
-                  <tr><td>🧪 實驗室與菇房</td><td>✨ 菇類達人</td><td>菇類圖鑑達到 100 %</td><td>2,000 金幣、稱號「菇類達人」</td></tr>
+                  <tr><td colspan="4">打開欄位時讀取最新資料…</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
         </details>
 
-        <details class="guide" id="ranking">
+        <details class="guide" data-part="rankings" id="ranking">
           <summary>🎁 排名獎勵</summary>
           <div class="guide-body">
             <ul>
@@ -1022,14 +992,14 @@
           </div>
         </details>
 
-        <details class="guide">
+        <details class="guide" data-part="farm">
           <summary>👥 群組、轉移與紀錄</summary>
           <div class="guide-body">
             <ul>
               <li>每個 Discord 伺服器就是一個群組。「👥 群組」可以看成員與你的所屬群組。</li>
               <li>想把農場搬到目前的伺服器：「把農場轉移到這個伺服器」→ 再按一次確認。金幣、物品、農田都不變；
                 之後每次轉移需間隔 <b id="g-transfer">7 天</b>。</li>
-              <li>「🧾 紀錄」顯示最近 15 筆操作（買賣、收成、偷菜、賭場、山洞探索結果等）。</li>
+              <li>「🧾 紀錄」可以往回翻閱最近 100 筆操作（買賣、收成、偷菜、賭場、山洞探索結果等），每頁 10 筆。</li>
             </ul>
           </div>
         </details>

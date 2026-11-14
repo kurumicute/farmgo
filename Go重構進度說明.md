@@ -88,6 +88,12 @@
   - 快速生長作物也能當加工原料（`services.CraftMutations` = 無突變 → 巨型 → 快速生長）。
   - 實驗室頁（含未建造、未開放的畫面）新增「特殊種子怎麼來」：鑑定、雜交／改良、收成取回、朋友分享，以及稀有種子（琥珀瓜、月光花）來自山洞、每週特賣與稀有作物培育器。
   - 測試：`bot/panel_go_features_test.go` 的 `TestPricesPagedAndHideUnbuyableSeedPrice`、`bot/panel_social_test.go` 的 `TestLogPageListsRecentTransactions`（翻頁）、`services/go_features_test.go` 的 `TestCraftUsesFastCrops`、`services/seedlab_test.go`（配方隱藏、試驗雜交）、`game/seedlab`（新預設值、缺少 key 的舊快照）。
+- **介紹網站補齊 Go 版新增的玩法、數值改由 API 提供、分段讀取（2026-11-14，使用者要求）**：
+  - **分段讀取**：新增 `/api/guide/{part}`（`services.GuideParts`：summary、farm、genetics、shop、ranch、craft、fishing、exploration、mushroom、seedlab、ruins、news、steal、gamble、activities、world_boss、pets、special_shop、progress、rankings），每個部分各自快取 60 秒，只查詢這部分需要的資料（`buildGuide` 改成每個頂層欄位一個建立函式，作物、品質設定等共用資料在同一次請求內只查一次）。首頁只讀 `summary`（功能卡片用的名稱與數字，約 1 KB；完整手冊約 50 KB）；手冊每個 `<details data-part="…">` 第一次打開時才讀對應部分（多個欄位共用的部分只讀一次），讀取中與失敗會在欄位上方提示，失敗後重新打開會再試。「全部展開」會讀全部；網址的 `#fishing` 等錨點會直接打開該欄位；每分鐘只重新讀取已經讀過的部分。完整的 `/api/guide` 保留（內容不變，另外多了下面的新欄位）。
+  - 頁面上最大的幾張預設表格（成就、等級解鎖、山洞素材、釣具、作物、貓咪加成）改成「打開欄位時讀取最新資料…」，`index.html` 從 100 KB 減到約 88 KB。
+  - **新增到手冊的內容**：非當季作物售價 +X% 與商店只賣當季種子（`seasons.off_season_sell_pct`）；所有種子放素材背包（`start.material_bag_capacity`）；加工排隊上限、可當原料的突變與取消加工訂單（新欄位 `craft`）；價目表分頁；種子實驗室的配方隱藏與試驗雜交、特殊種子的來源、基因升級／退化與突變遺傳機率、研究經驗與等級、雜交作物售價倍率（`seedlab` 新增欄位）；偷菜名單只列出有作物的玩家；伺服器共同任務與競賽的種類、計分、獎勵與最長期間（新欄位 `groups`）；圖鑑分類改讀 `services.CodexCategories`（含菇類、特殊種子）；紀錄可翻閱 100 筆；速查表新增「取消加工單」「找新的雜交配方」。
+  - **原本寫死在頁面的數字改由 API 填入**：釣魚各稀有度要拉幾下、魚逃走的距離（`fishing.escape_distance`）、狗狗不受限的防守上限（`pets.defense_cap_pct`）、貓咪加成表頭與舉例、每週特賣的種類數／折扣／限購（`special_shop.weekly`）、簽到幾天一輪、季節月份、雜交作物售價倍率；首頁卡片的簽到天數、圖鑑分類。
+  - 測試：`site/site_test.go` 的 `TestGuidePartsMatchFullGuide`（每個部分只有列出的欄位、內容和完整手冊相同、沒有的部分 404、沒有資料庫 503）、`TestPageWiringForLazyGuide`（summary 的內容、每個 `data-part` 都存在、`site.js` 會填的每個欄位頁面上都有、新玩法的說明都在）。也以本機 `farmgm_play` 實際啟動網站，用瀏覽器確認首頁只讀 summary、打開欄位才讀、`#fishing` 直接打開、「全部展開」後沒有殘留的讀取提示、主控台沒有錯誤。
 - **偷菜名單隱藏全是空地的玩家**（`SocialService.StealPlayers`）；2026-11-12 起只有空地與乾枯作物的玩家也不列出（有成長中或成熟的作物才列出）。
 - **音樂改寫成 Go（`internal/music`）**：Lavalink v4（REST＋WebSocket，30 秒看門狗自動重連）、Spotify 連結解析、16 個斜線指令（名稱與參數與 Python 相同）、播放控制按鈕與佇列分頁；各伺服器音量與前綴沿用 `data/music_guild_settings.json`。設定 `LAVALINK_URI`、`LAVALINK_PASSWORD`；`MUSIC_ENABLED` 且沒有 `MUSIC_BOT_TOKEN` 時在農場 Bot 內執行。只支援斜線指令（前綴指令需要 Message Content 特權 Intent）。實機測試：`TestRealLavalink`（讀 `FARMGM_TEST_LAVALINK_URL`／`PASSWORD`）。
 
@@ -457,7 +463,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
   - 日誌使用 `log/slog` 的預設格式（Python 是 uvicorn 的 logging 格式）；只輸出到 stderr，不寫入密碼、雜湊或連線字串。
 - **密碼雜湊工具（`cmd/farmgm-hash-password`）**：提示輸出到 stderr，stdout 只有 `ADMIN_PASSWORD_HASH=…` 一行；長度以字元計算（Python `len()`）；去除所有 BOM（PowerShell 管線）。終端機輸入時關閉回顯，按 Ctrl+C 會先恢復回顯；Windows 與 Linux 以標準庫 `syscall` 實作，其他平台會警告輸入會顯示（同 Python getpass 的 GetPassWarning）。管線輸入時逐行讀取，已實際確認帶 BOM 的管線輸入產生的雜湊正確。
 - **介紹網站（`internal/site`）**：
-  - 端點與 Python 相同：`/`、`/static/*`、`/favicon.ico`、`/api/info`、`/api/guide`、`/api/stats`，只接受 GET（含 HEAD）。公開網站，不做 Host 檢查（Python 也沒有）。安全標頭相同（CSP 允許 Google Fonts），所有回應 `Cache-Control: no-cache`。
+  - 端點與 Python 相同：`/`、`/static/*`、`/favicon.ico`、`/api/info`、`/api/guide`、`/api/stats`，只接受 GET（含 HEAD）。2026-11-14 起另有 Go 版新增的 `/api/guide/{part}`（分段讀取，見「Go 版新增的功能」）。公開網站，不做 Host 檢查（Python 也沒有）。安全標頭相同（CSP 允許 Google Fonts），所有回應 `Cache-Control: no-cache`。
   - 快取：統計 30 秒、手冊 60 秒；查詢時持有鎖，同時間只有一個請求查資料庫（Python `threading.Lock`）；失敗不快取。快取的是 JSON 本文，回應時不再重新序列化。查詢不受用戶端中斷影響（結果仍會快取）。
   - 錯誤：資料庫錯誤一律回 503 `{"detail": "統計資料暫時無法取得"}`／`遊戲設定暫時無法取得`，只記錄錯誤類型（Python 只攔 SQLAlchemyError，其他例外是 500）。
   - 靜態檔：以 SHA-256 產生 ETag，`If-None-Match` 相符回 304；沒有 `Last-Modified`（嵌入檔案沒有修改時間；Python StaticFiles 兩者都有）。含 `..` 的路徑由 `ServeMux` 清理後 307 轉址（Python 回 404），仍然讀不到嵌入目錄以外的檔案。
@@ -759,19 +765,19 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/seedlab.go` | `5df7a0f23c2d11f7eeba0beca5b30830762155ec657437b81200e7cbbebc5d19` |
 | `internal/services/seedlab_test.go` | `3d35f87dc73bc096e6b7082a42c21666813ca8d7e707edbdb61fa1663fbc9f71` |
 | `internal/services/service.go` | `06198d84336364d22dfd85805600d22d8cca76e3a20fc413ae612af36f8e9187` |
-| `internal/services/site.go` | `14b16c41204dd9f3c9ebf98ab5a46d7960d8fa6c1828a57cf32bc222e743c70c` |
+| `internal/services/site.go` | `534b9ecf318a955775d7049acc6445726601378cd91001b931e2cf5a9f8e7262` |
 | `internal/services/social.go` | `d3e32dcf63cba29196947bbc7a8b640c99baf56c820d719614fb9c5028221709` |
 | `internal/services/social_test.go` | `65f6371c11236d0837f6144494da0fad58fa23d8db38c6b6ac28144821a755b0` |
 | `internal/services/stress_test.go` | `a4aa847f169673c1d8af3656a9508f25c226415f50f465f141f546e025ec2e8f` |
 | `internal/services/svctest/svctest.go` | `e4072ad8b251f44494dcb81366a8cd78ffc4c73071984385239b5d49b1f07ebd` |
 | `internal/services/worldboss.go` | `64580541ae38af915b001302afd750107a898ebf6ffa9cef818207972267d3b0` |
 | `internal/services/worldboss_test.go` | `0cb066ae06856a2f6b8897941840c426d91e452e8ee3bd560e3016aaf7a5f72d` |
-| `internal/site/site.go` | `c8392737e05a0edcd3f41dbd5cf60a15ec53cbe0af2b885e6a00661bacf8f787` |
-| `internal/site/site_test.go` | `5415f7ffd2741499b7281f407ec370072f575e58ecd9683378644f1ae180a5f7` |
+| `internal/site/site.go` | `0a9e3ca033e155902bed4bebf92dd2bc1ad0d7950d8869941e6a34f5947a70d2` |
+| `internal/site/site_test.go` | `d32d811fab425aec97b03c61863775249c64c2b8d544bd1683d439b109aea457` |
 | `internal/site/static/favicon.svg` | `bba4123b033483f9ca309a1031c36a6459679843def75245bca83d74575bc292` |
-| `internal/site/static/index.html` | `324d323cc7efa1aa84a55f0bb944a199cd7aa7227000ccd9c0e80afa2f61a523` |
+| `internal/site/static/index.html` | `470a09569d683109b4c47658f755219ced85896531e4467c12b2ca167d86e0e8` |
 | `internal/site/static/site.css` | `b6542200f867362330ba84dbb417878761f75a886b3af7c18681a2300d2b4ee7` |
-| `internal/site/static/site.js` | `e1cf0c94bd4ef2d1ce3cd2c8cee57a40708a8483077ea80e1bd68d7372dd179e` |
+| `internal/site/static/site.js` | `c491d803da9388d380a1a9abf04405e6dac432337b438887da01448a0abfe1ab` |
 | `internal/web/admin.go` | `fff4ac767c289753fdbe578ecfd142d6a345498e7f5dced26b14c3f41ed1c050` |
 | `internal/web/admin_boss.go` | `a588cb805d2739bcaa5fefc6cb5c5abc7d066d70bc6abdb14ba94efa2513924f` |
 | `internal/web/admin_boss_test.go` | `749a86128ae3d09ad2b41ab37cd127a35e56cd5b4ec6bed8edd98649f35e9919` |

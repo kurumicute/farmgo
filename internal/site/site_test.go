@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -443,10 +444,9 @@ func TestGuideHasCheckinAchievementsAndCodex(t *testing.T) {
 			t.Fatal(slot)
 		}
 	}
-	for _, ach := range achievements.Active() { // API 失敗時的預設表格
-		if !strings.Contains(page, ach.Name) {
-			t.Fatal(ach.Name)
-		}
+	// 成就表格在欄位打開時才由 /api/guide/progress 填入（2026-11-14 分段讀取），頁面只放讀取中的提示
+	if !strings.Contains(page, `<tbody id="g-achievements">`) || !strings.Contains(page, "打開欄位時讀取最新資料") {
+		t.Fatal("成就表格")
 	}
 	p := m(getJSON(t, a, "/api/guide")["progress"])
 	days := list(p["checkin"])
@@ -461,7 +461,7 @@ func TestGuideHasCheckinAchievementsAndCodex(t *testing.T) {
 	if len(list(p["achievements"])) != len(achievements.Active()) || find(p["achievements"], "title", "傳說農夫") == nil {
 		t.Fatal(len(list(p["achievements"])))
 	}
-	if !slices.Contains(list(p["codex"]), any("魚類")) {
+	if !slices.Contains(list(p["codex"]), any("🐟 魚類")) || !slices.Contains(list(p["codex"]), any("🧪 特殊種子")) {
 		t.Fatal(p["codex"])
 	}
 }
@@ -516,7 +516,7 @@ func TestGuideHasPets(t *testing.T) {
 	e := setup(t)
 	a := e.app(Options{})
 	page := get(t, a, "/").Body.String()
-	for _, want := range []string{`id="g-pets"`, `id="g-pet-ladder"`, "寵物（貓狗）", `id="g-cat-odds"`, "50% 機率 +1"} { // 預設表格：小麥滿級
+	for _, want := range []string{`id="g-pets"`, `id="g-pet-ladder"`, "寵物（貓狗）", `id="g-cat-odds"`, `id="g-cat-head"`, `id="g-cat-example"`} { // 表格在欄位打開時填入（表頭依最高等級產生）
 		if !strings.Contains(page, want) {
 			t.Fatal(want)
 		}
@@ -746,5 +746,84 @@ func TestStaticETagAndNotFound(t *testing.T) {
 	a.ServeHTTP(post, httptest.NewRequest(http.MethodPost, "/api/stats", nil))
 	if post.Code != http.StatusMethodNotAllowed {
 		t.Fatal(post.Code)
+	}
+}
+
+// 分段讀取（2026-11-14）：每個部分只回傳列出的欄位，內容與完整 /api/guide 相同；沒有的部分回 404。
+func TestGuidePartsMatchFullGuide(t *testing.T) {
+	e := setup(t)
+	a := e.app(Options{})
+	full := getJSON(t, a, "/api/guide")
+	for part, keys := range services.GuideParts {
+		got := getJSON(t, a, "/api/guide/"+part)
+		if num(got["cached_seconds"]) != GuideCacheSeconds {
+			t.Fatal(part, got["cached_seconds"])
+		}
+		delete(got, "cached_seconds")
+		if len(got) != len(keys) {
+			t.Fatalf("%s：%d 個欄位，應該是 %v", part, len(got), keys)
+		}
+		for _, k := range keys {
+			want, _ := json.Marshal(full[k])
+			have, _ := json.Marshal(got[k])
+			if !bytes.Equal(want, have) {
+				t.Fatalf("%s.%s 和完整手冊不同：\n%s\n%s", part, k, have, want)
+			}
+		}
+	}
+	if rec := get(t, a, "/api/guide/nope"); rec.Code != http.StatusNotFound {
+		t.Fatal(rec.Code)
+	}
+	if rec := get(t, New(Options{}), "/api/guide/summary"); rec.Code != 503 {
+		t.Fatal(rec.Code)
+	}
+}
+
+// 首頁卡片只讀 summary；手冊每個有資料的欄位都標了存在的部分；site.js 填的欄位頁面上都有。
+func TestPageWiringForLazyGuide(t *testing.T) {
+	e := setup(t)
+	a := e.app(Options{})
+	page := get(t, a, "/").Body.String()
+	sum := getJSON(t, a, "/api/guide/summary")
+	cards := m(sum["cards"])
+	for _, k := range []string{"qualities", "animals", "areas", "machines", "rare_seeds", "crop_times", "tools", "codex"} {
+		if len(list(cards[k])) == 0 {
+			t.Fatal(k)
+		}
+	}
+	if num(cards["achievements"]) != float64(len(achievements.Active())) || num(cards["checkin_days"]) != float64(checkin.CycleDays()) {
+		t.Fatal(cards)
+	}
+	tagged := 0
+	for _, match := range regexp.MustCompile(`data-part="([a-z_ ]+)"`).FindAllStringSubmatch(page, -1) {
+		for _, p := range strings.Fields(match[1]) {
+			if _, ok := services.GuideParts[p]; !ok {
+				t.Fatal("沒有這個部分：", p)
+			}
+		}
+		tagged++
+	}
+	if tagged < 20 {
+		t.Fatal(tagged)
+	}
+	js := get(t, a, "/static/site.js").Body.String()
+	for _, match := range regexp.MustCompile(`(?:setText|fillRows|liList|setList)\("([a-z][a-z0-9-]*)"`).FindAllStringSubmatch(js, -1) {
+		if !strings.Contains(page, fmt.Sprintf(`id="%s"`, match[1])) {
+			t.Errorf("site.js 會填 #%s，但頁面上沒有這個欄位", match[1])
+		}
+	}
+	// 新增到介紹網站的玩法（2026-11-14）
+	for _, text := range []string{"試驗雜交", "發現新配方", "特殊種子怎麼來", "非當季", "取消加工訂單", "素材背包", "共同任務"} {
+		if !strings.Contains(page, text) {
+			t.Error(text)
+		}
+	}
+	lab := m(getJSON(t, a, "/api/guide/seedlab")["seedlab"])
+	if lab["exp"] == nil || len(list(lab["level_exp"])) != 2 || lab["gene_up_pct"] == nil {
+		t.Fatal(lab)
+	}
+	groups := m(getJSON(t, a, "/api/guide/activities")["groups"])
+	if len(list(groups["quests"])) != len(balance.QuestTypeOrder) || len(list(groups["competitions"])) != len(balance.CompetitionTypeOrder) {
+		t.Fatal(groups)
 	}
 }
