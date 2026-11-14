@@ -55,9 +55,10 @@ func (p *Panel) buildSeedMaker(_ context.Context, data any) (*ui.Embed, error) {
 		lines[i] = fmt.Sprintf("%s %s%s　×**%d**　（%d 金／個）", cropEmoji(x.Code), x.Name,
 			services.GeneticsLabel(x.Quality, x.Mutation), x.Quantity, x.Price)
 	}
-	rule := fmt.Sprintf("1 個作物 = **%d 顆**對應的種子，任何品質、突變都可以，做出來的一律是普通種子。", exploration.SeedMakerRatio)
+	rule := fmt.Sprintf("1 個作物 = **%d 顆**對應的種子，**普通、優良**品質的作物都可以（突變不限），做出來的一律是普通種子。"+
+		"\n稀有、傳說品質的作物不能做成種子。", exploration.SeedMakerRatio)
 	if !exploration.SeedMakerRareCrops {
-		rule += "\n琥珀瓜、月光花等稀有作物不能做成種子。"
+		rule += "琥珀瓜、月光花等稀有作物也不行。"
 	}
 	e.Description = sections(rule, Section{Title: "🧺 可以做成種子的作物", Lines: lines})
 	if len(stacks) == 0 {

@@ -334,8 +334,9 @@ const (
 )
 
 var (
-	// Go 版放寬（2026-11-14）：原本只接受普通品質、沒有突變的作物，玩家收成大多是優良以上，選單常常是空的
-	SeedMakerQualities = []string{"normal", "good", "rare", "legendary"}
+	// Go 版放寬（2026-11-14）：原本只接受普通品質、沒有突變的作物，玩家收成大多是優良，選單常常是空的；
+	// 品質開放到優良為止（稀有、傳說不行），突變不限
+	SeedMakerQualities = []string{"normal", "good"}
 	SeedMakerMutations = []string{"none", "giant", "golden", "fast", "variant"}
 	// SeedMakerRareCrops true：琥珀瓜、月光花等稀有作物也能製造種子（模組層級可變狀態，測試會修改）
 	SeedMakerRareCrops = false

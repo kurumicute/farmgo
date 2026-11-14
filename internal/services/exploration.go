@@ -1344,7 +1344,7 @@ func (x *ExplorationService) MakeSeeds(ctx context.Context, playerID int64, crop
 	}
 	quality, mutation = genetics.ParseQuality(quality), genetics.ParseMutation(mutation)
 	if !slices.Contains(exploration.SeedMakerQualities, quality) || !slices.Contains(exploration.SeedMakerMutations, mutation) {
-		return ActionResult{}, gameerr.Validationf("種子製造機不能使用這種品質或突變的作物。")
+		return ActionResult{}, gameerr.Validationf("種子製造機只能使用普通或優良品質的作物。")
 	}
 	return inTx(ctx, x.GameService, func(t *db.Tx) (ActionResult, error) {
 		farm, err := x.lockedFarm(ctx, t, playerID)

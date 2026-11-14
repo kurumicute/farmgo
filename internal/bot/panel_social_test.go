@@ -371,9 +371,15 @@ func TestSeedMakerPageFromPlotsAcceptsAnyQuality(t *testing.T) {
 	if _, err := e.admin.SetInventory(e.ctx, "root", pid, "carrot", "good", "none", 12); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := e.admin.SetInventory(e.ctx, "root", pid, "carrot", "rare", "none", 3); err != nil {
+		t.Fatal(err)
+	}
 	p.goPage("plots")
 	p.click("種子製造")
 	contains(t, p.Text, "胡蘿蔔【優良】", "×**12**")
+	if strings.Contains(p.Text, "胡蘿蔔【稀有】") { // 稀有品質不列出
+		t.Fatal(p.Text)
+	}
 	p.choose("選擇要做成種子的作物", "seed:carrot:good:none")
 	if !slices.Contains(p.labels(), "用 12") { // 超過 10 個時多一個「全部」
 		t.Fatal(p.labels())

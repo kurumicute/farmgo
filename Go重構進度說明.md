@@ -97,7 +97,7 @@
 - **種子製造機改版、Boss 獎勵登記圖鑑（2026-11-14，玩家回饋）**：
   - 種子製造機原本只能在「🔧 機器」的「⚙️ 使用機器」選單使用，而且只列普通品質、沒有突變的作物（玩家收成大多是優良以上，選單常常是空的）；機器頁的「啟用／停用」只決定能不能手動使用，啟用後不會自動做任何事，玩家以為沒有生效。
   - 新增「🌱 種子製造」頁（`bot/pages_seedmaker.go`），從「🌱 農田」頁（有機器時才顯示）或「🔧 機器」頁進入：列出背包裡可以做成種子的作物（依品質、突變分開，超過 25 種時分頁），選作物後按 1／5／10／全部（持有超過 10 個時）／自訂數量。`Backpack.SeedMaker` 表示已製作機器（和背包的工具清單同一次查詢）。
-  - **任何品質、突變的作物都能做**（`exploration.SeedMakerQualities`／`SeedMakerMutations`），做出來的一律是普通種子；稀有作物仍不能做（`SeedMakerRareCrops`）。
+  - **普通、優良品質的作物都能做，突變不限**（`exploration.SeedMakerQualities`／`SeedMakerMutations`），做出來的一律是普通種子；稀有、傳說品質與稀有作物仍不能做（`SeedMakerRareCrops`）。當天先開放所有品質，之後使用者決定改成只到優良（2026-11-14）。
   - 種子製造機拿掉啟用／停用開關，`MakeSeeds` 不再檢查啟用狀態（舊資料停用的機器也能用）；機器頁的「⚙️ 使用機器」不再列種子製造，`loadMachines` 少讀一次背包。介紹網站的說明同步修改。
   - 世界 Boss 領獎發放的物品登記圖鑑（`codex.Register`，和領取探險相同），Boss 獎勵的素材也會算進山洞素材圖鑑。**之前已經領過的 Boss 素材不會補登記**。
   - 測試：`services/exploration_test.go` 的 `TestSeedMakerTwoSeedsPerCrop`（任何品質、停用的機器也能用）、`services/worldboss_test.go` 的 `TestBossRewardsClaimedOnce`（圖鑑）、`bot/panel_social_test.go` 的 `TestMachinesPageBuildAndUseSeedMaker`、`TestSeedMakerPageFromPlotsAcceptsAnyQuality`。
@@ -547,7 +547,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/pages_main.go` | `2289ef581486102cd4ad4b043d047b761be2ee2f1ab709e78bc52a0007fdfea3` |
 | `internal/bot/pages_progress.go` | `9fcb999b900410e1cbecbc6338339ceee091eadf044e89544438f53163eba3d3` |
 | `internal/bot/pages_ranch.go` | `d73f2349bfe889062b690597506e8810f85356bda716e1bff51a831e4a90d13f` |
-| `internal/bot/pages_seedmaker.go` | `3dbcc69426734a38251d72225908e9a53a5ceaab417edc25cebb532e16709d6b` |
+| `internal/bot/pages_seedmaker.go` | `ec97b02255f6b0f4ee97b24a15e632284d1c8210b95c594591a80399a5b8e1d8` |
 | `internal/bot/pages_shop.go` | `2daf13b39c153c0bcfc54958311ac16892bbfd1883816f1a8feb5916ec089d1d` |
 | `internal/bot/pages_social.go` | `0214ea03a784de2dc76313581597585a965dd3eff21a7ff5024b68557b3100f5` |
 | `internal/bot/panel.go` | `cfd4556c37d78a1c3e6e701e1cdc58099defb71d3e96babc301caa3ffcaa440a` |
@@ -558,7 +558,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/panel_progress_test.go` | `f2b834cd3f0f1faaa97a44e86b5dd116f90a32010738ad113ba918e4e4ac5bd0` |
 | `internal/bot/panel_ranch_test.go` | `eba6ddacfe5a0eae2696a5491ce0a90d7d5b04a514613655146e4937514c0ccd` |
 | `internal/bot/panel_shop_test.go` | `5a59caec9abe42e6a0c01a8612757d8728bb9146a8b9b487ef9b75efa0b19551` |
-| `internal/bot/panel_social_test.go` | `c945b6df0f8e0391d3f7c3267449d1dc662718daecd312f845dc1855791fb091` |
+| `internal/bot/panel_social_test.go` | `b6bbbc4b1b0fad3ab3cd64c9cdc1f2540281a0e60eac133c3234c82f4e0222f4` |
 | `internal/bot/panel_test.go` | `6f2df7038bb9e5b30ac385cbd6b8c993194780660717856465f3c118fa84a54a` |
 | `internal/bot/querycount_test.go` | `92d9d9017ea2bb0c3bfd821ce54eafbdaeca24d201e1a12877742ae2c7cedf7d` |
 | `internal/bot/render/render.go` | `3ae595db2c272fff5578b2977e68c8a0950f9797c85b4c87ca58a5bc6476a1ca` |
@@ -604,7 +604,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/game/events/events_test.go` | `06a236f059e6ed8c5896225e683fabf0865d738f7ae7afcaef752d7b1ac6ee70` |
 | `internal/game/exploration/config.go` | `b17a06906169d5245c102bd8e999be7fe94e5f2a21070de5a45c74acb7b10259` |
 | `internal/game/exploration/config_test.go` | `d4c0e93e51686fda42fe5bc53dc61a2ba1203ee7479dbcf189030a63d45cfb87` |
-| `internal/game/exploration/exploration.go` | `79f555ba3bbf1c18cd08a0dfe1667c6095c2533e423fc45e156f1fa4f71a3cd8` |
+| `internal/game/exploration/exploration.go` | `118cea9a8c8320dd17085cc3b6d68084e97486b56fcae0cac011ccd1371ed9ce` |
 | `internal/game/exploration/exploration_test.go` | `92c45a2caf2192c93bab90a1b9e3c66d2d1d2b709983cc7856d52bfe744a6c5e` |
 | `internal/game/featurecfg/featurecfg.go` | `9df670e9c365358bf783f89ea724663a69053f6390cb846ad8c80af317b28c80` |
 | `internal/game/fishing/fishing.go` | `919745950c8e31f4849dc55e09b634427552a0826eb4bcd5431f95dac5b03eca` |
@@ -730,8 +730,8 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/database_test.go` | `7f9087209119e70b912f4ac1a70e43014276d3a8b211db9b6645982d201f83c3` |
 | `internal/services/defense_test.go` | `64f1a9fe08a69da86ea97cb31b7c4b8fa1e501ea093184d019ec8099a740fb1e` |
 | `internal/services/dto.go` | `f629192c9cf3ae18bae272345d94894ae85b720c77b33cbc36af432be4d7a416` |
-| `internal/services/exploration.go` | `f93dc2833d4924e5f2f0978b9a049a546df0bccf212aacb8996f8ab914b6ce29` |
-| `internal/services/exploration_test.go` | `d832cf8957986dc605ad5908abd4aa829e959dee3c1493cd33b15d651a83905b` |
+| `internal/services/exploration.go` | `131a0d34eb7a0f656fdcd3bd5b9f4a87cb0408ea766e2f39677287dcb321c07f` |
+| `internal/services/exploration_test.go` | `669399889a2b161a3117ba54d25e16cad0894220b4badde4a294f4e324d6e553` |
 | `internal/services/farmstats_test.go` | `a15446358f01b77a334540f6511072af77a2c0681298e0479957c3118c89d819` |
 | `internal/services/feedback_test.go` | `a9554d2d3afd0e0d815cafa637231c329695a9b5f3ead025cc20f23ddc5febb1` |
 | `internal/services/fishing.go` | `cb722313aaac083ee873a2cc58a01bb9dd2bb7185d9bc146fc7a794155cd983f` |
@@ -783,7 +783,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/site/site.go` | `0a9e3ca033e155902bed4bebf92dd2bc1ad0d7950d8869941e6a34f5947a70d2` |
 | `internal/site/site_test.go` | `d32d811fab425aec97b03c61863775249c64c2b8d544bd1683d439b109aea457` |
 | `internal/site/static/favicon.svg` | `bba4123b033483f9ca309a1031c36a6459679843def75245bca83d74575bc292` |
-| `internal/site/static/index.html` | `04f7697da3eb88fcceaf58c178747ba672c8d532ffe224a2fa25c60f9051144e` |
+| `internal/site/static/index.html` | `bb6108f2eb58f9fbc221f5473adfc4bc5e7143c632fbe80999d6f1cd094f2d60` |
 | `internal/site/static/site.css` | `b6542200f867362330ba84dbb417878761f75a886b3af7c18681a2300d2b4ee7` |
 | `internal/site/static/site.js` | `e5a0a33e6290715da656ea02ef3687d2130b9ccf817871d2af44282a69b06cb0` |
 | `internal/web/admin.go` | `fff4ac767c289753fdbe578ecfd142d6a345498e7f5dced26b14c3f41ed1c050` |

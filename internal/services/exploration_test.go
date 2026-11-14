@@ -505,10 +505,13 @@ func TestSeedMakerTwoSeedsPerCrop(t *testing.T) {
 	}
 	_, err = e.x.MakeSeeds(e.ctx, pid, "wheat", 1, "normal", "none")
 	wantKind(t, err, gameerr.InsufficientItems)
-	e.giveQ(pid, "wheat", 2, "rare") // 2026-11-14 起任何品質都能做，做出來的是普通種子
-	if r := e.ok(e.x.MakeSeeds(e.ctx, pid, "wheat", 2, "rare", "none")); r.Quantity != 4 || e.bpQty(pid, "seed_wheat") != 10 {
+	e.giveQ(pid, "wheat", 2, "good") // 2026-11-14 起優良品質也能做，做出來的是普通種子
+	if r := e.ok(e.x.MakeSeeds(e.ctx, pid, "wheat", 2, "good", "none")); r.Quantity != 4 || e.bpQty(pid, "seed_wheat") != 10 {
 		t.Fatalf("%+v", r)
 	}
+	e.giveQ(pid, "wheat", 1, "rare") // 稀有、傳說品質不行
+	_, err = e.x.MakeSeeds(e.ctx, pid, "wheat", 1, "rare", "none")
+	wantMsg(t, err, gameerr.Validation, "普通或優良")
 	e.give(pid, "amber_melon", 1)
 	_, err = e.x.MakeSeeds(e.ctx, pid, "琥珀瓜", 1, "normal", "none")
 	wantMsg(t, err, gameerr.Validation, "稀有作物")
