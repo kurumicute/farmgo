@@ -71,7 +71,7 @@
   - **鑑定**：背包的一般種子 ×1＋鑑定費（種子價格 ×5，至少 50）→ 有 4 個基因（生長、產量、品質、突變，1–5 級）的特殊種子；一般作物 1–2 級、稀有作物 2–3 級。種子庫上限 25 顆。
   - **雜交**：同品種一定可以配對（改良基因，2 小時）；不同品種只有 12 組可以雜交出雜交作物（黃金穀物、彩虹蘿蔔、紫莓、蜜糖瓜、燈籠瓜、星夜花、紅寶玉米、櫻花麥、夕陽瓜、翡翠葡萄、曙光瓜、赤月花；成功率 40–70%、1–3 小時）；雜交作物的種子價格與售價 = 雙親的總和 × 1.5（Migration 依資料庫目前的雙親價格計算）。每個基因 50% 繼承母本或父本，再 15% 升級、10% 退化；世代 = 較大的世代 + 1。選用材料：樹脂（成功率 +15%）、藥草（時間 -30%）、水晶（指定基因升級機率 +20%）。失敗時得到母本品種的種子並退回材料。
   - **突變研究**：水晶 ×2（必要）＋古代核心（選用，成功率加倍），2 小時；成功率 30% + 突變基因每級 5%（上限 90%）。新增三種實驗室限定突變：夜光（售價 200%）、豐收（收成 +50%，至少 +1）、水晶（收成時額外 1–2 個水晶）；一般種植不會抽到。突變寫在種子上，會隨雜交（50%）與傳承保留。
-  - **種植**：特殊種子種到空地後，生長基因每級 -5% 生長時間（澆水時套用）、產量基因每 2 級 +1 收成、品質基因每級 +1% 品質加成、突變基因每級 +0.5% 突變機率；種子的突變直接成為作物的突變。收成時 30% 取回 1 顆同基因的種子（傳承）。
+  - **種植**：特殊種子種到空地後，生長基因每級 -5% 生長時間（澆水時套用）、產量基因每 2 級 +1 收成、品質基因每級 +1% 品質加成、突變基因每級 +0.5% 突變機率；種子的突變直接成為作物的突變。收成時 30% 取回 1 顆同基因的種子（傳承）。2026-11-15 起「🌱 農田」頁也有「🧬 勾選特殊種子」多選選單（第 4 列；蚯蚓按鈕移到第 2 列）：列出種子庫裡現在能種的種子（不含培育中、停用或不在季節的，最多 25 顆），勾選的每顆依序種到一格空地（`GameService.PlantLabSeeds`，空地不夠時全部不種）；沒有可種的特殊種子或沒有空地時不顯示。
   - **分享**：可以分享給同伺服器（群組）有農場的玩家，**對方沒有實驗室（或未滿 Lv.5）也能收**，並在實驗室頁的「種子庫」種下；每人每天最多送出 5 顆，每人每天只能收 1 位玩家的分享（台灣日期）。先依 farm_id 由小到大鎖定雙方農場再檢查上限，並行時也不會超過。
   - **研究等級**：鑑定 +2、雜交 +10（失敗 +15）、突變研究 +8 經驗；Lv.2（100）2 個研究槽、Lv.3（300）3 個。
   - **圖鑑**：新增「🍄 菇類」（6 種菇，原本列在加工品，已移出）與「🧪 特殊種子」（取得過哪些作物的特殊種子：鑑定、雜交、收成取回、收到分享時登記，`farm_codex.item_code = labseed_<作物>`）兩個分類；實驗室頁有「特殊種子圖鑑」「菇類圖鑑」按鈕。「全部圖鑑」的總數因此變多。
@@ -583,7 +583,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/pages_decor.go` | `737aae071e6868280cf88a8ee60daef34e2ea670909aa371d1c34094d8a059a8` |
 | `internal/bot/pages_fishing.go` | `599f4fd441554c61a963b01851b35ed66c3a73d456b56c73e1d3bbc522894649` |
 | `internal/bot/pages_lab.go` | `73d02e08608de96a6405b1babd592d9a139adc1fed7602a2e1a14df2d66c815e` |
-| `internal/bot/pages_main.go` | `d30f40b60a7e8c9fd055817987076b82d2dd756d9eddda7d593fe58053f733fb` |
+| `internal/bot/pages_main.go` | `0194f0581cd0f07bd3bab4e85120ab864316969d8ebba28a6039b5ba56887690` |
 | `internal/bot/pages_progress.go` | `9fcb999b900410e1cbecbc6338339ceee091eadf044e89544438f53163eba3d3` |
 | `internal/bot/pages_ranch.go` | `d73f2349bfe889062b690597506e8810f85356bda716e1bff51a831e4a90d13f` |
 | `internal/bot/pages_seedmaker.go` | `ec97b02255f6b0f4ee97b24a15e632284d1c8210b95c594591a80399a5b8e1d8` |
@@ -595,7 +595,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/panel_expansions_test.go` | `a1361fd328308ea29e157c4c5dbec2f9b0ae55180e0b81e7d6cb02b97f4295e0` |
 | `internal/bot/panel_fishing_test.go` | `1d1e60f880aad39d6c7d29c1619cd953f7bca4f1708db412a4bb1e37d5c07b66` |
 | `internal/bot/panel_go_features_test.go` | `cfdd4a2ac687a8863e287f65b33fd0207f7b3909fa4ba0f16e08919b9a618d91` |
-| `internal/bot/panel_lab_test.go` | `dc3b44ef351a7aad5bc02b5a0719b0919098f7b9f4371e333e5dd251f0329956` |
+| `internal/bot/panel_lab_test.go` | `3c0906198f3f29bfd56f3fb615c7dddd231904f60e6bdf673fe55699507ec347` |
 | `internal/bot/panel_progress_test.go` | `f2b834cd3f0f1faaa97a44e86b5dd116f90a32010738ad113ba918e4e4ac5bd0` |
 | `internal/bot/panel_ranch_test.go` | `eba6ddacfe5a0eae2696a5491ce0a90d7d5b04a514613655146e4937514c0ccd` |
 | `internal/bot/panel_shop_test.go` | `5a59caec9abe42e6a0c01a8612757d8728bb9146a8b9b487ef9b75efa0b19551` |
@@ -822,8 +822,8 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/ranking_test.go` | `0701621de69f1f78ef54108dc123efa9c5f917f9875463da86f74801f01b8c94` |
 | `internal/services/retry.go` | `ba146e2ae2ceca83016f2af28ee78a44af39f946325459e372dc994c267c5385` |
 | `internal/services/ruins_test.go` | `80565e5b64a40c7d283bb7ecfaad5cafd3c4a1ac34853a216d38d609618d40d6` |
-| `internal/services/seedlab.go` | `f7b435c5d775fd4c4b13872ed1ae14b224690a396cc80387bff5ab48570457bd` |
-| `internal/services/seedlab_test.go` | `8f3b77b9029bc693cd77788c3cccbe34a404a3417665b901be7886d9fdf4ad75` |
+| `internal/services/seedlab.go` | `206884875f9c7ceb1fbf999d5a9328388fba7932089af9c21489a426ce6485a1` |
+| `internal/services/seedlab_test.go` | `fd28a9101d44d7d3946c609a24784458474a830c2305b850f4d2862854b44b6c` |
 | `internal/services/service.go` | `4e8678eb40d2910da4f26a8e4db8008fca97a52e4b467c9def99bfa68ebd511d` |
 | `internal/services/site.go` | `3fc4f379c4782bb4534e14199bece6ab055157dbca3e487de33f6572410e8ec6` |
 | `internal/services/social.go` | `d3e32dcf63cba29196947bbc7a8b640c99baf56c820d719614fb9c5028221709` |
@@ -835,7 +835,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/site/site.go` | `55322015208738b37413e5fa2246a87f1508539fb9f6ef11ea7c0baa674a7576` |
 | `internal/site/site_test.go` | `d32d811fab425aec97b03c61863775249c64c2b8d544bd1683d439b109aea457` |
 | `internal/site/static/favicon.svg` | `bba4123b033483f9ca309a1031c36a6459679843def75245bca83d74575bc292` |
-| `internal/site/static/index.html` | `07f6b66c6506bbedb7bcb6fdf85da7fb9218be4c8fa82642e5e9288d278d734a` |
+| `internal/site/static/index.html` | `ae134eecda996ea080f3daf6b72206e23e27cf749c2b01b216a1fdb1e07701ea` |
 | `internal/site/static/site.css` | `b6542200f867362330ba84dbb417878761f75a886b3af7c18681a2300d2b4ee7` |
 | `internal/site/static/site.js` | `9c1266268185dc7e2f0ff6144da66ac845930795c4bbd1241bbb88be6dc1a56a` |
 | `internal/web/admin.go` | `fff4ac767c289753fdbe578ecfd142d6a345498e7f5dced26b14c3f41ed1c050` |

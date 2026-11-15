@@ -538,3 +538,52 @@ func TestSeedLabCodexAndAchievements(t *testing.T) {
 		t.Fatal(state)
 	}
 }
+
+// TestPlantLabSeedsBatch 農田頁一次種下好幾顆特殊種子（2026-11-15）：每顆依序種到一格空地，空地不夠時全部不種。
+func TestPlantLabSeedsBatch(t *testing.T) {
+	e := setup(t)
+	pid := e.labOwner("阿明", e.group("主群組"))
+	e.s.LabRng = func() float64 { return 0.9 }
+	if list := must[[]LabSeedView](t)(e.s.PlantableLabSeeds(e.ctx, pid)); len(list) != 0 {
+		t.Fatalf("%+v", list)
+	}
+	plots := len(e.status(pid).Plots)
+	var ids []int64
+	for range plots + 1 {
+		ids = append(ids, e.identify(pid, "wheat").ID)
+	}
+	if list := must[[]LabSeedView](t)(e.s.PlantableLabSeeds(e.ctx, pid)); len(list) != plots+1 || list[0].ID != ids[0] {
+		t.Fatalf("%+v", list)
+	}
+	_, err := e.s.PlantLabSeeds(e.ctx, pid, ids)
+	wantMsg(t, err, gameerr.Validation, "空地")
+	if st := e.status(pid); countPlanted(st) != 0 {
+		t.Fatal("空地不夠時一顆都不種")
+	}
+	// 重複的 ID 只算一次；依序種到第 1、2 格
+	r := e.ok(e.s.PlantLabSeeds(e.ctx, pid, []int64{ids[0], ids[0], ids[1]}))
+	if !strings.Contains(r.Message, "種下 2 顆特殊種子") || !strings.Contains(r.Message, "第 1 格") || !strings.Contains(r.Message, "第 2 格") {
+		t.Fatal(r.Message)
+	}
+	if list := must[[]LabSeedView](t)(e.s.PlantableLabSeeds(e.ctx, pid)); len(list) != plots-1 {
+		t.Fatalf("種下的種子不再列出：%+v", list)
+	}
+	_, err = e.s.PlantLabSeeds(e.ctx, pid, []int64{ids[0]})
+	wantMsg(t, err, gameerr.NotFound, "已經種下")
+	// 培育中的種子不列出
+	e.ok(e.s.StartClone(e.ctx, pid, ids[2], 1, false))
+	if list := must[[]LabSeedView](t)(e.s.PlantableLabSeeds(e.ctx, pid)); len(list) != plots-2 {
+		t.Fatalf("%+v", list)
+	}
+	e.invariant()
+}
+
+func countPlanted(st FarmStatus) int {
+	n := 0
+	for _, p := range st.Plots {
+		if p.CropName != nil {
+			n++
+		}
+	}
+	return n
+}

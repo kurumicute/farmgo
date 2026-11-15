@@ -281,3 +281,30 @@ func TestLabSeedNoEmptyPlot(t *testing.T) {
 		t.Fatal("沒有空地時不應出現可用的種下選單")
 	}
 }
+
+// TestPlantLabSeedsFromPlots 農田頁的特殊種子選單（2026-11-15）：沒有特殊種子時不顯示；勾選的每顆種到一格空地。
+func TestPlantLabSeedsFromPlots(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	pid := p.panel.playerID
+	p.goPage("plots")
+	if p.selectMenu("勾選特殊種子") != nil {
+		t.Fatal("沒有特殊種子時不顯示")
+	}
+	e.exec(`INSERT INTO lab_seeds (farm_id, breeder_farm_id, crop_code, gene_growth, gene_yield, gene_quality, gene_mutation)
+		SELECT id, id, c, 3, 3, 3, 1 FROM farms, unnest(ARRAY['wheat', 'corn']) c WHERE player_id = $1`, pid)
+	e.exec(`INSERT INTO lab_seeds (farm_id, breeder_farm_id, crop_code, gene_growth, gene_yield, gene_quality, gene_mutation, status)
+		SELECT id, id, 'wheat', 1, 1, 1, 1, 'busy' FROM farms WHERE player_id = $1`, pid)
+	p.goPage("plots")
+	s := p.selectMenu("勾選特殊種子")
+	if s == nil || len(s.Options) != 2 || s.MaxValues != 2 {
+		t.Fatalf("培育中的種子不列出：%+v", s)
+	}
+	p.chooseMany("勾選特殊種子", []string{s.Options[0].Value, s.Options[1].Value})
+	contains(t, p.Text, "種下 2 顆特殊種子", "已在第 1 格種下特殊小麥種子", "已在第 2 格種下特殊玉米種子")
+	p.goPage("plots")
+	if p.selectMenu("勾選特殊種子") != nil {
+		t.Fatal("種完後沒有可種的特殊種子時不顯示")
+	}
+	e.checkLedger()
+}

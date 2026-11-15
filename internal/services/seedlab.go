@@ -1228,47 +1228,137 @@ func (s *GameService) PlantLabSeed(ctx context.Context, playerID, seedID int64, 
 		if err != nil {
 			return ActionResult{}, err
 		}
-		// 沒有實驗室也能種下別人分享的種子
-		seed, err := storedSeed(ctx, t, farm.ID, seedID)
+		msg, crop, err := s.plantLabSeed(ctx, t, farm, seedID, plotNumber)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		crop, err := crops.ByCode(ctx, t, seed.CropCode, false)
+		return result(msg, farm.Gold, 0, rules.SeedItemCode(crop.Code), 1), nil
+	})
+}
+
+// plantLabSeed 在交易內把一顆特殊種子種到指定的空地（farm 必須已鎖定），回傳訊息與作物。
+func (s *GameService) plantLabSeed(ctx context.Context, t *db.Tx, farm *models.Farm, seedID int64, plotNumber int) (string, *models.CropType, error) {
+	// 沒有實驗室也能種下別人分享的種子
+	seed, err := storedSeed(ctx, t, farm.ID, seedID)
+	if err != nil {
+		return "", nil, err
+	}
+	crop, err := crops.ByCode(ctx, t, seed.CropCode, false)
+	if err != nil {
+		return "", nil, err
+	}
+	if crop == nil {
+		return "", nil, gameerr.NotFoundf("找不到作物 %s。", seed.CropCode)
+	}
+	if !crop.Active {
+		return "", nil, gameerr.Validationf("%s已停用，不能種植。", crop.Name)
+	}
+	if err := s.checkSeason(crop); err != nil {
+		return "", nil, err
+	}
+	plot, err := farms.GetPlot(ctx, t, farm.ID, plotNumber, true)
+	if err != nil {
+		return "", nil, err
+	}
+	if plot == nil {
+		return "", nil, gameerr.NotFoundf("沒有第 %d 格土地。", plotNumber)
+	}
+	if plot.CropTypeID != nil {
+		return "", nil, gameerr.New(gameerr.PlotOccupied, "第 %d 格土地已經種植作物。", plotNumber)
+	}
+	if err := labrepo.SetStatus(ctx, t, seed.ID, models.LabSeedPlanted, s.now()); err != nil {
+		return "", nil, err
+	}
+	label, seconds, err := s.plantWith(ctx, t, farm, plot, crop, "", seed)
+	if err != nil {
+		return "", nil, err
+	}
+	tail := "請記得澆水，澆水後開始生長。"
+	if seconds != nil {
+		tail = fmt.Sprintf("已自動澆水，%s後成熟。", rules.FormatDuration(*seconds))
+	}
+	return fmt.Sprintf("🧪 已在第 %d 格種下特殊%s種子（%s）%s，%s", plotNumber, crop.Name,
+		labrepo.GenesOf(seed).Text(), label, tail), crop, nil
+}
+
+// PlantableLabSeeds 農田頁「種下特殊種子」選單用：種子庫裡現在可以種的種子（不含培育中、停用或不在季節的作物），依編號排列。
+// 沒有實驗室也會列出別人分享的種子。
+func (s *GameService) PlantableLabSeeds(ctx context.Context, playerID int64) ([]LabSeedView, error) {
+	return inTx(ctx, s, func(t *db.Tx) ([]LabSeedView, error) {
+		farm, err := s.farmOf(ctx, t, playerID)
+		if err != nil {
+			return nil, err
+		}
+		seeds, err := labrepo.ListSeeds(ctx, t, farm.ID)
+		if err != nil || len(seeds) == 0 {
+			return nil, err
+		}
+		cropsByCode, err := s.cropMap(ctx, t)
+		if err != nil {
+			return nil, err
+		}
+		now := s.now()
+		var out []LabSeedView
+		for i := range seeds {
+			c := cropsByCode[seeds[i].CropCode]
+			if seeds[i].Status != models.LabSeedStored || c == nil || !c.Active ||
+				!seasons.Available(c.Seasons, c.HourStart, c.HourEnd, now) {
+				continue
+			}
+			out = append(out, seedView(&seeds[i], cropsByCode))
+		}
+		return out, nil
+	})
+}
+
+// PlantLabSeeds 一次種下好幾顆特殊種子，每顆依序種到一格空地（由小到大）；任一顆不能種時全部不種。
+func (s *GameService) PlantLabSeeds(ctx context.Context, playerID int64, seedIDs []int64) (ActionResult, error) {
+	seen := map[int64]bool{}
+	ids := make([]int64, 0, len(seedIDs))
+	for _, id := range seedIDs {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return ActionResult{}, gameerr.Validationf("請選擇要種下的特殊種子。")
+	}
+	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
+		farm, err := s.lockedFarm(ctx, t, playerID)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		if crop == nil {
-			return ActionResult{}, gameerr.NotFoundf("找不到作物 %s。", seed.CropCode)
-		}
-		if !crop.Active {
-			return ActionResult{}, gameerr.Validationf("%s已停用，不能種植。", crop.Name)
-		}
-		if err := s.checkSeason(crop); err != nil {
-			return ActionResult{}, err
-		}
-		plot, err := farms.GetPlot(ctx, t, farm.ID, plotNumber, true)
+		plots, err := farms.ListPlots(ctx, t, farm.ID, false)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		if plot == nil {
-			return ActionResult{}, gameerr.NotFoundf("沒有第 %d 格土地。", plotNumber)
+		var empty []int
+		for _, p := range plots {
+			if p.CropTypeID == nil {
+				empty = append(empty, p.PlotNumber)
+			}
 		}
-		if plot.CropTypeID != nil {
-			return ActionResult{}, gameerr.New(gameerr.PlotOccupied, "第 %d 格土地已經種植作物。", plotNumber)
+		slices.Sort(empty)
+		if len(empty) == 0 {
+			return ActionResult{}, gameerr.Validationf("農田沒有空地，收成後才能種下特殊種子。")
 		}
-		if err := labrepo.SetStatus(ctx, t, seed.ID, models.LabSeedPlanted, s.now()); err != nil {
-			return ActionResult{}, err
+		if len(ids) > len(empty) {
+			return ActionResult{}, gameerr.Validationf("選了 %d 顆種子，但農田只有 %d 格空地。", len(ids), len(empty))
 		}
-		label, seconds, err := s.plantWith(ctx, t, farm, plot, crop, "", seed)
-		if err != nil {
-			return ActionResult{}, err
+		lines := make([]string, 0, len(ids))
+		var last *models.CropType
+		for i, id := range ids {
+			msg, crop, err := s.plantLabSeed(ctx, t, farm, id, empty[i])
+			if err != nil {
+				return ActionResult{}, err
+			}
+			lines, last = append(lines, msg), crop
 		}
-		tail := "請記得澆水，澆水後開始生長。"
-		if seconds != nil {
-			tail = fmt.Sprintf("已自動澆水，%s後成熟。", rules.FormatDuration(*seconds))
+		if len(ids) == 1 {
+			return result(lines[0], farm.Gold, 0, rules.SeedItemCode(last.Code), 1), nil
 		}
-		return result(fmt.Sprintf("🧪 已在第 %d 格種下特殊%s種子（%s）%s，%s", plotNumber, crop.Name,
-			labrepo.GenesOf(seed).Text(), label, tail), farm.Gold, 0, rules.SeedItemCode(crop.Code), 1), nil
+		return result(fmt.Sprintf("🧪 種下 %d 顆特殊種子：\n%s", len(ids), strings.Join(lines, "\n")), farm.Gold, 0, "", 0), nil
 	})
 }
 

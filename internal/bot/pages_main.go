@@ -394,6 +394,7 @@ type plotsData struct {
 	status   services.FarmStatus
 	backpack services.Backpack
 	crops    []services.CropInfo
+	labSeeds []services.LabSeedView // 現在可以種的特殊種子（沒有空地時不查）
 }
 
 func (p *Panel) loadPlots(ctx context.Context) (any, error) {
@@ -405,6 +406,11 @@ func (p *Panel) loadPlots(ctx context.Context) (any, error) {
 	}
 	if d.backpack, err = svc.GetBackpack(ctx, pid); err != nil {
 		return nil, err
+	}
+	if countState(d.status.Plots, rules.PlotEmpty) > 0 {
+		if d.labSeeds, err = svc.PlantableLabSeeds(ctx, pid); err != nil {
+			return nil, err
+		}
 	}
 	d.crops, err = svc.GetMarketPrices(ctx)
 	return d, err
@@ -522,12 +528,36 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 		p.View.Add(multi)
 	}
 	if worms := lineQty(bp.Consumables, balance.ItemEarthworm); worms > 0 {
+		// 第 3 列讓給特殊種子選單（2026-11-15）
 		p.button(fmt.Sprintf("使用蚯蚓（持有 %d）", worms), func(ctx context.Context, it ui.Interaction) error {
 			p.act(ctx, it, p.call("use_earthworm", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().UseEarthworm(ctx, p.playerID)
 			}), actOpts{})
 			return nil
-		}, btn{emoji: "🪱", row: 3})
+		}, btn{emoji: "🪱", row: 1})
+	}
+	if empty := countState(s.Plots, rules.PlotEmpty); empty > 0 && len(d.labSeeds) > 0 {
+		// 種子實驗室的特殊種子（2026-11-15）：勾選要種的種子，每顆依序種到一格空地；沒有可種的特殊種子時不顯示
+		seedsList := d.labSeeds[:min(len(d.labSeeds), ui.MaxOptions)]
+		multi := &ui.Select{Placeholder: fmt.Sprintf("🧬 勾選特殊種子，每顆種到 1 格空地（空地 %d 格，可複選）…", empty),
+			Row: 3, MinValues: 1, MaxValues: min(len(seedsList), empty),
+			OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
+				ids := make([]int64, 0, len(values))
+				for _, v := range values {
+					if id, ok := parseDigits(v); ok {
+						ids = append(ids, int64(id))
+					}
+				}
+				p.act(ctx, it, p.call("plant_lab_seeds", func(ctx context.Context) (services.ActionResult, error) {
+					return p.svc().PlantLabSeeds(ctx, p.playerID, ids)
+				}), actOpts{})
+				return nil
+			}}
+		for _, sv := range seedsList {
+			multi.Options = append(multi.Options, ui.SelectOption{Label: cut(seedOptionLabel(sv), 100), Value: fmt.Sprint(sv.ID),
+				Emoji: cropEmoji(sv.CropCode), Description: cut(seedOptionDesc(sv), 100)})
+		}
+		p.View.Add(multi)
 	}
 	p.nav("地下菇房", "cellar", btn{emoji: "🍄", row: 4, style: ui.Primary})
 	p.nav("種子實驗室", "lab", btn{emoji: "🧪", row: 4, style: ui.Primary})
