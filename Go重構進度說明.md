@@ -569,7 +569,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/farmimage/decor.go` | `aed8863be622aeea768eb3f9b7357d50b33e6c3621e80213bf0f1ea55e6241ac` |
 | `internal/bot/farmimage/decor_test.go` | `11ca61b171f62046a8334fce8a34145091b567923d5931b841396cb2bd21d36c` |
 | `internal/bot/farmimage/farm/` | `56716c16b5c75de556b49632bb345d8deb37e40d83b9b078aa66b1f6a4eca547` |
-| `internal/bot/farmimage/farmimage.go` | `5fcb21b503daeedbf381ad2bf2a3b25c775892adeebf376ed82a9561ff0b645a` |
+| `internal/bot/farmimage/farmimage.go` | `d0a9615cc7a172f159ca3ea095d6c010e79d0c115778bc5f2a1e710706429440` |
 | `internal/bot/farmimage/farmimage_test.go` | `9480b8963ecd1b09955b2dcf8bcf27a858e35ba6adbddac968a3195b40954a20` |
 | `internal/bot/farmimage/memo_test.go` | `268df8771eb003325caa13707a788b02faf7601b3b33fe1a2bc31b45c28a6463` |
 | `internal/bot/farmimage/pillow.go` | `47755d2852d9e0649decab39b8cfdee7d2ed3ab7ac0a1676ca2b118f85fb420a` |
