@@ -151,7 +151,15 @@ func TestCrossPlan(t *testing.T) {
 	}
 }
 
+// noDominant 暫時關閉優勢遺傳（亂數 < 0.5 母本、其餘父本，與 2026-11-15 之前相同）。
+func noDominant(t *testing.T) {
+	old := cfgDefault.DominantBP
+	cfgDefault.DominantBP = 0
+	t.Cleanup(func() { cfgDefault.DominantBP = old })
+}
+
 func TestInheritGenes(t *testing.T) {
+	noDominant(t)
 	mother := Parent{Genes{2, 2, 2, 2}, 1, "none"}
 	father := Parent{Genes{5, 5, 5, 5}, 3, "none"}
 	// 每個基因：先選親（<0.5 母本），再擲升降（0.99 = 維持）；最後擲突變（0.99 = 不突變）
@@ -159,20 +167,68 @@ func TestInheritGenes(t *testing.T) {
 	if c.Genes != (Genes{2, 5, 2, 5}) || c.Generation != 4 || c.Mutation != "none" {
 		t.Fatalf("%+v", c)
 	}
-	// 升級（u < 25%）與上限 5；退化（25%–30%）與下限 1
+	// 升級（u < 25%）與上限 5；退化（25%–27%）與下限 1
 	c = Inherit(Parent{Genes{1, 1, 1, 1}, 1, "none"}, Parent{Genes{5, 5, 5, 5}, 1, "none"}, "",
-		seq(0.9, 0.0, 0.1, 0.27, 0.9, 0.27, 0.1, 0.0, 0.99))
+		seq(0.9, 0.0, 0.1, 0.26, 0.9, 0.26, 0.1, 0.0, 0.99))
 	if c.Genes != (Genes{5, 1, 4, 2}) {
 		t.Fatalf("%+v", c.Genes)
 	}
-	// 催化劑：u = 0.3 一般是維持，指定的基因升級（25% + 20% = 45%）
+	// 催化劑：u = 0.3 一般是維持，指定的基因升級（25% + 30% = 55%）
 	c = Inherit(mother, mother, GeneQuality, seq(0.1, 0.3, 0.1, 0.3, 0.1, 0.3, 0.1, 0.3, 0.99))
 	if c.Genes != (Genes{2, 2, 3, 2}) {
 		t.Fatalf("%+v", c.Genes)
 	}
 }
 
+// TestInheritDominant 優勢遺傳 70%：u < 0.7 取較高的親本；其餘 0.7–0.85 母本、0.85–1 父本。
+func TestInheritDominant(t *testing.T) {
+	mother := Parent{Genes{3, 1, 3, 2}, 2, "none"}
+	father := Parent{Genes{2, 3, 1, 2}, 5, "none"}
+	c := Inherit(mother, father, "", seq(0.69, 0.99, 0.1, 0.99, 0.75, 0.99, 0.9, 0.99, 0.99))
+	if c.Genes != (Genes{3, 3, 3, 2}) || c.Generation != 6 {
+		t.Fatalf("%+v", c)
+	}
+	// 沒中優勢遺傳時才可能拿到較低的那個
+	c = Inherit(mother, father, "", seq(0.8, 0.99, 0.8, 0.99, 0.9, 0.99, 0.99, 0.99, 0.99))
+	if c.Genes != (Genes{3, 1, 1, 2}) {
+		t.Fatalf("%+v", c.Genes)
+	}
+	// 3333 × 2222：每個基因 ≥3 級的機率 0.85×98% + 0.15×25%，四個都 ≥3 約 57%（原本 50% 繼承時約 13%）
+	hi, lo := Parent{Genes{3, 3, 3, 3}, 1, "none"}, Parent{Genes{2, 2, 2, 2}, 1, "none"}
+	n, ok := 0, 0
+	for i := 0; i < 40; i++ {
+		for j := 0; j < 40; j++ {
+			for k := 0; k < 4; k++ { // 每次只看一個基因：來源亂數 i/40、升降亂數 j/40
+				n++
+				vals := []float64{0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99}
+				vals[2*k], vals[2*k+1] = (float64(i)+0.5)/40, (float64(j)+0.5)/40
+				if Inherit(hi, lo, "", seq(vals...)).Genes.Get(GeneOrder[k]) >= 3 {
+					ok++
+				}
+			}
+		}
+	}
+	if p := float64(ok) / float64(n); p < 0.85 || p > 0.89 {
+		t.Fatal("每個基因 ≥3 級的機率", p)
+	}
+}
+
+func TestCloneFee(t *testing.T) {
+	for _, c := range []struct {
+		g    Genes
+		want int
+	}{{Genes{1, 1, 1, 1}, 300}, {Genes{2, 2, 2, 2}, 620}, {Genes{3, 3, 3, 3}, 1580}, {Genes{5, 5, 5, 5}, 5420}} {
+		if got := CloneFee(c.g); got != c.want {
+			t.Errorf("%+v：%d，應該是 %d", c.g, got, c.want)
+		}
+	}
+	if CloneDuration() != time.Hour {
+		t.Fatal(CloneDuration())
+	}
+}
+
 func TestInheritMutation(t *testing.T) {
+	noDominant(t)
 	g := Genes{1, 1, 1, 1}
 	keep := []float64{0.1, 0.99, 0.1, 0.99, 0.1, 0.99, 0.1, 0.99}
 	// 母本有夜光突變：u < 50% 遺傳

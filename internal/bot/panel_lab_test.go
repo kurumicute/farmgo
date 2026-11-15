@@ -138,6 +138,38 @@ func TestLabPageFlow(t *testing.T) {
 	e.checkLedger()
 }
 
+// TestLabClonePanel 種子庫的「育苗」（2026-11-15）：沒有藥草時停用；按下後研究槽顯示育苗，領取後多一顆同基因的種子。
+func TestLabClonePanel(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	pid := p.panel.playerID
+	e.setLevel(pid, 5)
+	e.setGold(pid, 100_000)
+	p.goPage("lab")
+	p.click("建造實驗室")
+	p.click("確認建造")
+	e.admin.LabRng = func() float64 { return 0.9 } // 基因都是 1 級：育苗費 300
+	e.setInventory(pid, "seed_wheat", 1)
+	p.goPage("lab")
+	p.choose("鑑定一般種子", "wheat")
+	p.goPage("lab_seeds")
+	p.choose("選擇種子", p.options("選擇種子")[0])
+	contains(t, p.Text, "🌱 育苗：300 金幣＋🌿藥草 ×1", "不含突變")
+	if !p.button("育苗（300 金）").Disabled {
+		t.Fatal("沒有藥草時育苗按鈕應停用")
+	}
+	e.setInventory(pid, "herb", 1)
+	p.goPage("lab_seeds")
+	p.choose("選擇種子", p.options("選擇種子")[0])
+	p.click("育苗（300 金）")
+	contains(t, p.Text, "開始育苗：小麥種子 第 1 代", "🌱 育苗：小麥 第 1 代")
+	e.clock.Advance(time.Hour.Seconds())
+	p.goPage("lab")
+	p.click("領取（1）")
+	contains(t, p.Text, "育苗完成", "種子庫 2／")
+	e.checkLedger()
+}
+
 func mustInt(t *testing.T, s string) int64 {
 	t.Helper()
 	var n int64

@@ -296,9 +296,16 @@
       setText("g-lab-inherit-mut", String(l.inherit_mutation_pct));
       setText("g-lab-hybrid-mul", String(l.hybrid_price_mul));
       setText("g-lab-inherit-2", String(l.inherit_pct));
+      if (l.dominant_pct != null) {
+        setText("g-lab-dominant", String(l.dominant_pct));
+        setText("g-lab-clone-herb", String(l.clone_herb));
+        setText("g-lab-clone-time", mins(l.clone_minutes));
+        setText("g-lab-clone-fees", l.clone_fees.map((f) => `${f.genes} 是 ${num.format(f.fee)}`).join("、") + " 金幣");
+      }
       if (l.rare_seeds && l.rare_seeds.length) setText("g-lab-rare-seeds", l.rare_seeds.join("、"));
       fillRows("g-lab-levels", [
-        ["研究經驗", `鑑定 +${l.exp.identify}、雜交成功 +${l.exp.cross}、雜交失敗 +${l.exp.cross_fail}、突變研究 +${l.exp.mutate}`],
+        ["研究經驗", `鑑定 +${l.exp.identify}、雜交成功 +${l.exp.cross}、雜交失敗 +${l.exp.cross_fail}、突變研究 +${l.exp.mutate}` +
+          (l.exp.clone != null ? `、育苗 +${l.exp.clone}` : "")],
         ["Lv.1", "1 個研究槽"],
         [`Lv.2（累積 ${num.format(l.level_exp[0])} 經驗）`, "2 個研究槽"],
         [`Lv.3（累積 ${num.format(l.level_exp[1])} 經驗）`, "3 個研究槽"],

@@ -2,7 +2,9 @@
 //
 //   - 農場達到開放等級（預設 Lv.5）後付金幣建造實驗室；一般種子經「鑑定」變成有 4 個基因（1–5 級）的特殊種子。
 //   - 雜交：同品種一定相容（改良基因）；不同品種只有 Hybrids 表中的組合可以雜交，成功時得到雜交作物，失敗時得到母本品種。
-//   - 每個基因各自 50% 繼承母本或父本，再擲升級／維持／退化；催化劑（水晶）提高指定基因的升級機率。
+//   - 每個基因先擲優勢遺傳（直接繼承較高的親本），沒中時 50% 繼承母本或父本，再擲升級／維持／退化；
+//     催化劑（水晶）提高指定基因的升級機率。雜交只消耗父本，母本放回種子庫。
+//   - 育苗：付金幣與藥草，在研究槽複製一顆同基因的種子（不複製突變）。
 //   - 突變研究：消耗水晶，成功時種子帶上突變（含實驗室限定的夜光、豐收、水晶），突變會隨種子傳承。
 //   - 數值都在 config.go（管理網站可調整），這裡一律經 Current() 讀取。
 //
@@ -330,15 +332,21 @@ var CrossMutations = []string{"giant", "golden", "fast", "variant"}
 // LabMutations 突變研究可能得到的突變（依此順序擲骰，各占相同機率）。
 var LabMutations = []string{"giant", "golden", "fast", "variant", "glow", "bountiful", "crystal"}
 
-// Inherit 雜交的基因繼承：每個基因 50% 繼承母本或父本，再擲升級／維持／退化（催化劑提高指定基因的升級機率），
+// Inherit 雜交的基因繼承：每個基因以一次亂數決定來源——u < 優勢遺傳機率時取較高的親本，否則剩下的區間前半母本、後半父本
+// （優勢遺傳 0% 時就是原本的 50%／50%）；再擲升級／維持／退化（催化劑提高指定基因的升級機率），
 // 世代 = 較大的世代 + 1；雙親有突變時有機會遺傳，否則依子代突變基因擲自然突變。
 func Inherit(mother, father Parent, catalyst string, rng func() float64) Child {
 	c := Current()
 	var g Genes
 	for _, code := range GeneOrder {
-		level := mother.Genes.Get(code)
-		if rng() >= 0.5 {
-			level = father.Genes.Get(code)
+		a, b := mother.Genes.Get(code), father.Genes.Get(code)
+		level := a
+		dom := float64(c.DominantBP) / 10_000
+		switch u := rng(); {
+		case u < dom:
+			level = max(a, b)
+		case dom >= 1 || (u-dom)/(1-dom) >= 0.5:
+			level = b
 		}
 		up := c.GeneUpBP
 		if code == catalyst {
@@ -398,6 +406,18 @@ func RollLabMutation(current string, u float64) string {
 	}
 	return pool[min(len(pool)-1, int(u*float64(len(pool))))]
 }
+
+// ---------- 育苗 ----------
+
+// CloneFee 育苗費用 = 基本費用 + 每級費用 ×（基因總和 − 4）²：基因越好越貴（2222 620、3333 1,580、5555 5,420 金幣）。
+func CloneFee(g Genes) int {
+	c := Current()
+	d := max(0, g.Total()-4)
+	return c.CloneFeeBase + c.CloneFeePerLevel*d*d
+}
+
+// CloneDuration 育苗的時間。
+func CloneDuration() time.Duration { return time.Duration(Current().CloneMinutes) * time.Minute }
 
 // MutateDuration 突變研究的時間。
 func MutateDuration() time.Duration { return time.Duration(Current().MutateMinutes) * time.Minute }

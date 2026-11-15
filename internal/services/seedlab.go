@@ -23,6 +23,7 @@ import (
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/seasons"
 	"farmgm/internal/game/seedlab"
+	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/catalog"
 	"farmgm/internal/repositories/codex"
 	"farmgm/internal/repositories/crops"
@@ -58,7 +59,7 @@ func (v LabSeedView) Label() string {
 // LabJobView 研究槽中的工作。
 type LabJobView struct {
 	Slot       int
-	Kind       string // cross／mutate
+	Kind       string // cross／mutate／clone
 	Mother     LabSeedView
 	Father     *LabSeedView // 突變研究為 nil
 	ResultName string       // 雜交成功時的品種
@@ -187,6 +188,9 @@ func materialText(m map[string]any, names map[string]string) string {
 	}
 	if n, ok := toInt(m["mutate_crystal"]); ok && n > 0 {
 		parts = append(parts, fmt.Sprintf("%s ×%d", names[seedlab.MatCrystal], n))
+	}
+	if n, ok := toInt(m["clone_fee"]); ok && n > 0 {
+		parts = append(parts, fmt.Sprintf("%d 金幣", n))
 	}
 	return strings.Join(parts, "、")
 }
@@ -394,6 +398,8 @@ func (s *GameService) jobView(ctx context.Context, t *db.Tx, j models.LabJob, by
 		if !CrossKnown(mother.CropCode, father.CropCode, known) { // 未發現的配方：結果與成功率都不顯示
 			jv.ResultName, jv.SuccessPct, jv.Unknown = "❔ 結果未知", 0, true
 		}
+	} else if j.Kind == "clone" {
+		jv.SuccessPct = 100
 	} else {
 		core, _ := toInt(j.Materials[seedlab.MatAncientCore])
 		jv.SuccessPct = float64(seedlab.MutateChanceBP(mother.GeneMutation, core > 0)) / 100
@@ -743,6 +749,110 @@ func (s *GameService) StartMutation(ctx context.Context, playerID, seedID int64,
 	})
 }
 
+// StartClone 開始育苗（Go 版新增，2026-11-15）：付金幣（依基因總和，seedlab.CloneFee）與藥草，在研究槽複製一顆同基因、
+// 同世代的特殊種子，用來種滿農田。不複製突變（避免水晶突變等無限複製）。種子庫要有空位（含其他還沒領取的育苗）。
+func (s *GameService) StartClone(ctx context.Context, playerID, seedID int64) (ActionResult, error) {
+	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
+		farm, err := s.lockedFarm(ctx, t, playerID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		lab, err := s.lockedLab(ctx, t, farm)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		jobs, err := labrepo.OpenJobs(ctx, t, farm.ID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		slot := freeSlot(lab, jobs)
+		if slot == 0 {
+			return ActionResult{}, gameerr.Validationf("研究槽已滿（%d 個），請先領取或等待完成。", seedlab.Slots(lab.Level))
+		}
+		seed, err := storedSeed(ctx, t, farm.ID, seedID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		pending := 0
+		for _, j := range jobs {
+			if j.Kind == "clone" {
+				pending++
+			}
+		}
+		if err := s.checkLibrary(ctx, t, farm.ID, 1+pending, ""); err != nil {
+			return ActionResult{}, err
+		}
+		genes := labrepo.GenesOf(seed)
+		fee := seedlab.CloneFee(genes)
+		if farm.Gold < fee {
+			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：育苗需要 %d，目前只有 %d。", fee, farm.Gold)
+		}
+		herb := seedlab.Current().CloneHerb
+		if herb > 0 {
+			if err := s.removeMaterials(ctx, t, farm, map[string]int{seedlab.MatHerb: herb}, []string{seedlab.MatHerb}); err != nil {
+				return ActionResult{}, err
+			}
+		}
+		farm.Gold -= fee
+		if err := s.saveFarm(ctx, t, farm, db.C("gold", farm.Gold)); err != nil {
+			return ActionResult{}, err
+		}
+		now := s.now()
+		if err := labrepo.SetStatus(ctx, t, seed.ID, models.LabSeedBusy, now); err != nil {
+			return ActionResult{}, err
+		}
+		stored := map[string]any{"clone_fee": fee}
+		if herb > 0 {
+			stored[seedlab.MatHerb] = herb
+		}
+		readyAt := now.Add(seedlab.CloneDuration())
+		if _, err := labrepo.AddJob(ctx, t, farm.ID, slot, "clone", seed.ID, nil, stored, now, readyAt); err != nil {
+			return ActionResult{}, err
+		}
+		desc := fmt.Sprintf("研究槽 #%d 開始育苗：%s種子 第 %d 代（%s）", slot, s.cropName(ctx, t, seed.CropCode), seed.Generation, genes.Text())
+		if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(fmt.Sprintf("%s，金幣 -%d", desc, fee), 200),
+			rec{GoldDelta: -fee}); err != nil {
+			return ActionResult{}, err
+		}
+		return result(fmt.Sprintf("🌱 %s，花費 %s 金幣，%s後完成。", desc, numfmt.Comma(fee),
+			rules.FormatDuration(int(seedlab.CloneDuration().Seconds()))), farm.Gold, -fee, "", 0), nil
+	})
+}
+
+func (s *GameService) collectClone(ctx context.Context, t *db.Tx, farm *models.Farm, j models.LabJob, now time.Time) (string, int, error) {
+	seed, err := labrepo.GetSeed(ctx, t, j.MotherSeedID, true)
+	if err != nil {
+		return "", 0, err
+	}
+	if seed == nil {
+		return "", 0, fmt.Errorf("研究槽 #%d 的種子不存在", j.Slot)
+	}
+	if err := labrepo.SetStatus(ctx, t, seed.ID, models.LabSeedStored, now); err != nil {
+		return "", 0, err
+	}
+	breeder := farm.ID
+	if seed.BreederFarmID != nil {
+		breeder = *seed.BreederFarmID
+	}
+	genes := labrepo.GenesOf(seed)
+	id, err := labrepo.AddSeed(ctx, t, labrepo.NewSeed{FarmID: farm.ID, BreederFarmID: breeder, CropCode: seed.CropCode,
+		Genes: genes, Generation: seed.Generation, Mutation: "none"}, now)
+	if err != nil {
+		return "", 0, err
+	}
+	before := labrepo.SnapshotOf(seed)
+	if err := labrepo.AddRecord(ctx, t, labrepo.NewRecord{FarmID: farm.ID, Kind: "clone", Mother: &before, ResultSeedID: &id,
+		CropCode: seed.CropCode, Genes: genes, Generation: seed.Generation, Mutation: "none", Success: true}, now); err != nil {
+		return "", 0, err
+	}
+	line := fmt.Sprintf("🌱 #%d 育苗完成：%s種子 第 %d 代（%s）+1，原本的種子也放回種子庫。", j.Slot,
+		s.cropName(ctx, t, seed.CropCode), seed.Generation, genes.Text())
+	if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(line, 200), rec{}); err != nil {
+		return "", 0, err
+	}
+	return line, seedlab.Current().ExpClone, nil
+}
+
 // CollectLab 領取所有已完成的研究槽。
 func (s *GameService) CollectLab(ctx context.Context, playerID int64) (ActionResult, error) {
 	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
@@ -776,9 +886,12 @@ func (s *GameService) CollectLab(ctx context.Context, playerID int64) (ActionRes
 			}
 			var line string
 			var gained int
-			if j.Kind == "cross" {
+			switch j.Kind {
+			case "cross":
 				line, gained, err = s.collectCross(ctx, t, farm, j, known, now)
-			} else {
+			case "clone":
+				line, gained, err = s.collectClone(ctx, t, farm, j, now)
+			default:
 				line, gained, err = s.collectMutation(ctx, t, farm, j, now)
 			}
 			if err != nil {
@@ -829,10 +942,12 @@ func (s *GameService) collectCross(ctx context.Context, t *db.Tx, farm *models.F
 		seedlab.Parent{Genes: labrepo.GenesOf(mother), Generation: mother.Generation, Mutation: mother.Mutation},
 		seedlab.Parent{Genes: labrepo.GenesOf(father), Generation: father.Generation, Mutation: father.Mutation},
 		catalyst, s.LabRng)
-	for _, seed := range []*models.LabSeed{mother, father} {
-		if err := labrepo.SetStatus(ctx, t, seed.ID, models.LabSeedUsed, now); err != nil {
-			return "", 0, err
-		}
+	// 2026-11-15 起只消耗父本，母本放回種子庫（原本兩顆都消耗，種子數量每代減半）
+	if err := labrepo.SetStatus(ctx, t, mother.ID, models.LabSeedStored, now); err != nil {
+		return "", 0, err
+	}
+	if err := labrepo.SetStatus(ctx, t, father.ID, models.LabSeedUsed, now); err != nil {
+		return "", 0, err
 	}
 	id, err := labrepo.AddSeed(ctx, t, labrepo.NewSeed{FarmID: farm.ID, BreederFarmID: farm.ID, CropCode: code,
 		Genes: child.Genes, Generation: child.Generation, Mutation: child.Mutation}, now)
@@ -893,6 +1008,7 @@ func (s *GameService) collectCross(ctx context.Context, t *db.Tx, farm *models.F
 			line += fmt.Sprintf("\n📖 發現新配方：%s → %s！之後在「🧬 雜交培育」的配方表就看得到。", parents, name)
 		}
 	}
+	line += fmt.Sprintf("（♀ 母本 #%d 已放回種子庫）", mother.ID)
 	if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(stripMarks(line), 200), rec{}); err != nil {
 		return "", 0, err
 	}
@@ -1099,6 +1215,8 @@ func (s *GameService) LabRecords(ctx context.Context, playerID int64, limit int)
 				}
 				v.Text = fmt.Sprintf("%s %s × %s → %s 第 %d 代（%s）%s", mark, snapView(m, cropsByCode).Label(),
 					snapView(f, cropsByCode).Label(), name(r.CropCode), r.Generation, genes.Text(), mut)
+			case "clone":
+				v.Text = fmt.Sprintf("🌱 育苗：%s 第 %d 代（%s）", name(r.CropCode), r.Generation, genes.Text())
 			case "mutate":
 				if r.Success {
 					v.Text = fmt.Sprintf("✨ 突變研究：%s 第 %d 代 →%s", name(r.CropCode), r.Generation, mut)

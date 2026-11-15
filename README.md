@@ -29,13 +29,13 @@
 - 所有種子改放素材背包（不佔倉庫），素材背包預設上限 1,000。**與 Python 版不同**。
 - 管理網站「新功能設定」可以調整探險與地下菇房（存在 `feature_settings`，不需要 Migration）。
 - 偷菜名單不列出沒有成長中或成熟作物的玩家。
-- 種子實驗室（Migration 0039）：特殊種子的基因、雜交作物、夜光／豐收／水晶突變、分享種子。
+- 種子實驗室（Migration 0039）：特殊種子的基因、雜交作物、夜光／豐收／水晶突變、分享種子；育苗（Migration 0040）。
 - 音樂改寫成 Go（`internal/music`，Lavalink v4、16 個斜線指令）。
 - 細節見進度說明的「Go 版新增的功能」。
 
 ## 原則
 
-- **資料庫 schema**：與 Python 版共用同一個 PostgreSQL，Migration 仍由 Python 專案的 Alembic 管理（目前 head 0039；0039 是種子實驗室，只有 Go 版使用）。Go 版只檢查 `alembic_version`，不自己建表。
+- **資料庫 schema**：與 Python 版共用同一個 PostgreSQL，Migration 仍由 Python 專案的 Alembic 管理（目前 head 0040；0039、0040 是種子實驗室，只有 Go 版使用）。Go 版只檢查 `alembic_version`，不自己建表。
 - **逐行對照 Python**：錯誤訊息、常數、計算結果與 Python 相同（Python `round()`、`//`、`%` 用 `internal/numfmt`；字串長度以字元計算；dict 順序有意義時另外保留順序）。
 - **安全**：SQL 一律參數化；機密不寫入程式或日誌；網站只接受設定的 Host、管理 API 需要 CSRF 標頭與登入；管理員密碼雜湊與 Python 版互通。
 - **設定**：系統環境變數優先於 `.env`，空值視為未設定，未知設定會被忽略。機密欄位不會出現在 `Settings.String()`。
@@ -91,7 +91,7 @@ docker compose -f docker-compose.yml -f ../fmgonew/deploy/docker-compose.go-web.
 ```
 
 - **之後執行任何 `docker compose` 都要帶這四個 `-f`**，否則會被換回 Python 版。
-- 資料庫 Migration 仍由 Python 專案的 Alembic 管理（目前 0039）。
+- 資料庫 Migration 仍由 Python 專案的 Alembic 管理（目前 0040）。
 - 只要有玩家用過 Go 版新增的內容（新果醬、地下菇房的菇與料理、木屑、種子實驗室），就**不能再切回 Python 版 Bot**。
 - 詳細步驟、備份位置與改回 Python 的方法，見進度說明的「正式環境切換（2026-11-12）」。
 

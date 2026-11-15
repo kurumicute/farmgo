@@ -4298,6 +4298,7 @@ if (typeof document !== "undefined") {
       ["herb_time_pct", "藥草縮短時間（%）", 0, 90]]],
     ["🧬 雜交與基因", [["resin_success_bp", "樹脂提高成功率（%）", 0, 10000, true], ["catalyst_up_bp", "水晶催化提高升級機率（%）", 0, 10000, true],
       ["gene_up_bp", "基因升級機率（%）", 0, 10000, true], ["gene_down_bp", "基因退化機率（%）", 0, 10000, true],
+      ["dominant_bp", "優勢遺傳：直接繼承較高親本的機率（%）", 0, 10000, true],
       ["inherit_mutation_bp", "雙親有突變時遺傳機率（%）", 0, 10000, true],
       ["cross_mutation_per_level_bp", "每級突變基因的自然突變（%）", 0, 2000, true]]],
     ["☢️ 突變研究", [["mutate_crystal", "需要的水晶（個）", 0, 100], ["mutate_base_bp", "基礎成功率（%）", 0, 10000, true],
@@ -4305,9 +4306,12 @@ if (typeof document !== "undefined") {
     ["🌱 基因效果（每高 1 級）", [["growth_pct_per_level", "生長時間減少（%）", 0, 20], ["yield_pct_per_level", "產量：收成數量增加（%，無條件進位）", 0, 50],
       ["quality_bp_per_level", "品質加成（%）", 0, 1000, true], ["mutation_bp_per_level", "突變加成（%）", 0, 1000, true],
       ["inherit_bp", "收成時取回種子（%）", 0, 10000, true]]],
+    ["🌱 育苗（複製同基因的種子，不含突變）", [["clone_fee_base", "基本費用（金幣）", 0, 10000000],
+      ["clone_fee_per_level", "費用：每 (基因總和 − 4)² 的金幣", 0, 1000000], ["clone_herb", "需要的藥草（個）", 0, 100],
+      ["clone_minutes", "育苗時間（分鐘）", 1, 1440]]],
     ["🎁 分享", [["share_send_per_day", "每人每天最多送出（顆）", 0, 100], ["share_receive_senders", "每人每天最多收幾位玩家", 1, 100]]],
     ["📈 研究經驗", [["exp_identify", "鑑定", 0, 10000], ["exp_cross", "雜交成功", 0, 10000], ["exp_cross_fail", "雜交失敗", 0, 10000],
-      ["exp_mutate", "突變研究", 0, 10000], ["level2_exp", "Lv.2 需要（2 個研究槽）", 1, 1000000], ["level3_exp", "Lv.3 需要（3 個研究槽）", 1, 1000000]]],
+      ["exp_mutate", "突變研究", 0, 10000], ["exp_clone", "育苗", 0, 10000], ["level2_exp", "Lv.2 需要（2 個研究槽）", 1, 1000000], ["level3_exp", "Lv.3 需要（3 個研究槽）", 1, 1000000]]],
   ];
   const bpInput = (bp, maxBp) => {
     const input = numInput(null, bp / 100, 0, maxBp / 100);

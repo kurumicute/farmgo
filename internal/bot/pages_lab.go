@@ -101,7 +101,8 @@ func bpPct(bp int) string { return strconv.FormatFloat(float64(bp)/100, 'f', -1,
 func labSeedSources() []string {
 	return []string{
 		"🔬 **鑑定**：背包的一般種子 → 特殊種子（商店不賣的稀有種子，例如琥珀瓜、月光花，基因比較高）",
-		"🧬 **雜交／改良**：兩顆特殊種子培育出一顆新的；不同品種配對成功會得到雜交作物",
+		"🧬 **雜交／改良**：兩顆特殊種子培育出一顆新的（只消耗父本，母本放回種子庫）；不同品種配對成功會得到雜交作物",
+		"🌱 **育苗**：付金幣與藥草複製一顆同基因的種子（不含突變），用來種滿農田",
 		fmt.Sprintf("🌾 **收成取回**：種下特殊種子，收成時有 %s%% 機率取回 1 顆同基因的種子", bpPct(seedlab.Current().InheritBP)),
 		fmt.Sprintf("🎁 **朋友分享**：同伺服器的玩家每天最多送 %d 顆，沒有實驗室也能收", seedlab.Current().ShareSendPerDay),
 		"🍈 稀有的一般種子（琥珀瓜、月光花）來自⛰️ 山洞探險、🎁 每週特賣與🧬 稀有作物培育器，拿到後可以鑑定；雜交作物的種子只能靠雜交、收成取回或朋友分享。",
@@ -226,6 +227,8 @@ func (p *Panel) buildLab(_ context.Context, data any) (*ui.Embed, error) {
 			what = fmt.Sprintf("🧬 %s × %s → %s", j.Mother.CropName, j.Father.CropName, j.ResultName)
 		case j.Kind == "cross" && j.Father != nil:
 			what = fmt.Sprintf("🧬 %s × %s → %s（成功率 %s%%）", j.Mother.CropName, j.Father.CropName, j.ResultName, fmtPct(j.SuccessPct))
+		case j.Kind == "clone":
+			what = fmt.Sprintf("🌱 育苗：%s 第 %d 代（%s）", j.Mother.CropName, j.Mother.Generation, j.Mother.Genes.Stars())
 		default:
 			what = fmt.Sprintf("☢️ 突變研究：%s（成功率 %s%%）", j.Mother.CropName, fmtPct(j.SuccessPct))
 		}
@@ -356,6 +359,8 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 			detail = append(detail, "⚠️ 農田目前沒有空地：收成後空出來的土地就能種下這顆種子。")
 		}
 		if v.Built {
+			detail = append(detail, fmt.Sprintf("🌱 育苗：%s 金幣＋🌿藥草 ×%d，約 %s，複製一顆同基因、同世代的種子（不含突變）。",
+				money(seedlab.CloneFee(sel.Genes)), cfg.CloneHerb, services.LongDuration(int(seedlab.CloneDuration().Seconds()))))
 			detail = append(detail, fmt.Sprintf("☢️ 突變研究成功率 %s%%（使用古代核心 %s%%），需要💎水晶 ×%d，約 %s。",
 				bpPct(seedlab.MutateChanceBP(sel.Genes.Mutation, false)), bpPct(seedlab.MutateChanceBP(sel.Genes.Mutation, true)),
 				cfg.MutateCrystal, services.LongDuration(int(seedlab.MutateDuration().Seconds()))))
@@ -452,6 +457,15 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 			}), actOpts{page: "lab", noProgress: true})
 			return nil
 		}, btn{emoji: "🌳", row: 3, disabled: !free || !crystals || v.Materials[seedlab.MatAncientCore] == 0})
+		fee := seedlab.CloneFee(sel.Genes)
+		canClone := free && v.Gold >= fee && v.Materials[seedlab.MatHerb] >= cfg.CloneHerb && len(v.Seeds) < v.Capacity
+		p.button(fmt.Sprintf("育苗（%s 金）", money(fee)), func(ctx context.Context, it ui.Interaction) error {
+			p.lab.seed = 0
+			p.act(ctx, it, p.call("start_clone", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().StartClone(ctx, p.playerID, seedID)
+			}), actOpts{page: "lab", noProgress: true})
+			return nil
+		}, btn{emoji: "🌱", style: ui.Success, row: 3, disabled: !canClone})
 	}
 	p.pageButtons("", &p.lab.seedPage, pages, 3, "lab_seeds")
 	p.labNav(4)
@@ -501,13 +515,14 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 		case mother.CropCode == father.CropCode:
 			preview = append(preview, fmt.Sprintf("➡️ 改良基因：**%s**　成功率 100%%　約 %s", name(code),
 				services.LongDuration(int(plan.Duration().Seconds()))))
+			preview = append(preview, "♀ 完成後母本放回種子庫，只消耗父本。")
 		case services.CrossKnown(mother.CropCode, father.CropCode, v.KnownHybrids):
 			preview = append(preview, fmt.Sprintf("➡️ 雜交：**%s**　成功率 %s%%　約 %s", name(code), fmtPct(float64(bp)/100),
 				services.LongDuration(int(plan.Duration().Seconds()))),
-				fmt.Sprintf("失敗時得到%s種子（基因照樣繼承），培育材料退回。", mother.CropName))
+				fmt.Sprintf("失敗時得到%s種子（基因照樣繼承），培育材料退回。完成後母本放回種子庫，只消耗父本。", mother.CropName))
 		default:
 			preview = append(preview, "➡️ 試驗雜交：**❔ 結果未知**（成功率、時間培育後才知道）",
-				fmt.Sprintf("如果這兩種不能雜交或雜交失敗，會得到%s種子（基因照樣繼承），培育材料退回。", mother.CropName))
+				fmt.Sprintf("如果這兩種不能雜交或雜交失敗，會得到%s種子（基因照樣繼承），培育材料退回。完成後母本放回種子庫，只消耗父本。", mother.CropName))
 		}
 	} else {
 		preview = append(preview, "先選母本，再選父本。不同品種的組合要自己試驗，成功雜交出新作物就會記進配方表。")
@@ -545,8 +560,9 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 		"🧰 "+labMaterialLine(v, seedlab.MatResin, seedlab.MatHerb, seedlab.MatCrystal),
 		Section{Title: tableTitle, Lines: table},
 	), 4000)
-	e.Footer = fmt.Sprintf("每個基因 50%% 繼承母本或父本，再有 %s%% 升級、%s%% 退化；世代 = 較大的世代 + 1。研究槽空 %d 個。",
-		bpPct(seedlab.Current().GeneUpBP), bpPct(seedlab.Current().GeneDownBP), v.FreeSlots)
+	e.Footer = fmt.Sprintf("每個基因 %s%% 直接繼承較高的親本（優勢遺傳），其餘母本、父本各半；再有 %s%% 升級、%s%% 退化；"+
+		"世代 = 較大的世代 + 1。只消耗父本，母本放回種子庫。研究槽空 %d 個。",
+		bpPct(seedlab.Current().DominantBP), bpPct(seedlab.Current().GeneUpBP), bpPct(seedlab.Current().GeneDownBP), v.FreeSlots)
 
 	var mothers []option
 	for _, s := range v.Seeds {

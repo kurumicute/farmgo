@@ -44,6 +44,11 @@ type Config struct {
 	MutatePerLevelBP      int
 	MutateMaxBP           int
 	InheritBP             int // 收成特殊種子時取回同基因種子的機率
+	DominantBP            int // 優勢遺傳：每個基因直接繼承雙親中較高等級的機率（其餘機率才是母本、父本各半）
+	CloneFeeBase          int // 育苗的基本費用（金幣）
+	CloneFeePerLevel      int // 育苗費用：每多 (基因總和 − 4)² 的金幣
+	CloneHerb             int // 育苗需要的藥草
+	CloneMinutes          int // 育苗時間
 	ShareSendPerDay       int
 	ShareReceiveSenders   int
 	GrowthPctPerLevel     int
@@ -54,6 +59,7 @@ type Config struct {
 	ExpCross              int
 	ExpCrossFail          int
 	ExpMutate             int
+	ExpClone              int
 	LevelExp              [MaxLevel + 1]int // 升到該等級需要的累積經驗（只用 index 2..MaxLevel）
 	Hybrids               map[string]HybridSetting
 }
@@ -84,17 +90,26 @@ var defaultHybrids = map[string]HybridSetting{
 //   - 基因升級 15% → 25%、退化 10% → 5%；同品種改良 60 → 30 分鐘：改良到高等級的時間大約減半。
 //   - 結果（依正式環境作物價格試算，含鑑定費與取回機率）：剛鑑定的種子每小時收益約為一般種子的 1.2–1.6 倍
 //     （原本 0.2–0.8 倍，小麥甚至虧錢）；全部 5 級約 2.5–3.9 倍，是長期培育的目標。
+//
+// 2026-11-15 培育減負（玩家回饋：雜交 2 顆換 1 顆，要「金字塔」堆疊、種子庫不夠放；弱親本 50% 拖累；種滿農田要大量種子）：
+//   - 雜交只消耗父本，母本放回種子庫（services.collectCross）：種子數量不再每代減半。
+//   - 優勢遺傳 70%：每個基因 70% 直接繼承較高的那個親本，其餘 30% 才是母本、父本各半。
+//     3333 × 2222 得到全部 ≥3 級的機率約 13% → 約 57%（含新的升降機率）。
+//   - 育苗（新功能）：付金幣與藥草，在研究槽複製一顆同基因的種子（不複製突變），用來種滿農田；
+//     費用 300 + 20 ×（基因總和 − 4）²：2222 620、3333 1,580、4444 3,180、5555 5,420 金幣。
+//   - 收成取回種子 60% → 85%、基因退化 5% → 2%、水晶催化 +20% → +30%。
 func DefaultConfig() *Config {
 	c := &Config{
 		UnlockLevel: 5, BuildGold: 5000, LibraryCapacity: 25,
 		IdentifyFeeMultiplier: 1, IdentifyFeeMin: 10,
 		SameSpeciesMinutes: 30, MutateMinutes: 120,
-		ResinSuccessBP: 1500, HerbTimePct: 30, CatalystUpBP: 2000,
-		GeneUpBP: 2500, GeneDownBP: 500, InheritMutationBP: 5000, CrossMutationPerLvBP: 100,
+		ResinSuccessBP: 1500, HerbTimePct: 30, CatalystUpBP: 3000,
+		GeneUpBP: 2500, GeneDownBP: 200, InheritMutationBP: 5000, CrossMutationPerLvBP: 100,
 		MutateCrystal: 2, MutateBaseBP: 3000, MutatePerLevelBP: 500, MutateMaxBP: 9000,
-		InheritBP: 6000, ShareSendPerDay: 5, ShareReceiveSenders: 1,
+		InheritBP: 8500, ShareSendPerDay: 5, ShareReceiveSenders: 1,
+		DominantBP: 7000, CloneFeeBase: 300, CloneFeePerLevel: 20, CloneHerb: 1, CloneMinutes: 60,
 		GrowthPctPerLevel: 6, YieldPctPerLevel: 15, QualityBPPerLevel: 500, MutationBPPerLevel: 150,
-		ExpIdentify: 2, ExpCross: 10, ExpCrossFail: 15, ExpMutate: 8,
+		ExpIdentify: 2, ExpCross: 10, ExpCrossFail: 15, ExpMutate: 8, ExpClone: 3,
 		LevelExp: [MaxLevel + 1]int{0, 0, 100, 300},
 		Hybrids:  map[string]HybridSetting{},
 	}
@@ -155,6 +170,11 @@ var intFields = []intField{
 	{"mutate_per_level_bp", "突變基因每級增加的成功率", 0, 10_000, func(c *Config) *int { return &c.MutatePerLevelBP }},
 	{"mutate_max_bp", "突變研究成功率上限", 0, 10_000, func(c *Config) *int { return &c.MutateMaxBP }},
 	{"inherit_bp", "收成時取回種子的機率", 0, 10_000, func(c *Config) *int { return &c.InheritBP }},
+	{"dominant_bp", "優勢遺傳（繼承較高親本）的機率", 0, 10_000, func(c *Config) *int { return &c.DominantBP }},
+	{"clone_fee_base", "育苗基本費用", 0, 10_000_000, func(c *Config) *int { return &c.CloneFeeBase }},
+	{"clone_fee_per_level", "育苗費用（每 (基因總和−4)²）", 0, 1_000_000, func(c *Config) *int { return &c.CloneFeePerLevel }},
+	{"clone_herb", "育苗需要的藥草", 0, 100, func(c *Config) *int { return &c.CloneHerb }},
+	{"clone_minutes", "育苗時間（分鐘）", 1, 1440, func(c *Config) *int { return &c.CloneMinutes }},
 	{"share_send_per_day", "每天最多送出的種子", 0, 100, func(c *Config) *int { return &c.ShareSendPerDay }},
 	{"share_receive_senders", "每天最多收幾位玩家的分享", 1, 100, func(c *Config) *int { return &c.ShareReceiveSenders }},
 	{"growth_pct_per_level", "生長基因每級縮短的時間（%）", 0, 20, func(c *Config) *int { return &c.GrowthPctPerLevel }},
@@ -165,6 +185,7 @@ var intFields = []intField{
 	{"exp_cross", "雜交成功的研究經驗", 0, 10_000, func(c *Config) *int { return &c.ExpCross }},
 	{"exp_cross_fail", "雜交失敗的研究經驗", 0, 10_000, func(c *Config) *int { return &c.ExpCrossFail }},
 	{"exp_mutate", "突變研究的研究經驗", 0, 10_000, func(c *Config) *int { return &c.ExpMutate }},
+	{"exp_clone", "育苗的研究經驗", 0, 10_000, func(c *Config) *int { return &c.ExpClone }},
 	{"level2_exp", "研究 Lv.2 需要的經驗", 1, 1_000_000, func(c *Config) *int { return &c.LevelExp[2] }},
 	{"level3_exp", "研究 Lv.3 需要的經驗", 1, 1_000_000, func(c *Config) *int { return &c.LevelExp[3] }},
 }
