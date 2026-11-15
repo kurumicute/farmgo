@@ -168,11 +168,11 @@ func (p *Panel) buildFishing(_ context.Context, data any) (*ui.Embed, error) {
 	default:
 		status = "準備釣魚"
 	}
-	e := &ui.Embed{Title: "🎣 釣魚中心", Color: Sea, Description: fmt.Sprintf(
-		"%s（部分魚只在特定季節或時段出現，見魚類圖鑑）\n%s\n🎋 魚竿：%s\n🪢 魚線：%s\n🪱 魚餌：%s\n🧺 魚簍：**%d / %d**\n%s\n"+
+	e := &ui.Embed{Title: "🎣 釣魚中心", Color: Sea, Description: autoFishNote(o.AutoFish) + fmt.Sprintf(
+		"%s（部分魚只在特定季節或時段出現，見魚類圖鑑）\n%s\n🎋 魚竿：%s\n🪢 魚線：%s\n🪱 魚餌：%s\n🧺 魚簍：**%d / %d**%s\n%s\n"+
 			"🌊 目前狀態：**%s**\n\n🎲 這次魚餌的出現機率：%s\n✅ 基礎成功率 **%d%%**（稀有度只影響拉扯難度）\n"+
 			"📊 你的紀錄：釣魚 %d 次｜成功 %d（%s）｜🟡 傳說 %d",
-		seasons.NowText(time.Now()), Line, gearText(o.Rod), gearText(o.Line), bait, o.Basket, o.BasketCapacity, Line, status,
+		seasons.NowText(time.Now()), Line, gearText(o.Rod), gearText(o.Line), bait, o.Basket, o.BasketCapacity, autoFishLine(o.AutoFish), Line, status,
 		strings.Join(chances, "　"), o.BaseSuccessPct, st.Sessions, st.Landed, rate, st.Legendary),
 		Footer: "魚上鉤後要在時限內按「拉竿」，拉扯時看 💬 提示：魚衝刺就放線或等待，竄向一邊就壓同方向，別一直收線。"}
 	if o.Active {
@@ -471,8 +471,8 @@ func (p *Panel) buildFishBasket(_ context.Context, data any) (*ui.Embed, error) 
 	if len(lines) > 0 {
 		list = strings.Join(lines, "\n")
 	}
-	e := &ui.Embed{Title: "🎒 我的魚簍", Color: Sea, Description: runes(fmt.Sprintf("🧺 **%d / %d** 隻　💰 全部價值 **%s** 金　💳 金幣 **%s**\n%s\n%s",
-		len(fish), d.Capacity, money(d.TotalValue), money(d.Gold), Line, list), 4000)}
+	e := &ui.Embed{Title: "🎒 我的魚簍", Color: Sea, Description: runes(autoFishNote(d.AutoFish)+fmt.Sprintf("🧺 **%d / %d** 隻　💰 全部價值 **%s** 金　💳 金幣 **%s**%s\n%s\n%s",
+		len(fish), d.Capacity, money(d.TotalValue), money(d.Gold), autoFishLine(d.AutoFish), Line, list), 4000)}
 	if pages > 1 {
 		e.Footer = fmt.Sprintf("第 %d / %d 頁　🏆 = 該魚種的個人最重紀錄", p.fishPage+1, pages)
 	} else {
@@ -571,7 +571,56 @@ func (p *Panel) buildFishBasket(_ context.Context, data any) (*ui.Embed, error) 
 	}
 	p.nav("釣魚中心", "fishing", btn{emoji: "🎣", row: 4})
 	p.nav("回總覽", "main", btn{emoji: "🏠", row: 4})
+	// 魚簍升級（2026-11-15）：價格高，按兩次確認
+	if d.NextCapacity > 0 {
+		label, style := fmt.Sprintf("升級魚簍（%d 格，%s 金）", d.NextCapacity, money(d.NextPrice)), ui.Primary
+		if p.confirm == "fish_basket_upgrade" {
+			label, style = "確認升級魚簍", ui.Danger
+		}
+		p.button(label, func(ctx context.Context, it ui.Interaction) error {
+			if p.confirm != "fish_basket_upgrade" {
+				p.confirm = "fish_basket_upgrade"
+				p.refresh(ctx, it, fmt.Sprintf("⚠️ 魚簍升級到 %d 格需要 %s 金幣，再按一次「確認升級魚簍」。", d.NextCapacity, money(d.NextPrice)),
+					nil, "重繪", time.Time{})
+				return nil
+			}
+			p.act(ctx, it, p.call("upgrade_fish_basket", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().UpgradeFishBasket(ctx, p.playerID)
+			}), actOpts{})
+			return nil
+		}, btn{emoji: "🧺", row: 4, style: style, disabled: d.Gold < d.NextPrice})
+	} else {
+		p.button("魚簍已是最大", func(context.Context, ui.Interaction) error { return nil }, btn{emoji: "🧺", row: 4, disabled: true})
+	}
 	return e, nil
+}
+
+// autoFishLine 釣魚中心、魚簍的自動釣魚機狀態（沒有時為 ""，前面自帶換行）。
+func autoFishLine(a services.AutoFishStatus) string {
+	if !a.Owned {
+		return ""
+	}
+	var state string
+	switch {
+	case !a.Enabled:
+		state = "已停用（到背包的工具啟用）"
+	case a.Paused:
+		state = "⏸️ 魚簍滿了，暫停中（賣掉一些魚或升級魚簍就會繼續）"
+	case a.NextAt != nil:
+		state = "運作中，下一條 " + tsv(*a.NextAt)
+		if a.AutoSell {
+			state += "（自動販售機直接賣掉）"
+		}
+	}
+	return "\n🤖 自動釣魚機：" + state
+}
+
+// autoFishNote 這次打開時自動釣魚機補算的結果（沒有時為 ""，後面自帶空行）。
+func autoFishNote(a services.AutoFishStatus) string {
+	if n := a.Note(); n != "" {
+		return n + "\n\n"
+	}
+	return ""
 }
 
 func (p *Panel) loadFishDetail(ctx context.Context) (any, error) {

@@ -30,6 +30,7 @@ import (
 
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
+	"farmgm/internal/game/autofish"
 	"farmgm/internal/game/fishing"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
@@ -38,6 +39,7 @@ import (
 	"farmgm/internal/repositories/groups"
 	"farmgm/internal/repositories/players"
 
+	"farmgm/internal/repositories/farms"
 	fishrepo "farmgm/internal/repositories/fishing"
 )
 
@@ -334,6 +336,8 @@ type FishingOverview struct {
 	BaitQuantity    int
 	Basket          int
 	BasketCapacity  int
+	BasketLevel     int
+	AutoFish        AutoFishStatus // 自動釣魚機（Go 版新增）：這次打開時補算的結果
 	Active          bool
 	Stats           fishrepo.SessionStats
 	SettingsVersion int
@@ -357,6 +361,9 @@ type FishBasket struct {
 	Capacity   int
 	Gold       int
 	TotalValue int
+	// 魚簍升級（Go 版新增）：下一級的容量與價格（已滿級時 NextCapacity 為 0）
+	NextCapacity, NextPrice int
+	AutoFish                AutoFishStatus
 }
 
 // SharedFish 分享的魚（展示用）。
@@ -537,6 +544,11 @@ func (f *FishingService) sessionView(ctx context.Context, t *db.Tx, row *models.
 			return v, err
 		}
 		v.BasketCapacity = settings.BasketCapacity
+		if farm, err := farms.GetByID(ctx, t, row.FarmID, false); err != nil {
+			return v, err
+		} else if farm != nil {
+			v.BasketCapacity = autofish.BasketCapacity(farm.FishBasketLevel, settings.BasketCapacity)
+		}
 	}
 	return v, nil
 }
@@ -574,7 +586,7 @@ func (f *FishingService) settings(ctx context.Context, t *db.Tx) (int, json.RawM
 func (f *FishingService) FishingOverview(ctx context.Context, playerID int64) (FishingOverview, error) {
 	now := f.now()
 	return inTx(ctx, f.GameService, func(t *db.Tx) (FishingOverview, error) {
-		farm, err := f.farmOf(ctx, t, playerID)
+		farm, auto, err := f.autoFishFarm(ctx, t, playerID)
 		if err != nil {
 			return FishingOverview{}, err
 		}
@@ -603,7 +615,8 @@ func (f *FishingService) FishingOverview(ctx context.Context, playerID int64) (F
 			}
 		}
 		ov := FishingOverview{PlayerName: player.DisplayName, Level: farm.Level, Gold: farm.Gold,
-			BasketCapacity: settings.BasketCapacity, Active: active != nil && !expired, SettingsVersion: version,
+			BasketCapacity: autofish.BasketCapacity(farm.FishBasketLevel, settings.BasketCapacity), BasketLevel: farm.FishBasketLevel,
+			AutoFish: auto, Active: active != nil && !expired, SettingsVersion: version,
 			BaseSuccessPct: settings.BaseSuccessPct}
 		view := func(kind string) *GearView {
 			e, ok := equipped[kind]
@@ -840,6 +853,9 @@ func (f *FishingService) StartFishing(ctx context.Context, playerID int64) (Fish
 		if err := f.ensureNotFishing(ctx, t, farm, now); err != nil {
 			return FishingView{}, err
 		}
+		if _, err := f.settleAutoFish(ctx, t, farm); err != nil { // 先補算自動釣魚機，魚簍空間才是最新的
+			return FishingView{}, err
+		}
 		if fishing.GuardEnabled {
 			guard, err := f.guardRow(ctx, t, farm)
 			if err != nil {
@@ -898,7 +914,7 @@ func (f *FishingService) cast(ctx context.Context, t *db.Tx, farm *models.Farm, 
 	if bait.Owned.Quantity <= 0 {
 		return FishingView{}, gameerr.New(gameerr.InsufficientItems, "%s用完了，請到釣具商店補充魚餌。", bait.Gear.Name)
 	}
-	capacity := settings.BasketCapacity
+	capacity := autofish.BasketCapacity(farm.FishBasketLevel, settings.BasketCapacity)
 	n, err := fishrepo.BasketCount(ctx, t, farm.ID)
 	if err != nil {
 		return FishingView{}, err
@@ -1321,7 +1337,7 @@ func (f *FishingService) CleanupFishingSessions(ctx context.Context) (int, error
 
 func (f *FishingService) FishBasket(ctx context.Context, playerID int64) (FishBasket, error) {
 	return inTx(ctx, f.GameService, func(t *db.Tx) (FishBasket, error) {
-		farm, err := f.farmOf(ctx, t, playerID)
+		farm, auto, err := f.autoFishFarm(ctx, t, playerID)
 		if err != nil {
 			return FishBasket{}, err
 		}
@@ -1337,7 +1353,9 @@ func (f *FishingService) FishBasket(ctx context.Context, playerID int64) (FishBa
 		if err != nil {
 			return FishBasket{}, err
 		}
-		out := FishBasket{Fish: []BasketFish{}, Capacity: settings.BasketCapacity, Gold: farm.Gold}
+		out := FishBasket{Fish: []BasketFish{}, Capacity: autofish.BasketCapacity(farm.FishBasketLevel, settings.BasketCapacity),
+			Gold: farm.Gold, AutoFish: auto}
+		out.NextCapacity, out.NextPrice, _ = autofish.NextBasket(farm.FishBasketLevel)
 		for _, r := range rows {
 			w, ok := best[r.Fish.FishCode]
 			out.Fish = append(out.Fish, BasketFish{NewFishView(r.Fish, r.Type), ok && w == r.Fish.WeightG})

@@ -571,6 +571,15 @@
     setText("g-fish-react", `${f.reaction_seconds} 秒`);
     setText("g-fish-timeout", `${f.action_timeout_seconds} 秒`);
     setText("g-fish-basket", `最多 ${num.format(f.basket_capacity)} 隻`);
+    const a = f.auto_fish;
+    if (a) {
+      setText("g-fish-basket-upgrades", a.basket_upgrades.length
+        ? a.basket_upgrades.map((u) => `${u.capacity} 格 ${num.format(u.price)}`).join("、") + " 金幣" : "目前沒有開放");
+      setText("g-autofish-price", num.format(a.machine_price));
+      setText("g-autofish-interval", String(a.interval_minutes));
+      setText("g-autofish-sell", a.auto_sell
+        ? `同時啟用自動販售機時，釣到的魚直接賣掉（最多補算 ${a.auto_sell_max_hours} 小時）。` : "自動販售機不會賣自動釣到的魚。");
+    }
     setText("g-fish-pulls", f.rarities.filter((r) => r.pulls).map((r) => `${r.name} ${r.pulls[0]}–${r.pulls[1]} 下`).join("、"));
     if (f.escape_distance) setText("g-fish-escape", String(f.escape_distance));
     setText("g-fish-success", `基礎釣魚成功率 ${f.base_success_pct}%，所有稀有度都一樣。稀有度只決定出現哪種魚與拉扯有多難，`

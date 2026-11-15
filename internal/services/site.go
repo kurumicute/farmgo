@@ -20,6 +20,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/achievements"
+	"farmgm/internal/game/autofish"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/checkin"
 	eventrules "farmgm/internal/game/events"
@@ -312,7 +313,7 @@ var guideKeys = []guideKey{
 	{"items", nil, func(e *guideEnv) (any, error) {
 		items := []map[string]any{}
 		for _, code := range balance.ItemOrder {
-			it := balance.Items[code]
+			it := balance.ItemOf(code)
 			items = append(items, map[string]any{"name": it.Name, "price": it.Price, "kind": it.Kind, "description": it.Desc})
 		}
 		return items, nil
@@ -807,6 +808,7 @@ func buildFishing(ctx context.Context, t *db.Tx) (map[string]any, error) {
 		"action_timeout_seconds": s.ActionTimeoutSeconds, "basket_capacity": s.BasketCapacity,
 		"escape_distance": fishing.EscapeDistance, // 距離達到這個值魚就逃走
 		"rarities":        rarities, "gear": gear, "fish": fish,
+		"auto_fish": autoFishGuide(), // 2026-11-15 起：自動釣魚機與魚簍升級
 	}, nil
 }
 
@@ -1091,6 +1093,17 @@ func buildSeedLab(rareSeeds []string) map[string]any {
 		"clone_max_batches": c.CloneMaxBatches, "clone_two_pct": bpPct(two), "clone_three_pct": bpPct(three),
 		"clone_herb_two_pct": bpPct(htwo), "clone_herb_three_pct": bpPct(hthree),
 	}
+}
+
+// autoFishGuide 自動釣魚機與魚簍升級（Go 版新增，數值在管理網站「自動釣魚與魚簍」調整）。
+func autoFishGuide() map[string]any {
+	c := autofish.Current()
+	upgrades := []map[string]any{}
+	for i, capacity := range c.BasketCapacities {
+		upgrades = append(upgrades, map[string]any{"capacity": capacity, "price": c.BasketPrices[i]})
+	}
+	return map[string]any{"machine_price": c.MachinePrice, "interval_minutes": c.IntervalMinutes, "auto_sell": c.AutoSellFish,
+		"auto_sell_max_hours": c.AutoSellMaxHours, "basket_upgrades": upgrades}
 }
 
 // buildMushroom 地下菇房（Go 版新增）：開放等級、生長時間、養分對應的作物與菇、木屑的稀有機率、菇與料理的售價。

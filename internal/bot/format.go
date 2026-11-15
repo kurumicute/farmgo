@@ -35,7 +35,7 @@ var (
 	AnimalEmoji   = map[string]string{"chicken": "🐔", "cow": "🐄", "sheep": "🐑"}
 	MaterialEmoji = map[string]string{"wood": "🪵", "stone": "🪨", "copper_ore": "🟠", "iron_ore": "⛓️", "resin": "🍯",
 		"herb": "🌿", "gear": "⚙️", "crystal": "💎", "ancient_core": "🌳", "machine_core": "🔩", "fake_coin": "🪙"}
-	ItemEmoji = map[string]string{"fertilizer": "🧪", "earthworm": "🪱", "auto_waterer": "🚿", "patrol_ticket": "🔦",
+	ItemEmoji = map[string]string{"auto_fisher": "🤖", "fertilizer": "🧪", "earthworm": "🪱", "auto_waterer": "🚿", "patrol_ticket": "🔦",
 		"auto_planter": "🤖", "auto_seller": "🏧", "thief_glove": "🧤"}
 	PlotEmoji = map[rules.PlotState]string{rules.PlotEmpty: "⬜", rules.PlotWaitingWater: "💧", rules.PlotGrowing: "🌱",
 		rules.PlotReady: "✅", rules.PlotWithered: "🥀"}

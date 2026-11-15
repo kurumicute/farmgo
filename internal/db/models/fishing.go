@@ -138,7 +138,7 @@ func (FishingSession) TableName() string { return TableFishingSession }
 type FarmFish struct {
 	ID        int64      `db:"id"`
 	FarmID    int64      `db:"farm_id"`
-	SessionID int64      `db:"session_id"`
+	SessionID *int64     `db:"session_id"` // 自動釣魚機釣到的魚為 NULL（Migration 0041）
 	FishCode  string     `db:"fish_code"`
 	Rarity    string     `db:"rarity"` // 捕獲當下的稀有度與價值（之後不變）
 	WeightG   int        `db:"weight_g"`
@@ -148,6 +148,8 @@ type FarmFish struct {
 	SoldPrice *int       `db:"sold_price"`
 	// 捐獻給世界 Boss 的時間（Migration 0019）；有值時不在魚簍中，也不能販售或分享
 	DonatedAt *time.Time `db:"donated_at"`
+	// 自動釣魚機釣到的魚（Migration 0041，Go 版新增）：不算進釣魚排行榜
+	Auto bool `db:"auto"`
 }
 
 func (FarmFish) TableName() string { return TableFarmFish }

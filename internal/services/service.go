@@ -70,6 +70,8 @@ type GameService struct {
 	MushroomRng func() float64
 	// 種子實驗室的擲骰（鑑定、雜交、突變研究、收成傳承；Go 版新增）；測試可直接指定
 	LabRng func() float64
+	// 自動釣魚機的魚種與重量（Go 版新增）；測試可直接指定
+	AutoFishRng func() float64
 
 	contextGroupID *int64
 }
@@ -88,6 +90,7 @@ func NewGameService(d *db.DB, opt Options) *GameService {
 		RumorRng:    rand.Float64,
 		MushroomRng: rand.Float64,
 		LabRng:      rand.Float64,
+		AutoFishRng: rand.Float64,
 	}
 	if s.clock == nil {
 		s.clock = clock.System{}

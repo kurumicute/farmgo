@@ -22,7 +22,7 @@ const (
 	ownedCols   = "id, farm_id, gear_code, kind, quantity, equipped, acquired_at"
 	sessionCols = "id, farm_id, status, settings_version, settings, gear, fish_code, rarity, weight_g, price, state, turns, " +
 		"started_at, bite_at, react_deadline, action_deadline, ended_at, context_group_id"
-	fishCols  = "id, farm_id, session_id, fish_code, rarity, weight_g, price, caught_at, sold_at, sold_price, donated_at"
+	fishCols  = "id, farm_id, session_id, fish_code, rarity, weight_g, price, caught_at, sold_at, sold_price, donated_at, auto"
 	guardCols = "farm_id, casts_since_check, check_after, suspicion, challenge, challenge_expires_at, locked_until, " +
 		"consecutive_failures, failed_total, passed_total"
 )
@@ -260,7 +260,7 @@ func scanFishWithType(ctx context.Context, t *db.Tx, where string, args ...any) 
 		var x FishWithType
 		f, ft := &x.Fish, &x.Type
 		if err := rows.Scan(&f.ID, &f.FarmID, &f.SessionID, &f.FishCode, &f.Rarity, &f.WeightG, &f.Price, &f.CaughtAt,
-			&f.SoldAt, &f.SoldPrice, &f.DonatedAt,
+			&f.SoldAt, &f.SoldPrice, &f.DonatedAt, &f.Auto,
 			&ft.ID, &ft.Code, &ft.Name, &ft.Emoji, &ft.Rarity, &ft.MinPrice, &ft.MaxPrice, &ft.MinWeightG, &ft.MaxWeightG,
 			&ft.Difficulty, &ft.Description, &ft.SortOrder, &ft.Active, &ft.RequiredBaits, &ft.Seasons, &ft.HourStart,
 			&ft.HourEnd); err != nil {
@@ -395,7 +395,7 @@ func LeaderboardOf(ctx context.Context, t *db.Tx, groupID *int64, limit int) (Le
 	}
 	rows, err := t.Query(ctx, "SELECT p.display_name, count(f.id), count(f.id) FILTER (WHERE f.rarity = 'legendary') "+
 		"FROM farm_fish f JOIN farms fa ON fa.id = f.farm_id JOIN players p ON p.id = fa.player_id"+scope+
-		" GROUP BY p.id, p.display_name ORDER BY count(f.id) DESC, p.id LIMIT $1", args...)
+		" WHERE NOT f.auto GROUP BY p.id, p.display_name ORDER BY count(f.id) DESC, p.id LIMIT $1", args...)
 	if err != nil {
 		return out, err
 	}
@@ -413,7 +413,7 @@ func LeaderboardOf(ctx context.Context, t *db.Tx, groupID *int64, limit int) (Le
 	}
 	rows, err = t.Query(ctx, "SELECT p.display_name, ft.name, ft.emoji, r.rarity, r.weight_g, r.price FROM ("+
 		"SELECT farm_id, fish_code, weight_g, price, rarity, row_number() OVER (PARTITION BY farm_id "+
-		"ORDER BY price DESC, weight_g DESC, id) AS rn FROM farm_fish) r "+
+		"ORDER BY price DESC, weight_g DESC, id) AS rn FROM farm_fish WHERE NOT auto) r "+
 		"JOIN farms fa ON fa.id = r.farm_id JOIN players p ON p.id = fa.player_id "+
 		"JOIN fish_types ft ON ft.code = r.fish_code"+scope+
 		" WHERE r.rn = 1 ORDER BY r.price DESC, r.weight_g DESC LIMIT $1", args...)

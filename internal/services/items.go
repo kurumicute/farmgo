@@ -79,10 +79,10 @@ func (s *GameService) BuyItem(ctx context.Context, playerID int64, itemCode stri
 	if err != nil {
 		return ActionResult{}, err
 	}
-	it, ok := balance.Items[itemCode]
-	if !ok {
+	if _, ok := balance.Items[itemCode]; !ok {
 		return ActionResult{}, gameerr.NotFoundf("沒有「%s」這種道具。", itemCode)
 	}
+	it := balance.ItemOf(itemCode) // 價格可在管理網站調整的道具（自動釣魚機）讀目前的價格
 	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
 		farm, err := s.lockedFarm(ctx, t, playerID)
 		if err != nil {
@@ -354,6 +354,29 @@ func (s *GameService) SetToolEnabled(ctx context.Context, playerID int64, toolKe
 		if tool == nil {
 			return ActionResult{}, gameerr.NotFoundf("你還沒有%s。", name)
 		}
+		note := ""
+		if code == balance.ToolAutoFisher && enabled != tool.Enabled {
+			if !enabled { // 停用前先補算啟用期間釣到的魚
+				st, err := s.settleAutoFish(ctx, t, farm)
+				if err != nil {
+					return ActionResult{}, err
+				}
+				if n := st.Note(); n != "" {
+					note = "\n" + n
+				}
+			} else if err := setAutoFishLast(ctx, t, tool, s.now()); err != nil { // 啟用：從現在開始計時
+				return ActionResult{}, err
+			}
+		}
+		if code == balance.ToolAutoSeller && enabled != tool.Enabled { // 自動販售機會改變自動釣魚的結算方式：先結算到現在
+			st, err := s.settleAutoFish(ctx, t, farm)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			if n := st.Note(); n != "" {
+				note = "\n" + n
+			}
+		}
 		if _, err := db.UpdateByID(ctx, t, models.TableFarmTool, tool.ID, db.C("enabled", enabled)); err != nil {
 			return ActionResult{}, err
 		}
@@ -361,6 +384,6 @@ func (s *GameService) SetToolEnabled(ctx context.Context, playerID int64, toolKe
 		if enabled {
 			word = "啟用"
 		}
-		return result(fmt.Sprintf("%s已%s。", name, word), farm.Gold, 0, "", 0), nil
+		return result(fmt.Sprintf("%s已%s。%s", name, word, note), farm.Gold, 0, "", 0), nil
 	})
 }

@@ -4329,6 +4329,81 @@ if (typeof document !== "undefined") {
   };
   const fieldText = (f, v) => (f[4] ? `${v / 100}%` : fmtNum(v));
 
+  // ----- 自動釣魚與魚簍（Go 版新增，2026-11-15）：自動釣魚機的價格與間隔、自動販售機賣魚、魚簍各級容量與價格 -----
+  function autofishCard() {
+    const c = featureKey("autofish").current;
+    const maxLevels = features.data.limits.fish_basket_levels || 10;
+    const price = numInput(null, c.machine_price, 1, 1000000000);
+    price.classList.add("wide-num");
+    const interval = numInput(null, c.interval_minutes, 1, 1440);
+    const maxHours = numInput(null, c.auto_sell_max_hours, 1, 720);
+    const sell = el("input");
+    sell.type = "checkbox";
+    sell.checked = c.auto_sell_fish === 1;
+    let tiers = c.basket_capacities.map((cap, i) => ({ capacity: cap, price: c.basket_prices[i] }));
+    let editors = [];
+    const box = el("div");
+    const readTiers = () => editors.map(({ capacity, price: p }, i) => {
+      const cap = Number(capacity.value), pr = Number(p.value);
+      if (!Number.isInteger(cap) || cap < 5 || cap > 500) throw new Error(`魚簍第 ${i + 1} 級的容量必須是 5–500 的整數。`);
+      if (!Number.isInteger(pr) || pr < 1) throw new Error(`魚簍第 ${i + 1} 級的價格必須是 1 以上的整數。`);
+      if (i > 0 && cap <= Number(editors[i - 1].capacity.value)) throw new Error(`魚簍第 ${i + 1} 級的容量要比第 ${i} 級大。`);
+      return { capacity: cap, price: pr };
+    });
+    const loose = () => editors.map(({ capacity, price: p }) => ({ capacity: Number(capacity.value) || 5, price: Number(p.value) || 1 }));
+    const render = () => {
+      editors = tiers.map((t) => ({ capacity: numInput(null, t.capacity, 5, 500), price: numInput(null, t.price, 1, 1000000000) }));
+      editors.forEach((e) => e.price.classList.add("wide-num"));
+      box.replaceChildren(el("div", { className: "table-wrap" }, [el("table", {}, [
+        el("thead", {}, [el("tr", {}, ["等級", "容量（格）", "升到這一級的價格（金幣）", ""].map((t) => el("th", { text: t })))]),
+        el("tbody", {}, editors.length ? editors.map((e, i) => el("tr", {}, [
+          td(`第 ${i + 1} 級`), el("td", {}, [e.capacity]), el("td", {}, [e.price]),
+          actionsTd([smallButton("移除", () => { tiers = loose(); tiers.splice(i, 1); render(); }, "danger")]),
+        ])) : [emptyRow("沒有升級（魚簍固定用釣魚設定的容量）", 4)]),
+      ])]));
+    };
+    render();
+    const add = smallButton("新增一級", () => {
+      tiers = loose();
+      if (tiers.length >= maxLevels) { setNote("fs-note", `魚簍最多 ${maxLevels} 級。`, "bad"); return; }
+      const last = tiers[tiers.length - 1] || { capacity: 20, price: 10000 };
+      tiers.push({ capacity: last.capacity + 20, price: last.price * 2 });
+      render();
+    });
+    const body = el("div", {}, [
+      el("h4", { text: "🤖 自動釣魚機" }),
+      el("div", { className: "controls" }, [
+        el("label", { className: "inline", text: "價格（金幣） " }, [price]),
+        el("label", { className: "inline", text: "每幾分鐘釣 1 條 " }, [interval]),
+      ]),
+      el("div", { className: "controls" }, [
+        el("label", { className: "inline", text: "自動販售機也啟用時，直接賣掉自動釣到的魚 " }, [sell]),
+        el("label", { className: "inline", text: "自動販售最多補算（小時） " }, [maxHours]),
+      ]),
+      el("p", { className: "muted small", text: "沒有自動販售時，魚簍滿了就暫停（不會累積）。自動釣到的魚只會是不需要特定魚餌的魚，稀有度用釣魚設定的基礎機率，不算進釣魚排行榜。" }),
+      el("h4", { text: "🧺 魚簍升級" }),
+      box,
+      el("div", { className: "controls" }, [add]),
+      el("p", { className: "muted small", text: "沒有升級的玩家用釣魚設定的魚簍容量。減少等級時，已超過的玩家以新的最高等級計算。" }),
+    ]);
+    return featureCard("autofish", "自動釣魚機（商店的工具）與魚簍升級（魚簍頁的「升級魚簍」）", body, () => {
+      const list = readTiers();
+      const value = {
+        machine_price: Number(price.value), interval_minutes: Number(interval.value), auto_sell_fish: sell.checked ? 1 : 0,
+        auto_sell_max_hours: Number(maxHours.value),
+        basket_capacities: list.map((t) => t.capacity), basket_prices: list.map((t) => t.price),
+      };
+      const tierText = (caps, prices) => caps.map((cap, i) => `${cap} 格 ${fmtNum(prices[i])}`).join("、") || "（無）";
+      return [value, [
+        diffRow("自動釣魚機價格", fmtNum(c.machine_price), fmtNum(value.machine_price)),
+        diffRow("每幾分鐘釣 1 條", String(c.interval_minutes), String(value.interval_minutes)),
+        diffRow("自動販售機賣魚", c.auto_sell_fish ? "是" : "否", value.auto_sell_fish ? "是" : "否"),
+        diffRow("自動販售最多補算", `${c.auto_sell_max_hours} 小時`, `${value.auto_sell_max_hours} 小時`),
+        diffRow("魚簍升級", tierText(c.basket_capacities, c.basket_prices), tierText(value.basket_capacities, value.basket_prices)),
+      ].filter(Boolean)];
+    });
+  }
+
   function seedlabCard() {
     const k = featureKey("seedlab");
     const c = k.current;
@@ -4382,7 +4457,7 @@ if (typeof document !== "undefined") {
 
   function renderFeatureSettings() {
     $("fs-body").replaceChildren(checkinCard(), petsCard(), specialShopCard(), achievementsCard(), explorationCard(), mushroomCard(),
-      seedlabCard());
+      seedlabCard(), autofishCard());
   }
 
   async function loadFeatureSettings(force = false) {

@@ -97,7 +97,7 @@ func BuildBackpack(ctx context.Context, t *db.Tx, farm *models.Farm, now time.Ti
 	}
 	bp.SeedMaker = owned["seed_maker"] != nil
 	for _, code := range balance.ItemOrder {
-		it := balance.Items[code]
+		it := balance.ItemOf(code)
 		switch it.Kind {
 		case "consumable":
 			if n := quantities[code]; n != 0 {

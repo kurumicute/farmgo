@@ -263,7 +263,7 @@ func TestBackpackContents(t *testing.T) {
 		}
 		tools = append(tools, x.Name)
 	}
-	if strings.Join(tools, ",") != "自動澆水器,自動播種機,自動販售機,傳說扒手手套" {
+	if strings.Join(tools, ",") != "自動澆水器,自動播種機,自動販售機,自動釣魚機,傳說扒手手套" {
 		t.Fatal(tools)
 	}
 

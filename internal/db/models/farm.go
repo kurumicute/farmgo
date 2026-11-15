@@ -113,7 +113,9 @@ type Farm struct {
 	WarehouseCapacity   int        `db:"warehouse_capacity"`
 	Title               *string    `db:"title"` // 目前選用的稱號（必須在 farm_titles 中），NULL 不顯示
 	// 溫室等級（0 = 沒有溫室）：每一級讓之後澆水的作物生長時間減少 specialshop.GreenhousePctPerLevel()%（server_default 0）
-	GreenhouseLevel int       `db:"greenhouse_level"`
+	GreenhouseLevel int `db:"greenhouse_level"`
+	// 魚簍升級等級（Migration 0041，Go 版新增；0 = 沒有升級，容量見 autofish.BasketCapacity）
+	FishBasketLevel int       `db:"fish_basket_level"`
 	CreatedAt       time.Time `db:"created_at"` // server_default now()
 	UpdatedAt       time.Time `db:"updated_at"` // server_default now()；Python onupdate=now()
 }

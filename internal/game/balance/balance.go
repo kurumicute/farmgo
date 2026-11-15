@@ -141,6 +141,7 @@ const (
 	ToolAutoPlanter  = "auto_planter"
 	ToolAutoSeller   = "auto_seller"
 	ToolThiefGlove   = "thief_glove"
+	ToolAutoFisher   = "auto_fisher" // Go 版新增（2026-11-15），規則在 game/autofish
 	EffectEarthworm  = "earthworm"
 	ItemPatrolTicket = "patrol_ticket"
 )
@@ -148,7 +149,7 @@ const (
 // FertilizerPct 說明文字用（Python round((1 - FERTILIZER_TIME_FACTOR) * 100)）。
 var FertilizerPct = numfmt.Round((1 - FertilizerTimeFactor) * 100)
 
-var LuxuryTools = []string{ToolAutoPlanter, ToolAutoSeller, ToolThiefGlove}
+var LuxuryTools = []string{ToolAutoPlanter, ToolAutoSeller, ToolThiefGlove, ToolAutoFisher}
 
 // Item 道具：名稱、價格、種類（consumable／tool）、說明、別名。
 type Item struct {
@@ -160,7 +161,28 @@ type Item struct {
 }
 
 // ItemOrder 道具顯示順序（Python ITEMS 的 dict 順序）。
-var ItemOrder = []string{ItemFertilizer, ItemEarthworm, ToolAutoWaterer, ToolAutoPlanter, ToolAutoSeller, ToolThiefGlove, ItemPatrolTicket}
+var ItemOrder = []string{ItemFertilizer, ItemEarthworm, ToolAutoWaterer, ToolAutoPlanter, ToolAutoSeller, ToolAutoFisher, ToolThiefGlove,
+	ItemPatrolTicket}
+
+// PriceOverride 可在管理網站調整價格的道具（目前是自動釣魚機，由 game/autofish 的 init 設定）；沒有時用 Items 的 Price。
+var PriceOverride func(code string) (int, bool)
+
+// ItemOf 道具資料，價格是目前的價格（ItemPrice）。
+func ItemOf(code string) Item {
+	it := Items[code]
+	it.Price = ItemPrice(code)
+	return it
+}
+
+// ItemPrice 道具目前的價格。
+func ItemPrice(code string) int {
+	if PriceOverride != nil {
+		if p, ok := PriceOverride(code); ok {
+			return p
+		}
+	}
+	return Items[code].Price
+}
 
 var Items = map[string]Item{
 	ItemFertilizer: {"化肥", 30, "consumable",
@@ -174,6 +196,10 @@ var Items = map[string]Item{
 		"奢侈品：啟用時，收成、清除乾枯、擴建或購買種子後，自動從背包隨機挑選種子把空著的農田種滿", []string{"播種機", "自動播種機"}},
 	ToolAutoSeller: {"自動販售機", 150_000, "tool",
 		"奢侈品：啟用時，收成的農作物依當下價目表自動賣出（不佔倉庫）", []string{"販售機", "自動販售機"}},
+	ToolAutoFisher: {"自動釣魚機", 100_000, "tool",
+		"奢侈品：啟用時每隔一段時間（預設 5 分鐘）自動釣 1 條魚放進魚簍，魚簍滿了就暫停；同時啟用自動販售機時直接賣掉" +
+			"（只會釣到不需要特定魚餌的魚，不算進釣魚排行榜）",
+		[]string{"釣魚機", "自動釣魚機"}},
 	ToolThiefGlove: {"傳說扒手手套", 500_000, "tool",
 		"奢侈品：啟用時偷菜不受每日限制，可以偷同群組所有人的所有成熟農田，不限人數與次數" +
 			"（每株作物仍只能偷一次、每次最多 2 個，小麥 1 個；防守設施照常判定）",

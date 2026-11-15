@@ -164,7 +164,7 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	var consumables, tools []string
 	for _, code := range balance.ItemOrder {
-		it := balance.Items[code]
+		it := balance.ItemOf(code)
 		have := held["item:"+code]
 		emoji := lookupOr(ItemEmoji, code, "🎁")
 		if it.Kind == "tool" {
@@ -250,10 +250,10 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 					return p.svc().BuySeeds(ctx, p.playerID, code, q)
 				})}
 		default:
-			item, ok := balance.Items[code]
-			if !ok {
+			if _, ok := balance.Items[code]; !ok {
 				return gameerr.NotFoundf("找不到這個商品。")
 			}
+			item := balance.ItemOf(code)
 			label := lookupOr(ItemEmoji, code, "🎁") + " " + item.Name
 			if item.Kind == "tool" { // 永久工具與奢侈品價格高：需要再按一次確認才購買
 				p.picker = &Picker{Key: key, Label: label, PriceText: money(item.Price) + " 金", Confirm: true, Max: 1,
@@ -278,7 +278,7 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 		options = append(options, option{c.Name + "種子", "seed:" + c.Code, fmt.Sprintf("🌰 種子｜💰 %d 金", c.SeedPrice), cropEmoji(c.Code)})
 	}
 	for _, code := range balance.ItemOrder {
-		if it := balance.Items[code]; it.Kind != "tool" {
+		if it := balance.ItemOf(code); it.Kind != "tool" {
 			options = append(options, option{it.Name, "item:" + code, fmt.Sprintf("🧪 道具｜💰 %d 金", it.Price), ItemEmoji[code]})
 		}
 	}
@@ -287,7 +287,7 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 			fmt.Sprintf("📦 +%d 格｜💰 %s 金", balance.WarehouseExpansionStep, money(expandPrice)), "📦"})
 	}
 	for _, code := range balance.ItemOrder {
-		if it := balance.Items[code]; it.Kind == "tool" && held["item:"+code] == 0 {
+		if it := balance.ItemOf(code); it.Kind == "tool" && held["item:"+code] == 0 {
 			options = append(options, option{it.Name, "item:" + code, fmt.Sprintf("💎 工具｜💰 %s 金", money(it.Price)), ItemEmoji[code]})
 		}
 	}

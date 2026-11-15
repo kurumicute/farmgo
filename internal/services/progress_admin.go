@@ -19,6 +19,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/achievements"
+	"farmgm/internal/game/autofish"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/checkin"
 	"farmgm/internal/game/exploration"
@@ -37,7 +38,7 @@ import (
 
 // FeatureKeys 管理網站可調整的規則（顯示順序）。
 var FeatureKeys = []string{checkin.ConfigKey, pets.ConfigKey, specialshop.ConfigKey, achievements.ConfigKey,
-	exploration.ConfigKey, mushroom.ConfigKey, seedlab.ConfigKey}
+	exploration.ConfigKey, mushroom.ConfigKey, seedlab.ConfigKey, autofish.ConfigKey}
 
 // CodexEditable 可在管理網站調整的圖鑑分類（魚類圖鑑來自 farm_fish，不能在這裡改）。
 var CodexEditable = []string{"crop", "animal", "goods", "material"}
@@ -92,6 +93,7 @@ type FeatureLimits struct {
 	GreenhouseLevels int `json:"greenhouse_levels"`
 	CheckinDays      int `json:"checkin_days"`
 	TitleMaxLen      int `json:"title_max_len"`
+	FishBasketLevels int `json:"fish_basket_levels"` // 魚簍最多幾級（farms.fish_basket_level 的 CHECK 上限）
 }
 
 // FeatureCode 代碼與顯示名稱。
@@ -321,7 +323,7 @@ func (a *AdminService) FeatureSettings(ctx context.Context) (FeatureSettingsView
 		v.Keys = append(v.Keys, k)
 	}
 	for _, code := range balance.ItemOrder {
-		it := balance.Items[code]
+		it := balance.ItemOf(code)
 		v.Items = append(v.Items, FeatureItemView{code, it.Name, it.Price})
 	}
 	categories := map[string]string{}
@@ -345,7 +347,8 @@ func (a *AdminService) FeatureSettings(ctx context.Context) (FeatureSettingsView
 			Default: achievements.Editable(base), Current: achievements.Editable(cur),
 		})
 	}
-	v.Limits = FeatureLimits{pets.LevelLimit, specialshop.GreenhouseLevelLimit, checkin.MaxCycleDays, specialshop.TitleMaxLen}
+	v.Limits = FeatureLimits{pets.LevelLimit, specialshop.GreenhouseLevelLimit, checkin.MaxCycleDays, specialshop.TitleMaxLen,
+		autofish.MaxBasketLevel}
 	meta, err := inTx(ctx, a.GameService, func(t *db.Tx) (featureMeta, error) {
 		names, err := catalog.ItemNames(ctx, t)
 		if err != nil {
