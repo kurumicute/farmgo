@@ -332,6 +332,8 @@ func (s *GameService) UseItem(ctx context.Context, playerID int64, key string, p
 		return s.UseEarthworm(ctx, playerID)
 	case balance.ToolAutoWaterer:
 		return ActionResult{}, gameerr.Validationf("自動澆水器是永久工具，不需要使用；可用 tool on/off auto_waterer 切換。")
+	case balance.ItemHourglass:
+		return ActionResult{}, gameerr.Validationf("加速沙漏請在種子實驗室或地下菇房的頁面使用。")
 	}
 	return ActionResult{}, gameerr.NotFoundf("沒有「%s」這種道具。", key)
 }

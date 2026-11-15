@@ -2,6 +2,7 @@ package autofish
 
 import (
 	"testing"
+	"time"
 
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/featurecfg"
@@ -40,7 +41,29 @@ func TestDefaultsAndBasket(t *testing.T) {
 	if balance.ItemPrice(balance.ToolAutoFisher) != 250_000 || MaxBasket() != 1 || BasketCapacity(3, 20) != 30 {
 		t.Fatal("設定要生效")
 	}
+	// 加速：預設 5 → 4 → 3 分鐘
+	featurecfg.Reset()
+	if Interval(0) != 5*time.Minute || Interval(1) != 4*time.Minute || Interval(2) != 3*time.Minute || Interval(9) != 3*time.Minute {
+		t.Fatal(Interval(0), Interval(1), Interval(2))
+	}
+	if m, p, ok := NextSpeed(1); !ok || m != 3 || p != 120_000 {
+		t.Fatal(m, p, ok)
+	}
+	if !Current().ConsumeBait || Current().BaitPerCatch != 1 {
+		t.Fatal("預設每釣 1 條消耗 1 個魚餌")
+	}
+	// 舊快照沒有第二版的設定：用預設值
+	old, _ := featurecfg.DeepCopy(defaults())
+	delete(old, "speed_intervals")
+	delete(old, "speed_prices")
+	delete(old, "consume_bait")
+	if v, err := featurecfg.Validate(ConfigKey, old); err != nil || v["consume_bait"] != 1 {
+		t.Fatal(v, err)
+	}
 	for _, bad := range []func(featurecfg.Value){
+		func(v featurecfg.Value) { v["speed_intervals"] = []any{5} },                 // 沒有比基本間隔短
+		func(v featurecfg.Value) { v["speed_intervals"] = []any{4, 4} },              // 沒有一級比一級短
+		func(v featurecfg.Value) { v["speed_prices"] = []any{1} },                    // 數量不同
 		func(v featurecfg.Value) { v["basket_prices"] = []any{1, 2} },                // 數量不同
 		func(v featurecfg.Value) { v["basket_capacities"] = []any{40, 40, 80, 100} }, // 沒有變大
 		func(v featurecfg.Value) { v["interval_minutes"] = 0 },

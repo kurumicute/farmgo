@@ -688,6 +688,9 @@ func (f *FishingService) BuyFishingGear(ctx context.Context, playerID int64, cod
 		if err != nil {
 			return ActionResult{}, err
 		}
+		if _, err := f.settleAutoFish(ctx, t, farm); err != nil { // 自動釣魚機先用原本的魚餌、魚簍結算到現在
+			return ActionResult{}, err
+		}
 		gear, err := fishrepo.GetGear(ctx, t, code, true) // 鎖定商品列，庫存不會被超賣
 		if err != nil {
 			return ActionResult{}, err
@@ -773,6 +776,9 @@ func (f *FishingService) EquipFishingGear(ctx context.Context, playerID int64, c
 	return inTx(ctx, f.GameService, func(t *db.Tx) (ActionResult, error) {
 		farm, err := f.lockedFarm(ctx, t, playerID)
 		if err != nil {
+			return ActionResult{}, err
+		}
+		if _, err := f.settleAutoFish(ctx, t, farm); err != nil { // 自動釣魚機先用原本的魚餌、魚簍結算到現在
 			return ActionResult{}, err
 		}
 		owned, err := fishrepo.GetOwned(ctx, t, farm.ID, code, true)
@@ -1384,6 +1390,9 @@ func (f *FishingService) SellFish(ctx context.Context, playerID int64, fishIDs [
 	return inTx(ctx, f.GameService, func(t *db.Tx) (ActionResult, error) {
 		farm, err := f.lockedFarm(ctx, t, playerID)
 		if err != nil {
+			return ActionResult{}, err
+		}
+		if _, err := f.settleAutoFish(ctx, t, farm); err != nil { // 自動釣魚機先用原本的魚餌、魚簍結算到現在
 			return ActionResult{}, err
 		}
 		rows, err := fishrepo.LockUnsold(ctx, t, farm.ID, fishIDs)

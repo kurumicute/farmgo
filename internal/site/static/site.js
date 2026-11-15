@@ -307,6 +307,12 @@
           setText("g-lab-clone-herb-two", String(l.clone_herb_two_pct));
           setText("g-lab-clone-herb-three", String(l.clone_herb_three_pct));
           setText("g-lab-clone-max", String(l.clone_max_batches));
+        if (l.library_step != null) {
+          setText("g-lab-lib-step", String(l.library_step));
+          setText("g-lab-lib-prices", l.library_prices.length ? l.library_prices.map((p) => num.format(p)).join(" → ") : "目前沒有開放");
+          setText("g-lab-slot-prices", l.extra_slot_prices.length ? l.extra_slot_prices.map((p) => num.format(p)).join(" → ") : "目前沒有開放");
+          setText("g-hourglass-cut", String(l.hourglass_cut_pct));
+        }
         }
       }
       if (l.rare_seeds && l.rare_seeds.length) setText("g-lab-rare-seeds", l.rare_seeds.join("、"));
@@ -577,6 +583,11 @@
         ? a.basket_upgrades.map((u) => `${u.capacity} 格 ${num.format(u.price)}`).join("、") + " 金幣" : "目前沒有開放");
       setText("g-autofish-price", num.format(a.machine_price));
       setText("g-autofish-interval", String(a.interval_minutes));
+      if (a.consume_bait != null) {
+        setText("g-autofish-bait", a.consume_bait ? `每釣 1 條消耗 ${a.bait_per_catch} 個裝備中的魚餌` : "不消耗魚餌");
+        setText("g-autofish-speed", a.speed.length
+          ? a.speed.map((x) => `每 ${x.minutes} 分鐘 ${num.format(x.price)}`).join("、") + " 金幣" : "目前沒有開放");
+      }
       setText("g-autofish-sell", a.auto_sell
         ? `同時啟用自動販售機時，釣到的魚直接賣掉（最多補算 ${a.auto_sell_max_hours} 小時）。` : "自動販售機不會賣自動釣到的魚。");
     }

@@ -273,7 +273,20 @@
     "barrel": "decor/barrel.png",
     "planter": "decor/planter.png",
     "lamp": "decor/lamp.png",
-    "signpost": "decor/signpost.png"
+    "signpost": "decor/signpost.png",
+    "scarecrow": "decor/scarecrow.png",
+    "windmill": "decor/windmill.png",
+    "swing": "decor/swing.png",
+    "doghouse": "decor/doghouse.png",
+    "birdhouse": "decor/birdhouse.png",
+    "pumpkins": "decor/pumpkins.png",
+    "fountain": "decor/fountain.png",
+    "gold_cat_statue": "decor/gold_cat_statue.png",
+    "gazebo": "decor/gazebo.png",
+    "wishing_well": "decor/wishing_well.png",
+    "jack_o_lantern": "decor/jack_o_lantern.png",
+    "snowman": "decor/snowman.png",
+    "xmas_tree": "decor/xmas_tree.png"
   },
   "badges": {
     "need_water": "badges/need_water.png",
@@ -981,5 +994,13 @@
       }
     },
     "note": "有寵物時在農田圖上方加一條草地（band_height），狗在左上、貓在右上，不壓到欄杆；素材由根目錄 dogcat.png 切出縮小（64 色）"
+  },
+  "decor_band": {
+    "height": 96,
+    "strip": "decor/_yard_strip.png",
+    "tile": "tiles/grass.png",
+    "slots": 6,
+    "size": 64,
+    "bottom": 4
   }
 }

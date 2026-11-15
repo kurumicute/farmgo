@@ -10,6 +10,7 @@ import (
 	"farmgm/internal/bot/farmimage"
 	"farmgm/internal/bot/ui"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/hourglass"
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/services"
 )
@@ -99,6 +100,21 @@ func (p *Panel) buildCellar(_ context.Context, data any) (*ui.Embed, error) {
 	free := 0
 	for _, b := range v.Beds {
 		free += mushroom.MaxSawdust - b.Sawdust
+	}
+	// 加速沙漏（2026-11-15）：所有生長中的菇床剩餘時間減少
+	if v.Hourglasses > 0 {
+		usable := false
+		for _, b := range v.Beds {
+			if !b.Ready && hourglass.Usable(b.ReadyAt.Sub(v.Now)) {
+				usable = true
+			}
+		}
+		p.button(fmt.Sprintf("加速沙漏（持有 %d）", v.Hourglasses), func(ctx context.Context, it ui.Interaction) error {
+			p.act(ctx, it, p.call("use_hourglass", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().UseHourglass(ctx, p.playerID, "cellar")
+			}), actOpts{noProgress: true})
+			return nil
+		}, btn{emoji: "⏳", row: 0, disabled: !usable})
 	}
 	p.button(fmt.Sprintf("收成（%d 床）", v.ReadyCount), func(ctx context.Context, it ui.Interaction) error {
 		p.act(ctx, it, p.call("harvest_mushrooms", func(ctx context.Context) (services.ActionResult, error) {

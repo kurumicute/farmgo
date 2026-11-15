@@ -14,6 +14,7 @@ import (
 
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
+	"farmgm/internal/game/balance"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/mushroom"
@@ -56,6 +57,9 @@ type MushroomCellarView struct {
 	NextReadyAt *time.Time
 	// CropNames 各養分目前對應的作物名稱（依 mushroom.NutrientOrder；管理網站可調整）
 	CropNames map[string][]string
+	// Hourglasses 持有的加速沙漏（2026-11-15）
+	Hourglasses int
+	Now         time.Time // 讀取的時間（面板計算剩餘時間用）
 }
 
 // cellarTool 讀取菇房列（直接查詢，不用 ListTools 的讀取快取，建立後同一筆交易內也讀得到）。
@@ -139,7 +143,10 @@ func (r *RanchService) MushroomCellar(ctx context.Context, playerID int64) (Mush
 		} else {
 			beds, _ = mushroom.ParseBeds(tool.Settings, now)
 		}
-		v.Unlocked = true
+		v.Unlocked, v.Now = true, now
+		if v.Hourglasses, err = inventory.GetQuantity(ctx, t, farm.ID, balance.ItemHourglass, "normal", "none"); err != nil {
+			return v, err
+		}
 		for i, b := range beds {
 			bv := MushroomBedView{No: i + 1, StartedAt: b.StartedAt, ReadyAt: b.ReadyAt(), Sawdust: b.Sawdust,
 				Ready: b.Ready(now), Progress: b.Progress(now), RareText: mushroom.RareChanceText(b.Sawdust)}

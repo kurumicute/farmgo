@@ -12,6 +12,7 @@ import (
 
 	"farmgm/internal/bot/ui"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/hourglass"
 	"farmgm/internal/game/seedlab"
 	"farmgm/internal/services"
 )
@@ -272,6 +273,26 @@ func (p *Panel) buildLab(_ context.Context, data any) (*ui.Embed, error) {
 		p.goTo(ctx, it, "lab", "")
 		return nil
 	}, btn{emoji: "🔄", row: 0})
+	// 研究槽擴充（2026-11-15）：研究 Lv.3 後才能買，按兩次確認
+	if v.NextSlotPrice > 0 {
+		label, style := fmt.Sprintf("研究槽擴充（%s 金）", money(v.NextSlotPrice)), ui.Secondary
+		if p.confirm == "lab_slot" {
+			label, style = "確認擴充研究槽", ui.Danger
+		}
+		p.button(label, func(ctx context.Context, it ui.Interaction) error {
+			if p.confirm != "lab_slot" {
+				p.confirm = "lab_slot"
+				p.refresh(ctx, it, fmt.Sprintf("⚠️ 研究槽擴充到 %d 個需要 %s 金幣，再按一次「確認擴充研究槽」。", v.Slots+1, money(v.NextSlotPrice)),
+					nil, "重繪", time.Time{})
+				return nil
+			}
+			p.act(ctx, it, p.call("buy_lab_slot", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().BuyLabSlot(ctx, p.playerID)
+			}), actOpts{})
+			return nil
+		}, btn{emoji: "🔬", row: 0, style: style, disabled: v.Gold < v.NextSlotPrice})
+	}
+	p.hourglassSelect(v, 4)
 	p.nav(fmt.Sprintf("種子庫（%d）", stored), "lab_seeds", btn{emoji: "🌰", style: ui.Primary, row: 1})
 	p.nav("雜交培育", "lab_cross", btn{emoji: "🧬", style: ui.Primary, row: 1, disabled: stored < 2 || v.FreeSlots == 0})
 	p.navFirstPage("培育紀錄", "lab_records", &p.labRecordPage, btn{emoji: "📜", row: 1})
@@ -300,6 +321,38 @@ func (p *Panel) buildLab(_ context.Context, data any) (*ui.Embed, error) {
 }
 
 func fmtPct(pct float64) string { return strconv.FormatFloat(pct, 'f', -1, 64) }
+
+// hourglassSelect 有加速沙漏、而且有還在計時的研究槽時，顯示「使用加速沙漏」選單（2026-11-15）。
+func (p *Panel) hourglassSelect(v services.SeedLabView, row int) {
+	have := v.Materials[balance.ItemHourglass]
+	if have == 0 {
+		return
+	}
+	cfg := hourglass.Current()
+	var options []option
+	for _, j := range v.Jobs {
+		left := j.ReadyAt.Sub(v.Now)
+		if j.Ready || !hourglass.Usable(left) {
+			continue
+		}
+		what := "☢️ 突變研究"
+		switch j.Kind {
+		case "cross":
+			what = "🧬 雜交"
+		case "clone":
+			what = "🌱 育苗"
+		}
+		options = append(options, option{fmt.Sprintf("研究槽 #%d %s %s", j.Slot, what, j.Mother.CropName), fmt.Sprintf("lab:%d", j.Slot),
+			fmt.Sprintf("剩餘 %s → %s", services.LongDuration(int(left.Seconds())), services.LongDuration(int(hourglass.Cut(left).Seconds()))), "⏳"})
+	}
+	p.selectMenu(fmt.Sprintf("⏳ 使用加速沙漏（持有 %d，剩餘時間 -%d%%）…", have, cfg.CutPct), options,
+		func(ctx context.Context, it ui.Interaction, key string) error {
+			p.act(ctx, it, p.call("use_hourglass", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().UseHourglass(ctx, p.playerID, key)
+			}), actOpts{noProgress: true})
+			return nil
+		}, row, "")
+}
 
 // ---------- 種子庫 ----------
 
@@ -471,6 +524,26 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 	p.pageButtons("", &p.lab.seedPage, pages, 3, "lab_seeds")
 	p.labNav(4)
 	p.nav("回農田", "plots", btn{emoji: "🌱", row: 4})
+	// 種子庫擴充（2026-11-15）：按兩次確認
+	if v.Built && v.NextLibraryPrice > 0 {
+		step := seedlab.Current().LibraryStep
+		label, style := fmt.Sprintf("種子庫 +%d 格（%s 金）", step, money(v.NextLibraryPrice)), ui.Secondary
+		if p.confirm == "seed_library" {
+			label, style = "確認擴充種子庫", ui.Danger
+		}
+		p.button(label, func(ctx context.Context, it ui.Interaction) error {
+			if p.confirm != "seed_library" {
+				p.confirm = "seed_library"
+				p.refresh(ctx, it, fmt.Sprintf("⚠️ 種子庫擴充到 %d 格需要 %s 金幣，再按一次「確認擴充種子庫」。", v.Capacity+step, money(v.NextLibraryPrice)),
+					nil, "重繪", time.Time{})
+				return nil
+			}
+			p.act(ctx, it, p.call("expand_seed_library", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().ExpandSeedLibrary(ctx, p.playerID)
+			}), actOpts{})
+			return nil
+		}, btn{emoji: "🌰", row: 4, style: style, disabled: v.Gold < v.NextLibraryPrice})
+	}
 	return e, nil
 }
 

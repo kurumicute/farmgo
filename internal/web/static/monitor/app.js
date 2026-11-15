@@ -4311,6 +4311,7 @@ if (typeof document !== "undefined") {
       ["clone_max_batches", "一次最多排程幾次", 1, 25],
       ["clone_two_bp", "得到 2 顆以上的機率（%）", 0, 10000, true], ["clone_three_bp", "得到 3 顆的機率（%）", 0, 10000, true],
       ["clone_herb", "加藥草（選用）時每次用掉幾個", 1, 100], ["clone_herb_bonus_bp", "加藥草增加的機率（2 顆以上、3 顆各 +%）", 0, 10000, true]]],
+    ["🌰 擴充", [["library_step", "種子庫每次擴充的格數", 1, 100]]],
     ["🎁 分享", [["share_send_per_day", "每人每天最多送出（顆）", 0, 100], ["share_receive_senders", "每人每天最多收幾位玩家", 1, 100]]],
     ["📈 研究經驗", [["exp_identify", "鑑定", 0, 10000], ["exp_cross", "雜交成功", 0, 10000], ["exp_cross_fail", "雜交失敗", 0, 10000],
       ["exp_mutate", "突變研究", 0, 10000], ["exp_clone", "育苗", 0, 10000], ["level2_exp", "Lv.2 需要（2 個研究槽）", 1, 1000000], ["level3_exp", "Lv.3 需要（3 個研究槽）", 1, 1000000]]],
@@ -4337,6 +4338,13 @@ if (typeof document !== "undefined") {
     price.classList.add("wide-num");
     const interval = numInput(null, c.interval_minutes, 1, 1440);
     const maxHours = numInput(null, c.auto_sell_max_hours, 1, 720);
+    const consume = el("input");
+    consume.type = "checkbox";
+    consume.checked = c.consume_bait !== 0;
+    const perCatch = numInput(null, c.bait_per_catch || 1, 1, 10);
+    const speedIntervals = textInput((c.speed_intervals || []).join(", "), 100, "例如 4, 3");
+    const speedPrices = textInput((c.speed_prices || []).join(", "), 200, "例如 50000, 120000");
+    speedPrices.classList.add("reason-input");
     const sell = el("input");
     sell.type = "checkbox";
     sell.checked = c.auto_sell_fish === 1;
@@ -4380,7 +4388,14 @@ if (typeof document !== "undefined") {
         el("label", { className: "inline", text: "自動販售機也啟用時，直接賣掉自動釣到的魚 " }, [sell]),
         el("label", { className: "inline", text: "自動販售最多補算（小時） " }, [maxHours]),
       ]),
-      el("p", { className: "muted small", text: "沒有自動販售時，魚簍滿了就暫停（不會累積）。自動釣到的魚只會是不需要特定魚餌的魚，稀有度用釣魚設定的基礎機率，不算進釣魚排行榜。" }),
+      el("div", { className: "controls" }, [
+        el("label", { className: "inline", text: "每釣 1 條消耗裝備中的魚餌 " }, [consume]),
+        el("label", { className: "inline", text: "每條消耗幾個 " }, [perCatch]),
+      ]),
+      el("p", { className: "muted small", text: "魚簍滿了或魚餌用完就暫停（不會累積）。釣到的魚跟手動釣魚一樣依魚餌決定（稀有度加成、特定魚餌的魚），不算進釣魚排行榜。" }),
+      el("h4", { text: "⚡ 自動釣魚機加速" }),
+      el("label", { className: "inline", text: "各級的間隔（分鐘，要一級比一級短，而且比上面的間隔短） " }, [speedIntervals]),
+      el("label", { className: "inline", text: "各級的價格 " }, [speedPrices]),
       el("h4", { text: "🧺 魚簍升級" }),
       box,
       el("div", { className: "controls" }, [add]),
@@ -4392,7 +4407,12 @@ if (typeof document !== "undefined") {
         machine_price: Number(price.value), interval_minutes: Number(interval.value), auto_sell_fish: sell.checked ? 1 : 0,
         auto_sell_max_hours: Number(maxHours.value),
         basket_capacities: list.map((t) => t.capacity), basket_prices: list.map((t) => t.price),
+        consume_bait: consume.checked ? 1 : 0, bait_per_catch: Number(perCatch.value),
+        speed_intervals: speedIntervals.value.trim() ? parseIntList(speedIntervals.value) : [],
+        speed_prices: speedPrices.value.trim() ? parseIntList(speedPrices.value) : [],
       };
+      if (!value.speed_intervals || !value.speed_prices) throw new Error("加速的間隔與價格請用逗號分隔的整數。");
+      if (value.speed_intervals.length !== value.speed_prices.length) throw new Error("加速的間隔與價格數量要一樣。");
       const tierText = (caps, prices) => caps.map((cap, i) => `${cap} 格 ${fmtNum(prices[i])}`).join("、") || "（無）";
       return [value, [
         diffRow("自動釣魚機價格", fmtNum(c.machine_price), fmtNum(value.machine_price)),
@@ -4400,6 +4420,9 @@ if (typeof document !== "undefined") {
         diffRow("自動販售機賣魚", c.auto_sell_fish ? "是" : "否", value.auto_sell_fish ? "是" : "否"),
         diffRow("自動販售最多補算", `${c.auto_sell_max_hours} 小時`, `${value.auto_sell_max_hours} 小時`),
         diffRow("魚簍升級", tierText(c.basket_capacities, c.basket_prices), tierText(value.basket_capacities, value.basket_prices)),
+        diffRow("消耗魚餌", c.consume_bait ? `是（每條 ${c.bait_per_catch} 個）` : "否", value.consume_bait ? `是（每條 ${value.bait_per_catch} 個）` : "否"),
+        diffRow("加速", (c.speed_intervals || []).map((m, i) => `${m} 分 ${fmtNum(c.speed_prices[i])}`).join("、") || "（無）",
+          value.speed_intervals.map((m, i) => `${m} 分 ${fmtNum(value.speed_prices[i])}`).join("、") || "（無）"),
       ].filter(Boolean)];
     });
   }
@@ -4418,12 +4441,19 @@ if (typeof document !== "undefined") {
       });
       return [el("h4", { text: title }), el("div", { className: "controls" }, controls)];
     }).flat();
+    const libPrices = textInput((c.library_prices || []).join(", "), 200, "例如 10000, 20000, 40000, 80000");
+    libPrices.classList.add("reason-input");
+    const slotPrices = textInput((c.extra_slot_prices || []).join(", "), 200, "例如 100000");
+    slotPrices.classList.add("reason-input");
     const hybridEds = meta.hybrids.map((h) => {
       const cur = c.hybrids[h.code];
       return { h, success: bpInput(cur.success_bp, 10000), minutes: numInput(null, cur.minutes, 1, 1440) };
     });
     const body = el("div", {}, [
       ...sections,
+      el("label", { className: "inline", text: "種子庫擴充價格（第 1、2…次，逗號分隔，最多 10 次） " }, [libPrices]),
+      el("label", { className: "inline", text: "研究槽擴充價格（第 1、2…個，研究 Lv.3 才能買，最多 5 個） " }, [slotPrices]),
+      el("p", { className: "muted small", text: "清空表示不開放擴充。減少級數時，已經買過的玩家以新的最高級計算。" }),
       el("h4", { text: "🌈 雜交組合（組合本身固定；售價請到「作物目錄」調整）" }),
       miniTable(["雙親", "雜交作物", "成功率（%）", "培育（分鐘）", "目前售價", "公式售價（雙親 × 1.5）"], hybridEds.map(({ h, success, minutes }) => el("tr", {}, [
         td(`${h.a_name} × ${h.b_name}`), td(`${h.name}（${h.code}）`), el("td", {}, [success]), el("td", {}, [minutes]),
@@ -4444,6 +4474,17 @@ if (typeof document !== "undefined") {
       if (value.gene_up_bp + value.gene_down_bp > 10000) throw new Error("基因升級與退化機率加起來不能超過 100%。");
       if (value.clone_three_bp > value.clone_two_bp) throw new Error("育苗得到 3 顆的機率不能高於 2 顆以上的機率。");
       if (value.level3_exp <= value.level2_exp) throw new Error("Lv.3 需要的經驗必須大於 Lv.2。");
+      const optList = (input, label, maxLen) => {
+        if (!input.value.trim()) return [];
+        const list = parseIntList(input.value);
+        if (!list || list.some((n) => n < 1)) throw new Error(`${label}請用逗號分隔的正整數，例如 10000, 20000。`);
+        if (list.length > maxLen) throw new Error(`${label}最多 ${maxLen} 個。`);
+        return list;
+      };
+      value.library_prices = optList(libPrices, "種子庫擴充價格", 10);
+      value.extra_slot_prices = optList(slotPrices, "研究槽擴充價格", 5);
+      diff.push(diffRow("種子庫擴充價格", listText(c.library_prices), listText(value.library_prices)));
+      diff.push(diffRow("研究槽擴充價格", listText(c.extra_slot_prices), listText(value.extra_slot_prices)));
       value.hybrids = {};
       for (const { h, success, minutes } of hybridEds) {
         const v = { success_bp: bpIn(success, `${h.name}的成功率`, 10000), minutes: intIn(minutes, `${h.name}的培育時間`, 1, 1440) };
@@ -4455,9 +4496,33 @@ if (typeof document !== "undefined") {
     });
   }
 
+  // ----- 加速沙漏（Go 版新增，2026-11-15）-----
+  function hourglassCard() {
+    const c = featureKey("hourglass").current;
+    const price = numInput(null, c.price, 1, 100000000);
+    const cut = numInput(null, c.cut_pct, 1, 99);
+    const minSec = numInput(null, c.min_seconds, 0, 86400);
+    const body = el("div", {}, [
+      el("div", { className: "controls" }, [
+        el("label", { className: "inline", text: "價格（金幣） " }, [price]),
+        el("label", { className: "inline", text: "剩餘時間減少 % " }, [cut]),
+        el("label", { className: "inline", text: "剩餘少於幾秒不能用 " }, [minSec]),
+      ]),
+      el("p", { className: "muted small", text: "在種子實驗室的研究槽（雜交、突變研究、育苗）或地下菇房使用；菇房一次對所有生長中的菇床生效。" }),
+    ]);
+    return featureCard("hourglass", "道具商店的消耗品「⏳ 加速沙漏」", body, () => {
+      const value = { price: intIn(price, "價格", 1, 100000000), cut_pct: intIn(cut, "剩餘時間減少", 1, 99), min_seconds: intIn(minSec, "最短剩餘時間", 0, 86400) };
+      return [value, [
+        diffRow("價格", fmtNum(c.price), fmtNum(value.price)),
+        diffRow("剩餘時間減少", `${c.cut_pct}%`, `${value.cut_pct}%`),
+        diffRow("剩餘少於幾秒不能用", String(c.min_seconds), String(value.min_seconds)),
+      ].filter(Boolean)];
+    });
+  }
+
   function renderFeatureSettings() {
     $("fs-body").replaceChildren(checkinCard(), petsCard(), specialShopCard(), achievementsCard(), explorationCard(), mushroomCard(),
-      seedlabCard(), autofishCard());
+      seedlabCard(), autofishCard(), hourglassCard());
   }
 
   async function loadFeatureSettings(force = false) {

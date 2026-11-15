@@ -31,9 +31,26 @@ type SeedLab struct {
 	Level   int       `db:"level"` // server_default 1
 	Exp     int       `db:"exp"`   // server_default 0
 	BuiltAt time.Time `db:"built_at"`
+	// 擴充（Migration 0042，Go 版新增）：種子庫擴充等級、額外購買的研究槽數（server_default 0）
+	LibraryLevel int `db:"library_level"`
+	ExtraSlots   int `db:"extra_slots"`
 }
 
 func (SeedLab) TableName() string { return TableSeedLab }
+
+// FarmDecoration 農場裝飾（Migration 0042，Go 版新增）：買一次永久擁有；Slot 為 nil 表示收起來，1–6 是庭院擺飾區的位置。
+//
+// 約束：uq_farm_decorations_farm_code（farm_id, decor_code）、uq_farm_decorations_farm_slot（slot 不為 NULL 時唯一）、
+// ck_farm_decorations_slot_range（1–6）。
+type FarmDecoration struct {
+	ID         int64     `db:"id"`
+	FarmID     int64     `db:"farm_id"`
+	DecorCode  string    `db:"decor_code"`
+	Slot       *int      `db:"slot"`
+	AcquiredAt time.Time `db:"acquired_at"`
+}
+
+func (FarmDecoration) TableName() string { return "farm_decorations" }
 
 // LabSeed 特殊種子：每顆有 4 個基因（1–5 級）、世代與突變。farm_id 是目前擁有者，breeder_farm_id 是原育種者。
 //

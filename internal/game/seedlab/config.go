@@ -66,6 +66,10 @@ type Config struct {
 	ExpClone              int
 	LevelExp              [MaxLevel + 1]int // 升到該等級需要的累積經驗（只用 index 2..MaxLevel）
 	Hybrids               map[string]HybridSetting
+	// 擴充（2026-11-15，Go 版新增）：種子庫每級增加的格數與各級價格、額外研究槽的各級價格（研究 Lv.3 才能買）
+	LibraryStep     int
+	LibraryPrices   []int
+	ExtraSlotPrices []int
 }
 
 // defaultHybrids 各雜交組合的預設成功率與培育時間（1–3 小時）。
@@ -118,8 +122,9 @@ func DefaultConfig() *Config {
 		CloneTwoBP: 3000, CloneThreeBP: 1000, CloneHerbBonusBP: 2000, CloneMaxBatches: 10,
 		GrowthPctPerLevel: 6, YieldPctPerLevel: 15, QualityBPPerLevel: 500, MutationBPPerLevel: 150,
 		ExpIdentify: 2, ExpCross: 10, ExpCrossFail: 15, ExpMutate: 8, ExpClone: 3,
-		LevelExp: [MaxLevel + 1]int{0, 0, 100, 300},
-		Hybrids:  map[string]HybridSetting{},
+		LevelExp:    [MaxLevel + 1]int{0, 0, 100, 300},
+		Hybrids:     map[string]HybridSetting{},
+		LibraryStep: 10, LibraryPrices: []int{10_000, 20_000, 40_000, 80_000}, ExtraSlotPrices: []int{100_000},
 	}
 	for code, h := range defaultHybrids {
 		c.Hybrids[code] = h
@@ -198,6 +203,7 @@ var intFields = []intField{
 	{"exp_cross_fail", "雜交失敗的研究經驗", 0, 10_000, func(c *Config) *int { return &c.ExpCrossFail }},
 	{"exp_mutate", "突變研究的研究經驗", 0, 10_000, func(c *Config) *int { return &c.ExpMutate }},
 	{"exp_clone", "育苗的研究經驗", 0, 10_000, func(c *Config) *int { return &c.ExpClone }},
+	{"library_step", "種子庫每次擴充的格數", 1, 100, func(c *Config) *int { return &c.LibraryStep }},
 	{"level2_exp", "研究 Lv.2 需要的經驗", 1, 1_000_000, func(c *Config) *int { return &c.LevelExp[2] }},
 	{"level3_exp", "研究 Lv.3 需要的經驗", 1, 1_000_000, func(c *Config) *int { return &c.LevelExp[3] }},
 }
@@ -213,6 +219,8 @@ func encodeConfig(c *Config) featurecfg.Value {
 		hybrids[h.Code] = map[string]any{"success_bp": s.SuccessBP, "minutes": s.Minutes}
 	}
 	v["hybrids"] = hybrids
+	v["library_prices"] = c.LibraryPrices
+	v["extra_slot_prices"] = c.ExtraSlotPrices
 	return v
 }
 
@@ -242,6 +250,28 @@ func parseConfig(raw featurecfg.Value) (*Config, error) {
 	}
 	if c.LevelExp[3] <= c.LevelExp[2] {
 		return nil, gameerr.Validationf("研究 Lv.3 需要的經驗必須大於 Lv.2。")
+	}
+	// 擴充價格（2026-11-15 新增：之前存的快照沒有時用預設值）
+	lists := []struct {
+		key, label string
+		max        int
+		ptr        *[]int
+		def        []int
+	}{
+		{"library_prices", "種子庫擴充價格", MaxLibraryLevel, &c.LibraryPrices, defaults.LibraryPrices},
+		{"extra_slot_prices", "研究槽擴充價格", MaxExtraSlots, &c.ExtraSlotPrices, defaults.ExtraSlotPrices},
+	}
+	for _, l := range lists {
+		v, ok := raw[l.key]
+		if !ok {
+			*l.ptr = l.def
+			continue
+		}
+		list, err := featurecfg.IntList(v, l.label, 1, 1_000_000_000, 0, l.max)
+		if err != nil {
+			return nil, err
+		}
+		*l.ptr = list
 	}
 	hybrids, ok := featurecfg.AsMap(raw["hybrids"])
 	if !ok {

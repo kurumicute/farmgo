@@ -194,6 +194,25 @@ func (p *Panel) buildFishing(_ context.Context, data any) (*ui.Embed, error) {
 	p.nav("釣具商店", "fish_shop", btn{emoji: "🛒", row: 1})
 	p.nav("釣魚排行榜", "fish_rank", btn{emoji: "🏆", row: 1})
 	p.nav("回總覽", "main", btn{emoji: "🏠", row: 1})
+	// 自動釣魚機加速（2026-11-15）：有機器而且還沒滿級時顯示，按兩次確認
+	if a := o.AutoFish; a.Owned && a.NextSpeedMinutes > 0 {
+		label, style := fmt.Sprintf("釣魚機加速（%d 分鐘，%s 金）", a.NextSpeedMinutes, money(a.NextSpeedPrice)), ui.Secondary
+		if p.confirm == "auto_fisher_speed" {
+			label, style = "確認加速", ui.Danger
+		}
+		p.button(label, func(ctx context.Context, it ui.Interaction) error {
+			if p.confirm != "auto_fisher_speed" {
+				p.confirm = "auto_fisher_speed"
+				p.refresh(ctx, it, fmt.Sprintf("⚠️ 自動釣魚機加速到每 %d 分鐘 1 條需要 %s 金幣（魚餌也會用得比較快），再按一次「確認加速」。",
+					a.NextSpeedMinutes, money(a.NextSpeedPrice)), nil, "重繪", time.Time{})
+				return nil
+			}
+			p.act(ctx, it, p.call("upgrade_auto_fisher_speed", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().UpgradeAutoFisherSpeed(ctx, p.playerID)
+			}), actOpts{})
+			return nil
+		}, btn{emoji: "⚡", row: 1, style: style, disabled: o.Gold < a.NextSpeedPrice})
+	}
 	p.equipSelect(d.shop.Items, 2)
 	return e, nil
 }
@@ -604,6 +623,10 @@ func autoFishLine(a services.AutoFishStatus) string {
 	switch {
 	case !a.Enabled:
 		state = "已停用（到背包的工具啟用）"
+	case a.NoBait && a.BaitName == "":
+		state = "⏸️ 沒有裝備魚餌，暫停中（到釣具商店買魚餌並裝備就會繼續）"
+	case a.NoBait:
+		state = fmt.Sprintf("⏸️ %s用完了，暫停中（補充魚餌就會繼續）", a.BaitName)
 	case a.Paused:
 		state = "⏸️ 魚簍滿了，暫停中（賣掉一些魚或升級魚簍就會繼續）"
 	case a.NextAt != nil:
@@ -612,7 +635,14 @@ func autoFishLine(a services.AutoFishStatus) string {
 			state += "（自動販售機直接賣掉）"
 		}
 	}
-	return "\n🤖 自動釣魚機：" + state
+	line := fmt.Sprintf("\n🤖 自動釣魚機（每 %d 分鐘 1 條）：%s", int(a.Interval/time.Minute), state)
+	if a.Enabled && a.BaitLeft > 0 {
+		line += fmt.Sprintf("\n🪱 %s還能釣 **%d** 條", a.BaitName, a.BaitLeft)
+		if a.BaitLeft < 10 {
+			line += "，快用完了，記得補充"
+		}
+	}
+	return line
 }
 
 // autoFishNote 這次打開時自動釣魚機補算的結果（沒有時為 ""，後面自帶空行）。

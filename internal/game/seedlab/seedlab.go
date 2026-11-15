@@ -27,6 +27,41 @@ func Unlock() int { return Current().UnlockLevel }
 // Slots 研究槽數量（Lv.1 1 個、Lv.2 2 個、Lv.3 3 個）。
 func Slots(level int) int { return max(1, min(level, MaxLevel)) }
 
+// 擴充的上限（seed_labs.library_level、extra_slots 的 CHECK）。
+const (
+	MaxLibraryLevel = 10
+	MaxExtraSlots   = 5
+)
+
+// SlotsFor 研究槽數量 = 研究等級的槽數 + 額外購買的（超過目前設定的級數時以設定為準）。
+func SlotsFor(level, extra int) int {
+	return Slots(level) + max(0, min(extra, len(Current().ExtraSlotPrices)))
+}
+
+// LibraryCap 種子庫容量 = 設定的上限 + 每級格數 × 擴充等級（超過目前設定的級數時以設定為準）。
+func LibraryCap(level int) int {
+	c := Current()
+	return c.LibraryCapacity + c.LibraryStep*max(0, min(level, len(c.LibraryPrices)))
+}
+
+// NextLibrary 種子庫下一級的價格；已滿級時 ok = false。
+func NextLibrary(level int) (price int, ok bool) {
+	p := Current().LibraryPrices
+	if level < 0 || level >= len(p) {
+		return 0, false
+	}
+	return p[level], true
+}
+
+// NextExtraSlot 下一個研究槽的價格；已買滿時 ok = false。研究等級要先到 MaxLevel。
+func NextExtraSlot(extra int) (price int, ok bool) {
+	p := Current().ExtraSlotPrices
+	if extra < 0 || extra >= len(p) {
+		return 0, false
+	}
+	return p[extra], true
+}
+
 // LevelFor 累積經驗對應的研究等級。
 func LevelFor(exp int) int {
 	c := Current()

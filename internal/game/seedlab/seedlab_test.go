@@ -125,6 +125,40 @@ func TestConfigDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
+// TestExpansions 種子庫與研究槽擴充（2026-11-15）。
+func TestExpansions(t *testing.T) {
+	featurecfg.Reset()
+	defer featurecfg.Reset()
+	base := Current().LibraryCapacity
+	if LibraryCap(0) != base || LibraryCap(2) != base+20 || LibraryCap(99) != base+40 {
+		t.Fatal(LibraryCap(0), LibraryCap(2), LibraryCap(99))
+	}
+	if p, ok := NextLibrary(3); !ok || p != 80_000 {
+		t.Fatal(p, ok)
+	}
+	if _, ok := NextLibrary(4); ok {
+		t.Fatal("滿級")
+	}
+	if SlotsFor(3, 0) != 3 || SlotsFor(3, 1) != 4 || SlotsFor(3, 5) != 4 || SlotsFor(1, 1) != 2 {
+		t.Fatal(SlotsFor(3, 1))
+	}
+	raw, _ := featurecfg.DeepCopy(DefaultValue())
+	delete(raw, "library_prices") // 舊快照沒有：用預設值
+	raw["extra_slot_prices"] = []any{50_000, 200_000}
+	v, err := featurecfg.Validate(ConfigKey, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	featurecfg.SetCurrent(ConfigKey, v)
+	if p, ok := NextExtraSlot(1); !ok || p != 200_000 || SlotsFor(3, 2) != 5 || len(Current().LibraryPrices) != 4 {
+		t.Fatal(p, ok)
+	}
+	raw["extra_slot_prices"] = []any{1, 2, 3, 4, 5, 6}
+	if _, err := featurecfg.Validate(ConfigKey, raw); err == nil {
+		t.Fatal("研究槽最多擴充 5 個")
+	}
+}
+
 func TestCrossPlan(t *testing.T) {
 	same := CrossPlan{Mother: "wheat", Father: "wheat"}
 	if code, bp, ok := same.Result(); !ok || code != "wheat" || bp != 10_000 {

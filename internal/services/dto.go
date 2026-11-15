@@ -72,6 +72,7 @@ type FarmStatus struct {
 	Now               time.Time
 	Title             *string        // 目前選用的稱號
 	Pets              map[string]int // 寵物代碼 → 等級（農場圖左上、右上顯示）
+	Decor             []string       // 庭院擺飾區 1–6 號位置的裝飾代碼（"" = 空；沒有擺任何東西時為 nil，Go 版新增）
 }
 
 func (f FarmStatus) countState(state rules.PlotState) int {

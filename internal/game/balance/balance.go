@@ -142,6 +142,7 @@ const (
 	ToolAutoSeller   = "auto_seller"
 	ToolThiefGlove   = "thief_glove"
 	ToolAutoFisher   = "auto_fisher" // Go 版新增（2026-11-15），規則在 game/autofish
+	ItemHourglass    = "hourglass"   // 加速沙漏（Go 版新增，2026-11-15），規則在 game/hourglass
 	EffectEarthworm  = "earthworm"
 	ItemPatrolTicket = "patrol_ticket"
 )
@@ -161,11 +162,14 @@ type Item struct {
 }
 
 // ItemOrder 道具顯示順序（Python ITEMS 的 dict 順序）。
-var ItemOrder = []string{ItemFertilizer, ItemEarthworm, ToolAutoWaterer, ToolAutoPlanter, ToolAutoSeller, ToolAutoFisher, ToolThiefGlove,
-	ItemPatrolTicket}
+var ItemOrder = []string{ItemFertilizer, ItemEarthworm, ItemHourglass, ToolAutoWaterer, ToolAutoPlanter, ToolAutoSeller, ToolAutoFisher,
+	ToolThiefGlove, ItemPatrolTicket}
 
-// PriceOverride 可在管理網站調整價格的道具（目前是自動釣魚機，由 game/autofish 的 init 設定）；沒有時用 Items 的 Price。
-var PriceOverride func(code string) (int, bool)
+// priceOverrides 可在管理網站調整價格的道具（自動釣魚機、加速沙漏，由各規則套件的 init 以 RegisterPrice 登記）。
+var priceOverrides = map[string]func() int{}
+
+// RegisterPrice 登記道具目前的價格（只在 init 呼叫）。
+func RegisterPrice(code string, price func() int) { priceOverrides[code] = price }
 
 // ItemOf 道具資料，價格是目前的價格（ItemPrice）。
 func ItemOf(code string) Item {
@@ -174,12 +178,10 @@ func ItemOf(code string) Item {
 	return it
 }
 
-// ItemPrice 道具目前的價格。
+// ItemPrice 道具目前的價格（有登記時讀設定，否則用 Items 的 Price）。
 func ItemPrice(code string) int {
-	if PriceOverride != nil {
-		if p, ok := PriceOverride(code); ok {
-			return p
-		}
+	if f, ok := priceOverrides[code]; ok {
+		return f()
 	}
 	return Items[code].Price
 }
@@ -187,6 +189,8 @@ func ItemPrice(code string) int {
 var Items = map[string]Item{
 	ItemFertilizer: {"化肥", 30, "consumable",
 		fmt.Sprintf("用於生長中的農田，剩餘生長時間減少 %d%%（每次種植限用一次）", FertilizerPct), []string{"化肥"}},
+	ItemHourglass: {"加速沙漏", 500, "consumable",
+		"在種子實驗室的研究槽（雜交、突變研究、育苗）或地下菇房使用，剩餘時間減半", []string{"沙漏", "加速沙漏"}},
 	ItemEarthworm: {"人工養殖蚯蚓", 300, "consumable",
 		fmt.Sprintf("使用時正在生長的作物剩餘時間 ×%v，之後 3 天內澆水的作物生長時間也 ×%v（效果期間再次使用可再延長 3 天）",
 			EarthwormGrowMultiplier, EarthwormGrowMultiplier),

@@ -78,8 +78,9 @@ func TestPanelQueryCounts(t *testing.T) {
 	}
 	t.Logf("SQL 次數：%v，合計 %d", counts, total)
 	// 上限（2026-11-12 優化後的次數＋少許餘裕；優化前合計 169、買 5 為 39）。增加查詢時先確認是否必要，再調整這裡
-	if total > 145 {
-		t.Errorf("SQL 合計 %d 條，超過上限 145", total)
+	// 2026-11-15 +5：農田狀態多讀一次庭院擺設（農田圖下方的裝飾），每次讀農場狀態 +1
+	if total > 150 {
+		t.Errorf("SQL 合計 %d 條，超過上限 150", total)
 	}
 	if n := counts["買 5"]; n > 26 {
 		t.Errorf("買 5：%d 條，超過上限 26（購買後的持有數量應與商店頁共用同一筆交易）", n)

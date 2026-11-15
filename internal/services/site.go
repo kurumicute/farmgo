@@ -26,6 +26,7 @@ import (
 	eventrules "farmgm/internal/game/events"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/fishing"
+	"farmgm/internal/game/hourglass"
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/news"
 	"farmgm/internal/game/pets"
@@ -1092,6 +1093,9 @@ func buildSeedLab(rareSeeds []string) map[string]any {
 		"dominant_pct": bpPct(c.DominantBP), "clone_herb": c.CloneHerb, "clone_minutes": c.CloneMinutes, "clone_fees": cloneFees,
 		"clone_max_batches": c.CloneMaxBatches, "clone_two_pct": bpPct(two), "clone_three_pct": bpPct(three),
 		"clone_herb_two_pct": bpPct(htwo), "clone_herb_three_pct": bpPct(hthree),
+		// 擴充與加速沙漏（2026-11-15）
+		"library_step": c.LibraryStep, "library_prices": c.LibraryPrices, "extra_slot_prices": c.ExtraSlotPrices,
+		"hourglass_cut_pct": hourglass.Current().CutPct,
 	}
 }
 
@@ -1102,8 +1106,13 @@ func autoFishGuide() map[string]any {
 	for i, capacity := range c.BasketCapacities {
 		upgrades = append(upgrades, map[string]any{"capacity": capacity, "price": c.BasketPrices[i]})
 	}
+	speed := []map[string]any{}
+	for i, m := range c.SpeedIntervals {
+		speed = append(speed, map[string]any{"minutes": m, "price": c.SpeedPrices[i]})
+	}
 	return map[string]any{"machine_price": c.MachinePrice, "interval_minutes": c.IntervalMinutes, "auto_sell": c.AutoSellFish,
-		"auto_sell_max_hours": c.AutoSellMaxHours, "basket_upgrades": upgrades}
+		"auto_sell_max_hours": c.AutoSellMaxHours, "basket_upgrades": upgrades, "consume_bait": c.ConsumeBait,
+		"bait_per_catch": c.BaitPerCatch, "speed": speed}
 }
 
 // buildMushroom 地下菇房（Go 版新增）：開放等級、生長時間、養分對應的作物與菇、木屑的稀有機率、菇與料理的售價。

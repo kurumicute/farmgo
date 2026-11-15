@@ -56,6 +56,89 @@ func (v LabSeedView) Label() string {
 	return s
 }
 
+// ---------- 擴充（2026-11-15，Go 版新增） ----------
+
+// ExpandSeedLibrary 種子庫擴充：每級增加 LibraryStep 格，價格逐級提高（管理網站調整）。
+func (s *GameService) ExpandSeedLibrary(ctx context.Context, playerID int64) (ActionResult, error) {
+	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
+		farm, err := s.lockedFarm(ctx, t, playerID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		lab, err := s.lockedLab(ctx, t, farm)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		before := seedlab.LibraryCap(lab.LibraryLevel)
+		price, ok := seedlab.NextLibrary(lab.LibraryLevel)
+		if !ok {
+			return ActionResult{}, gameerr.Validationf("種子庫已經擴充到最大的 %d 格了。", before)
+		}
+		if farm.Gold < price {
+			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：種子庫擴充需要 %d，目前只有 %d。", price, farm.Gold)
+		}
+		farm.Gold -= price
+		if err := s.saveFarm(ctx, t, farm, db.C("gold", farm.Gold)); err != nil {
+			return ActionResult{}, err
+		}
+		lab.LibraryLevel++
+		if _, err := t.Exec(ctx, "UPDATE seed_labs SET library_level = $2 WHERE farm_id = $1", farm.ID, lab.LibraryLevel); err != nil {
+			return ActionResult{}, err
+		}
+		after := seedlab.LibraryCap(lab.LibraryLevel)
+		if err := s.record(ctx, t, farm, rules.EvBuyItem, fmt.Sprintf("種子庫擴充：%d → %d 格，金幣 -%d", before, after, price),
+			rec{ItemCode: "seed_library", Quantity: 1, GoldDelta: -price}); err != nil {
+			return ActionResult{}, err
+		}
+		tail := "已經擴充到最大了。"
+		if p, ok := seedlab.NextLibrary(lab.LibraryLevel); ok {
+			tail = fmt.Sprintf("下一次擴充需要 %s 金幣。", numfmt.Comma(p))
+		}
+		return result(fmt.Sprintf("🌰 種子庫擴充：%d → **%d** 格，花費 %s 金幣。%s", before, after, numfmt.Comma(price), tail),
+			farm.Gold, -price, "", 0), nil
+	})
+}
+
+// BuyLabSlot 研究槽擴充：研究等級 Lv.3 後才能買，價格在管理網站調整。
+func (s *GameService) BuyLabSlot(ctx context.Context, playerID int64) (ActionResult, error) {
+	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
+		farm, err := s.lockedFarm(ctx, t, playerID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		lab, err := s.lockedLab(ctx, t, farm)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if lab.Level < seedlab.MaxLevel {
+			return ActionResult{}, gameerr.Validationf("研究等級到 Lv.%d 才能擴充研究槽（目前 Lv.%d）。", seedlab.MaxLevel, lab.Level)
+		}
+		before := seedlab.SlotsFor(lab.Level, lab.ExtraSlots)
+		price, ok := seedlab.NextExtraSlot(lab.ExtraSlots)
+		if !ok {
+			return ActionResult{}, gameerr.Validationf("研究槽已經擴充到最多的 %d 個了。", before)
+		}
+		if farm.Gold < price {
+			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：研究槽擴充需要 %d，目前只有 %d。", price, farm.Gold)
+		}
+		farm.Gold -= price
+		if err := s.saveFarm(ctx, t, farm, db.C("gold", farm.Gold)); err != nil {
+			return ActionResult{}, err
+		}
+		lab.ExtraSlots++
+		if _, err := t.Exec(ctx, "UPDATE seed_labs SET extra_slots = $2 WHERE farm_id = $1", farm.ID, lab.ExtraSlots); err != nil {
+			return ActionResult{}, err
+		}
+		after := seedlab.SlotsFor(lab.Level, lab.ExtraSlots)
+		if err := s.record(ctx, t, farm, rules.EvBuyItem, fmt.Sprintf("研究槽擴充：%d → %d 個，金幣 -%d", before, after, price),
+			rec{ItemCode: "lab_slot", Quantity: 1, GoldDelta: -price}); err != nil {
+			return ActionResult{}, err
+		}
+		return result(fmt.Sprintf("🔬 研究槽擴充：%d → **%d** 個，花費 %s 金幣。", before, after, numfmt.Comma(price)),
+			farm.Gold, -price, "", 0), nil
+	})
+}
+
 // LabJobView 研究槽中的工作。
 type LabJobView struct {
 	Slot       int
@@ -112,6 +195,10 @@ type SeedLabView struct {
 	CropNames                     map[string]string // 作物代碼 → 名稱（雜交表用）
 	// KnownHybrids 已發現的雜交配方（雜交作物代碼；取得過這種雜交作物的種子才算發現，2026-11-14 配方隱藏）
 	KnownHybrids map[string]bool
+	// 擴充（2026-11-15）：目前等級與下一級的價格（0 = 已滿級或還不能買；研究槽要研究 Lv.3）
+	LibraryLevel, ExtraSlots        int
+	NextLibraryPrice, NextSlotPrice int
+	Now                             time.Time // 讀取的時間（面板計算剩餘時間用）
 }
 
 // LabRecordView 一筆培育紀錄。
@@ -124,7 +211,8 @@ type LabRecordView struct {
 }
 
 // labMaterialOrder 實驗室用到的素材（畫面顯示順序）。
-var labMaterialOrder = []string{seedlab.MatCrystal, seedlab.MatResin, seedlab.MatHerb, seedlab.MatAncientCore}
+// 加速沙漏（2026-11-15）也一起讀，實驗室頁的研究槽可以直接使用。
+var labMaterialOrder = []string{seedlab.MatCrystal, seedlab.MatResin, seedlab.MatHerb, seedlab.MatAncientCore, balance.ItemHourglass}
 
 func labLocked(farm *models.Farm) error {
 	return gameerr.Validationf("種子實驗室在農場 Lv.%d 開放（目前 Lv.%d）。", seedlab.Unlock(), farm.Level)
@@ -281,8 +369,14 @@ func (s *GameService) SeedLab(ctx context.Context, playerID int64) (SeedLabView,
 		if err != nil || lab == nil {
 			return v, err
 		}
-		v.Built = true
-		v.LabLevel, v.Exp, v.NextExp, v.Slots = lab.Level, lab.Exp, seedlab.NextLevelExp(lab.Level), seedlab.Slots(lab.Level)
+		v.Built, v.Now = true, s.now()
+		v.LabLevel, v.Exp, v.NextExp, v.Slots = lab.Level, lab.Exp, seedlab.NextLevelExp(lab.Level), seedlab.SlotsFor(lab.Level, lab.ExtraSlots)
+		v.Capacity = seedlab.LibraryCap(lab.LibraryLevel)
+		v.LibraryLevel, v.ExtraSlots = lab.LibraryLevel, lab.ExtraSlots
+		v.NextLibraryPrice, _ = seedlab.NextLibrary(lab.LibraryLevel)
+		if lab.Level >= seedlab.MaxLevel {
+			v.NextSlotPrice, _ = seedlab.NextExtraSlot(lab.ExtraSlots)
+		}
 		if v.KnownHybrids, err = knownHybrids(ctx, t, farm.ID); err != nil {
 			return v, err
 		}
@@ -487,10 +581,23 @@ func (s *GameService) checkLibrary(ctx context.Context, t *db.Tx, farmID int64, 
 	if err != nil {
 		return err
 	}
-	if capacity := seedlab.Current().LibraryCapacity; n+incoming > capacity {
+	capacity, err := s.libraryCap(ctx, t, farmID)
+	if err != nil {
+		return err
+	}
+	if n+incoming > capacity {
 		return gameerr.Validationf("%s種子庫已滿（%d／%d），請先種下或分享一些種子。", who, n, capacity)
 	}
 	return nil
+}
+
+// libraryCap 這座農場的種子庫容量（含擴充；沒有實驗室時用基本上限）。
+func (s *GameService) libraryCap(ctx context.Context, t *db.Tx, farmID int64) (int, error) {
+	lab, err := labrepo.Get(ctx, t, farmID, false)
+	if err != nil || lab == nil {
+		return seedlab.LibraryCap(0), err
+	}
+	return seedlab.LibraryCap(lab.LibraryLevel), nil
 }
 
 func (s *GameService) addLabExp(ctx context.Context, t *db.Tx, lab *models.SeedLab, exp int) (string, error) {
@@ -500,7 +607,7 @@ func (s *GameService) addLabExp(ctx context.Context, t *db.Tx, lab *models.SeedL
 		return "", err
 	}
 	if level > before {
-		return fmt.Sprintf(" 🎉 研究等級提升到 Lv.%d，研究槽增加為 %d 個！", level, seedlab.Slots(level)), nil
+		return fmt.Sprintf(" 🎉 研究等級提升到 Lv.%d，研究槽增加為 %d 個！", level, seedlab.SlotsFor(level, lab.ExtraSlots)), nil
 	}
 	return "", nil
 }
@@ -576,7 +683,7 @@ func freeSlot(lab *models.SeedLab, jobs []models.LabJob) int {
 	for _, j := range jobs {
 		used[j.Slot] = true
 	}
-	for slot := 1; slot <= seedlab.Slots(lab.Level); slot++ {
+	for slot := 1; slot <= seedlab.SlotsFor(lab.Level, lab.ExtraSlots); slot++ {
 		if !used[slot] {
 			return slot
 		}
@@ -632,7 +739,7 @@ func (s *GameService) StartCross(ctx context.Context, playerID, motherID, father
 		}
 		slot := freeSlot(lab, jobs)
 		if slot == 0 {
-			return ActionResult{}, gameerr.Validationf("研究槽已滿（%d 個），請先領取或等待完成。", seedlab.Slots(lab.Level))
+			return ActionResult{}, gameerr.Validationf("研究槽已滿（%d 個），請先領取或等待完成。", seedlab.SlotsFor(lab.Level, lab.ExtraSlots))
 		}
 		// 依 ID 順序鎖定兩顆種子
 		first, second := min(motherID, fatherID), max(motherID, fatherID)
@@ -714,7 +821,7 @@ func (s *GameService) StartMutation(ctx context.Context, playerID, seedID int64,
 		}
 		slot := freeSlot(lab, jobs)
 		if slot == 0 {
-			return ActionResult{}, gameerr.Validationf("研究槽已滿（%d 個），請先領取或等待完成。", seedlab.Slots(lab.Level))
+			return ActionResult{}, gameerr.Validationf("研究槽已滿（%d 個），請先領取或等待完成。", seedlab.SlotsFor(lab.Level, lab.ExtraSlots))
 		}
 		seed, err := storedSeed(ctx, t, farm.ID, seedID)
 		if err != nil {
@@ -774,7 +881,7 @@ func (s *GameService) StartClone(ctx context.Context, playerID, seedID int64, ba
 		}
 		slot := freeSlot(lab, jobs)
 		if slot == 0 {
-			return ActionResult{}, gameerr.Validationf("研究槽已滿（%d 個），請先領取或等待完成。", seedlab.Slots(lab.Level))
+			return ActionResult{}, gameerr.Validationf("研究槽已滿（%d 個），請先領取或等待完成。", seedlab.SlotsFor(lab.Level, lab.ExtraSlots))
 		}
 		seed, err := storedSeed(ctx, t, farm.ID, seedID)
 		if err != nil {
@@ -889,8 +996,12 @@ func (s *GameService) collectClone(ctx context.Context, t *db.Tx, farm *models.F
 	}
 	line := fmt.Sprintf("🌱 #%d 育苗完成%s：%s種子 第 %d 代（%s）**+%d**，原本的種子也放回種子庫。", j.Slot, times,
 		s.cropName(ctx, t, seed.CropCode), seed.Generation, genes.Text(), total)
-	if n, err := labrepo.CountLibrary(ctx, t, farm.ID); err == nil && n > seedlab.Current().LibraryCapacity {
-		line += fmt.Sprintf("\n⚠️ 種子庫 %d／%d 顆已超過上限，先種下或分享一些種子才能再鑑定、育苗。", n, seedlab.Current().LibraryCapacity)
+	capacity, err := s.libraryCap(ctx, t, farm.ID)
+	if err != nil {
+		return "", 0, err
+	}
+	if n, err := labrepo.CountLibrary(ctx, t, farm.ID); err == nil && n > capacity {
+		line += fmt.Sprintf("\n⚠️ 種子庫 %d／%d 顆已超過上限，先種下或分享一些種子才能再鑑定、育苗。", n, capacity)
 	} else if err != nil {
 		return "", 0, err
 	}
@@ -1200,9 +1311,13 @@ func (s *GameService) labHarvest(ctx context.Context, t *db.Tx, farm *models.Far
 	if !seedlab.Success(seedlab.Current().InheritBP, s.LabRng()) {
 		return note, nil
 	}
+	capacity, err := s.libraryCap(ctx, t, farm.ID)
+	if err != nil {
+		return "", err
+	}
 	if n, err := labrepo.CountLibrary(ctx, t, farm.ID); err != nil {
 		return "", err
-	} else if n >= seedlab.Current().LibraryCapacity {
+	} else if n >= capacity {
 		return note + "（🧬 本來能取回種子，但種子庫已滿）", nil
 	}
 	breeder := farm.ID

@@ -19,6 +19,26 @@ func (e *env) autoFish(pid int64) AutoFishStatus {
 	return must[AutoFishStatus](e.t)(e.s.AutoFishing(e.ctx, pid))
 }
 
+// autoBait 買釣具並裝備，魚餌設成 qty 個（自動釣魚機每釣 1 條消耗 1 個）。
+func (e *env) autoBait(pid int64, qty int) {
+	e.t.Helper()
+	e.setGoldRecorded(pid, 10_000)
+	e.ok(e.f.BuyFishingGear(e.ctx, pid, "bamboo_rod", 1))
+	e.ok(e.f.BuyFishingGear(e.ctx, pid, "basic_line", 1))
+	e.ok(e.f.BuyFishingGear(e.ctx, pid, "worm_bait", 1))
+	e.setBait(pid, qty)
+}
+
+func (e *env) setBait(pid int64, qty int) {
+	e.t.Helper()
+	e.exec("UPDATE farm_fishing_gear SET quantity = $2 WHERE kind = 'bait' AND farm_id = (SELECT id FROM farms WHERE player_id = $1)", pid, qty)
+}
+
+func (e *env) baitLeft(pid int64) int {
+	e.t.Helper()
+	return e.scalar("SELECT quantity FROM farm_fishing_gear WHERE kind = 'bait' AND farm_id = (SELECT id FROM farms WHERE player_id = $1)", pid)
+}
+
 func (e *env) basketCount(pid int64) int {
 	e.t.Helper()
 	return e.scalar("SELECT count(*)::int FROM farm_fish f JOIN farms fa ON fa.id = f.farm_id WHERE fa.player_id = $1 "+
@@ -29,6 +49,7 @@ func TestAutoFisherFillsBasketAndPauses(t *testing.T) {
 	e := setup(t)
 	pid := e.player()
 	e.s.AutoFishRng = func() float64 { return 0.3 }
+	e.autoBait(pid, 1000)
 	e.setGoldRecorded(pid, 200_000)
 	// 價格讀設定（預設 10 萬）
 	if balance.ItemPrice(balance.ToolAutoFisher) != 100_000 {
@@ -44,11 +65,14 @@ func TestAutoFisherFillsBasketAndPauses(t *testing.T) {
 	// 12 分鐘：每 5 分鐘 1 條 → 2 條，剩下的 2 分鐘留到下一次
 	e.clock.Advance((12 * time.Minute).Seconds())
 	st := e.autoFish(pid)
-	if st.Caught != 2 || st.Sold != 0 || !strings.Contains(st.Note(), "釣到 2 條魚，已放進魚簍") || e.basketCount(pid) != 2 {
+	if st.Caught != 2 || st.Sold != 0 || !strings.Contains(st.Note(), "釣到 2 條魚（用掉 2 個魚餌），已放進魚簍") || e.basketCount(pid) != 2 {
 		t.Fatalf("%+v", st)
 	}
 	if n := e.scalar("SELECT count(*)::int FROM farm_fish WHERE auto AND session_id IS NULL"); n != 2 {
 		t.Fatal(n)
+	}
+	if st.BaitUsed != 2 || e.baitLeft(pid) != 998 || st.BaitLeft != 998 || !strings.Contains(st.Note(), "用掉 2 個魚餌") {
+		t.Fatalf("每條消耗 1 個魚餌：%+v", st)
 	}
 	e.clock.Advance((3 * time.Minute).Seconds())
 	if st := e.autoFish(pid); st.Caught != 1 {
@@ -85,6 +109,7 @@ func TestAutoFisherWithAutoSellerAndToggle(t *testing.T) {
 	e := setup(t)
 	pid := e.player()
 	e.s.AutoFishRng = func() float64 { return 0.3 }
+	e.autoBait(pid, 1000)
 	e.setGoldRecorded(pid, 300_000)
 	e.ok(e.s.BuyItem(e.ctx, pid, balance.ToolAutoFisher, 1))
 	e.ok(e.s.BuyItem(e.ctx, pid, balance.ToolAutoSeller, 1))
@@ -127,6 +152,58 @@ func TestAutoFisherWithAutoSellerAndToggle(t *testing.T) {
 	lb := must[fishrepo.Leaderboard](t)(e.f.FishingLeaderboard(e.ctx, nil))
 	if len(lb.Catches) != 0 || len(lb.Best) != 0 {
 		t.Fatalf("%+v", lb)
+	}
+	e.invariant()
+}
+
+// TestAutoFisherBaitAndSpeed 魚餌用完就暫停、不累積；加速後間隔變短（每級的間隔與價格可在管理網站調整）。
+func TestAutoFisherBaitAndSpeed(t *testing.T) {
+	e := setup(t)
+	pid := e.player()
+	e.s.AutoFishRng = func() float64 { return 0.3 }
+	e.setGoldRecorded(pid, 500_000)
+	e.ok(e.s.BuyItem(e.ctx, pid, balance.ToolAutoFisher, 1))
+	// 沒有裝備魚餌：暫停
+	e.clock.Advance((20 * time.Minute).Seconds())
+	if st := e.autoFish(pid); st.Caught != 0 || !st.NoBait || st.BaitName != "" || st.NextAt != nil {
+		t.Fatalf("%+v", st)
+	}
+	e.autoBait(pid, 3)
+	e.setGoldRecorded(pid, 500_000)
+	e.clock.Advance((time.Hour).Seconds()) // 沒有魚餌的期間不累積：從上次結算（剛才）開始算，1 小時可以釣 12 條但只有 3 個魚餌
+	st := e.autoFish(pid)
+	if st.Caught != 3 || st.BaitUsed != 3 || !st.NoBait || e.baitLeft(pid) != 0 {
+		t.Fatalf("%+v", st)
+	}
+	// 魚餌用完 1 小時後才買魚餌：買的時候先結算（沒有魚餌，不補算），之後從現在開始算
+	e.clock.Advance((time.Hour).Seconds())
+	e.ok(e.f.BuyFishingGear(e.ctx, pid, "worm_bait", 50))
+	if st := e.autoFish(pid); st.Caught != 0 {
+		t.Fatalf("魚餌用完的期間不累積：%+v", st)
+	}
+	e.clock.Advance((5 * time.Minute).Seconds())
+	if st := e.autoFish(pid); st.Caught != 1 || st.NoBait {
+		t.Fatalf("%+v", st)
+	}
+	// 加速：5 → 4 → 3 分鐘
+	if st := e.autoFish(pid); st.NextSpeedMinutes != 4 || st.NextSpeedPrice != 50_000 {
+		t.Fatalf("%+v", st)
+	}
+	gold := e.gold(pid)
+	r := e.ok(e.s.UpgradeAutoFisherSpeed(e.ctx, pid))
+	if !strings.Contains(r.Message, "每 5 分鐘 → 每 **4** 分鐘") || e.gold(pid) != gold-50_000 {
+		t.Fatal(r.Message)
+	}
+	e.clock.Advance((8 * time.Minute).Seconds())
+	if st := e.autoFish(pid); st.Caught != 2 || st.Interval != 4*time.Minute || st.SpeedLevel != 1 {
+		t.Fatalf("%+v", st)
+	}
+	e.ok(e.s.UpgradeAutoFisherSpeed(e.ctx, pid))
+	_, err := e.s.UpgradeAutoFisherSpeed(e.ctx, pid)
+	wantMsg(t, err, gameerr.Validation, "已經是最快的 3 分鐘")
+	e.clock.Advance((9 * time.Minute).Seconds())
+	if st := e.autoFish(pid); st.Caught != 3 || st.NextSpeedMinutes != 0 {
+		t.Fatalf("%+v", st)
 	}
 	e.invariant()
 }

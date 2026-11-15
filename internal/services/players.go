@@ -473,10 +473,14 @@ func (s *GameService) status(ctx context.Context, t *db.Tx, farm *models.Farm, p
 	if err != nil {
 		return FarmStatus{}, err
 	}
+	placed, err := placedDecor(ctx, t, farm.ID)
+	if err != nil {
+		return FarmStatus{}, err
+	}
 	return FarmStatus{
 		FarmID: farm.ID, PlayerID: farm.PlayerID, HomeGroupID: farm.HomeGroupID, PlayerName: playerName,
 		Name: farm.Name, Level: farm.Level, Gold: farm.Gold, WarehouseUsed: used,
-		WarehouseCapacity: farm.WarehouseCapacity, Plots: infos, Now: now, Title: farm.Title, Pets: levels,
+		WarehouseCapacity: farm.WarehouseCapacity, Plots: infos, Now: now, Title: farm.Title, Pets: levels, Decor: placed,
 	}, nil
 }
 

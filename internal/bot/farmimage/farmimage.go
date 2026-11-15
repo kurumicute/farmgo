@@ -92,6 +92,7 @@ type manifest struct {
 	Goods     map[string]string `json:"goods"`
 	Buildings map[string]string `json:"buildings"`
 	Scenes    map[string]string `json:"scenes"`
+	DecorBand decorBand         `json:"decor_band"` // 庭院擺飾區（Go 版新增）
 
 	// 依 JSON 順序展開（Python dict 的走訪順序）
 	petSprites []petSprite
@@ -575,9 +576,9 @@ func FarmPNG(plots []Plot, pets map[string]int) ([]byte, error) {
 	return encodePaletteDynamic(canvas, PanelColors)
 }
 
-// FarmPNGFromStatus 農田圖片。
+// FarmPNGFromStatus 農田圖片（有擺裝飾時下方加庭院擺飾區）。
 func FarmPNGFromStatus(st services.FarmStatus) ([]byte, error) {
-	return FarmPNG(PlotsFromStatus(st), st.Pets)
+	return FarmPNGWithDecor(PlotsFromStatus(st), st.Pets, st.Decor)
 }
 
 // presetWithPetsPNG 預先產生的農田圖加上寵物（寵物組合只有幾種，快取後不必每次重新合成）。
