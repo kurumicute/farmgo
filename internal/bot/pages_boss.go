@@ -636,7 +636,7 @@ func (p *Panel) buildBossLiveBoard(_ context.Context, data any) (*ui.Embed, erro
 func (p *Panel) boardEmbed(b *services.BossLeaderboard, titles map[int64]string, title, head string, image bool) *ui.Embed {
 	var lines []string
 	for _, r := range b.Rows {
-		name := r.PlayerName
+		name := r.FarmName
 		if badge := titles[r.PlayerID]; badge != "" {
 			name = fmt.Sprintf("%s〔%s〕", name, badge)
 		}

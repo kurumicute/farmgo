@@ -196,6 +196,7 @@ type BossRankRow struct {
 	Rank       int       `db:"-" json:"rank"`
 	PlayerID   int64     `db:"player_id" json:"player_id"`
 	PlayerName string    `db:"player_name" json:"player_name"`
+	FarmName   string    `db:"farm_name" json:"-"` // 遊戲內排行榜顯示用（玩家改名後跟著更新）
 	Points     int       `db:"points" json:"points"`
 	Quantity   int       `db:"quantity" json:"quantity"`
 	FirstAt    time.Time `db:"first_at" json:"first_at"`
@@ -205,9 +206,11 @@ type BossRankRow struct {
 // BossRanking 個人貢獻排行（積分高者在前；同分時先捐獻者在前），名次不並列。
 func BossRanking(ctx context.Context, t *db.Tx, eventID int64) ([]BossRankRow, error) {
 	rows, err := db.QueryStructs[BossRankRow](ctx, t, `SELECT c.player_id, p.display_name AS player_name,
+		coalesce(f.name, p.display_name) AS farm_name,
 		sum(c.points)::bigint AS points, sum(c.quantity)::bigint AS quantity, min(c.created_at) AS first_at, count(*) AS donations
-		FROM world_boss_contributions c JOIN players p ON p.id = c.player_id WHERE c.event_id = $1
-		GROUP BY c.player_id, p.display_name ORDER BY sum(c.points) DESC, min(c.created_at), c.player_id`, eventID)
+		FROM world_boss_contributions c JOIN players p ON p.id = c.player_id LEFT JOIN farms f ON f.player_id = c.player_id
+		WHERE c.event_id = $1
+		GROUP BY c.player_id, p.display_name, f.name ORDER BY sum(c.points) DESC, min(c.created_at), c.player_id`, eventID)
 	for i := range rows {
 		rows[i].Rank = i + 1
 	}
@@ -854,6 +857,14 @@ func myBossStatus(ctx context.Context, t *db.Tx, ev *models.WorldBossEvent, play
 	}
 	if p != nil {
 		st.PlayerName = p.DisplayName
+	}
+	// 顯示農場名稱（玩家改名後跟著更新）；沒有農場時維持玩家名稱
+	farmName, ok, err := db.QueryValue[string](ctx, t, "SELECT name FROM farms WHERE player_id = $1", playerID)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		st.PlayerName = farmName
 	}
 	if mine != nil {
 		rank := mine.Rank

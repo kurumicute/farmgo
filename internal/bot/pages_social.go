@@ -277,7 +277,8 @@ func playerRows(rows []leaderboard.Row) []boardRow {
 	out := make([]boardRow, len(rows))
 	for i, r := range rows {
 		id := r.PlayerID
-		out[i] = boardRow{rank: r.Rank, playerID: &id, name: r.PlayerName, score: r.Score, soldQty: r.SoldQuantity, income: r.SalesIncome}
+		// 排行榜顯示農場名稱（玩家可以改名；players.display_name 是註冊時的名稱，不會更新）
+		out[i] = boardRow{rank: r.Rank, playerID: &id, name: r.FarmName, score: r.Score, soldQty: r.SoldQuantity, income: r.SalesIncome}
 	}
 	return out
 }
@@ -613,7 +614,7 @@ func competitionBoardText(c services.CompetitionDetail) string {
 	}
 	lines = append(lines, "個人貢獻：")
 	for i, pp := range c.TopPlayers {
-		lines = append(lines, fmt.Sprintf("  %d. %s（%s）：%d 分", i+1, pp.PlayerName, pp.GroupName, pp.Points))
+		lines = append(lines, fmt.Sprintf("  %d. %s（%s）：%d 分", i+1, pp.FarmName, pp.GroupName, pp.Points))
 	}
 	if len(c.TopPlayers) == 0 {
 		lines = append(lines, "  （尚無貢獻）")

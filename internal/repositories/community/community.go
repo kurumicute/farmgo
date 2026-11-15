@@ -187,6 +187,7 @@ func FinalRanking(ctx context.Context, t *db.Tx, competitionID int64) ([]Ranking
 type PlayerPoints struct {
 	PlayerID   int64  `db:"player_id" json:"player_id"`
 	PlayerName string `db:"player_name" json:"player_name"`
+	FarmName   string `db:"farm_name" json:"-"` // 遊戲內排行顯示用（玩家改名後跟著更新）
 	GroupID    int64  `db:"group_id" json:"group_id"`
 	GroupName  string `db:"group_name" json:"group_name"`
 	Points     int    `db:"points" json:"points"`
@@ -195,13 +196,14 @@ type PlayerPoints struct {
 // CompetitionPlayerPoints limit 預設 20。
 func CompetitionPlayerPoints(ctx context.Context, t *db.Tx, competitionID int64, limit int) ([]PlayerPoints, error) {
 	return db.QueryStructs[PlayerPoints](ctx, t, `
-		SELECT p.id AS player_id, p.display_name AS player_name, g.id AS group_id, g.name AS group_name,
-			sum(c.points) AS points
+		SELECT p.id AS player_id, p.display_name AS player_name, coalesce(f.name, p.display_name) AS farm_name,
+			g.id AS group_id, g.name AS group_name, sum(c.points) AS points
 		FROM competition_contributions c
 		JOIN players p ON p.id = c.player_id
+		LEFT JOIN farms f ON f.player_id = p.id
 		JOIN groups g ON g.id = c.group_id
 		WHERE c.competition_id = $1
-		GROUP BY p.id, p.display_name, g.id, g.name
+		GROUP BY p.id, p.display_name, f.name, g.id, g.name
 		ORDER BY sum(c.points) DESC, p.id LIMIT $2`, competitionID, limit)
 }
 

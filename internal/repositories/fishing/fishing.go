@@ -364,14 +364,14 @@ func LastShareAt(ctx context.Context, t *db.Tx, fishID int64) (*time.Time, error
 
 // CatchRow 捕獲數排行的一列。
 type CatchRow struct {
-	PlayerName string `json:"player_name"`
+	PlayerName string `json:"player_name"` // 農場名稱（玩家改名後跟著更新）
 	Count      int    `json:"count"`
 	Legendary  int    `json:"legendary"`
 }
 
 // BestRow 最高價值魚排行的一列。
 type BestRow struct {
-	PlayerName string `json:"player_name"`
+	PlayerName string `json:"player_name"` // 農場名稱
 	FishName   string `json:"fish_name"`
 	Emoji      string `json:"emoji"`
 	Rarity     string `json:"rarity"`
@@ -393,9 +393,10 @@ func LeaderboardOf(ctx context.Context, t *db.Tx, groupID *int64, limit int) (Le
 		scope = " JOIN group_members gm ON gm.player_id = fa.player_id AND gm.group_id = $2"
 		args = append(args, *groupID)
 	}
-	rows, err := t.Query(ctx, "SELECT p.display_name, count(f.id), count(f.id) FILTER (WHERE f.rarity = 'legendary') "+
-		"FROM farm_fish f JOIN farms fa ON fa.id = f.farm_id JOIN players p ON p.id = fa.player_id"+scope+
-		" WHERE NOT f.auto GROUP BY p.id, p.display_name ORDER BY count(f.id) DESC, p.id LIMIT $1", args...)
+	// 排行榜顯示農場名稱（players.display_name 是註冊時的名稱，不會跟著改名更新）
+	rows, err := t.Query(ctx, "SELECT fa.name, count(f.id), count(f.id) FILTER (WHERE f.rarity = 'legendary') "+
+		"FROM farm_fish f JOIN farms fa ON fa.id = f.farm_id"+scope+
+		" WHERE NOT f.auto GROUP BY fa.player_id, fa.name ORDER BY count(f.id) DESC, fa.player_id LIMIT $1", args...)
 	if err != nil {
 		return out, err
 	}
@@ -411,10 +412,10 @@ func LeaderboardOf(ctx context.Context, t *db.Tx, groupID *int64, limit int) (Le
 	if err := rows.Err(); err != nil {
 		return out, err
 	}
-	rows, err = t.Query(ctx, "SELECT p.display_name, ft.name, ft.emoji, r.rarity, r.weight_g, r.price FROM ("+
+	rows, err = t.Query(ctx, "SELECT fa.name, ft.name, ft.emoji, r.rarity, r.weight_g, r.price FROM ("+
 		"SELECT farm_id, fish_code, weight_g, price, rarity, row_number() OVER (PARTITION BY farm_id "+
 		"ORDER BY price DESC, weight_g DESC, id) AS rn FROM farm_fish WHERE NOT auto) r "+
-		"JOIN farms fa ON fa.id = r.farm_id JOIN players p ON p.id = fa.player_id "+
+		"JOIN farms fa ON fa.id = r.farm_id "+
 		"JOIN fish_types ft ON ft.code = r.fish_code"+scope+
 		" WHERE r.rn = 1 ORDER BY r.price DESC, r.weight_g DESC LIMIT $1", args...)
 	if err != nil {

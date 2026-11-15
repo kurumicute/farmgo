@@ -451,7 +451,14 @@ func TestFishingLeaderboardAndCodex(t *testing.T) {
 	e.equipStarter(pid, 10)
 	e.landOne(pid)
 	board := must[fishrepo.Leaderboard](t)(e.f.FishingLeaderboard(e.ctx, &home))
-	if board.Catches[0].PlayerName != "阿明" || board.Catches[0].Count != 1 || board.Best[0].PlayerName != "阿明" {
+	if board.Catches[0].PlayerName != "阿明的農場" || board.Catches[0].Count != 1 || board.Best[0].PlayerName != "阿明的農場" {
+		t.Fatalf("%+v", board)
+	}
+	// 排行榜顯示農場名稱：改名後跟著更新
+	e.setGoldRecorded(pid, e.gold(pid)+1000)
+	e.ok(e.s.RenameFarm(e.ctx, pid, "海風漁場"))
+	board = must[fishrepo.Leaderboard](t)(e.f.FishingLeaderboard(e.ctx, &home))
+	if board.Catches[0].PlayerName != "海風漁場" || board.Best[0].PlayerName != "海風漁場" {
 		t.Fatalf("%+v", board)
 	}
 	empty := e.group("空群組")
