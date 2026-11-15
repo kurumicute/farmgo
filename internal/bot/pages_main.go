@@ -576,6 +576,7 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 type backpackData struct {
 	backpack services.Backpack
 	fish     services.FishBasket
+	seller   services.AutoSellerView // 自動販售機的販售項目（沒有自動販售機時 Owned 為 false）
 }
 
 func (p *Panel) loadBackpack(ctx context.Context) (any, error) {
@@ -584,7 +585,16 @@ func (p *Panel) loadBackpack(ctx context.Context) (any, error) {
 		return nil, err
 	}
 	fish, err := p.svc().FishBasket(ctx, p.playerID)
-	return backpackData{bp, fish}, err
+	if err != nil {
+		return nil, err
+	}
+	d := backpackData{backpack: bp, fish: fish}
+	for _, t := range bp.Tools {
+		if t.Code == balance.ToolAutoSeller && t.Owned {
+			d.seller, err = p.svc().AutoSeller(ctx, p.playerID)
+		}
+	}
+	return d, err
 }
 
 func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
@@ -677,6 +687,42 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 			e.AddField("💱 兌換假幣", fmt.Sprintf("持有 **%d** 個，1 個 = **%d** 金\n👇 選擇兌換數量", coins, exploration.FakeCoinRate()), false)
 			p.quantityButtons(2)
 		}
+	}
+	if sv := d.seller; sv.Owned {
+		// 自動販售機的販售項目（2026-11-15）：勾選要自動賣的東西，沒勾的作物收成後放進倉庫、魚放進魚簍
+		var picked []string
+		for _, o := range sv.Options {
+			if o.Selected {
+				picked = append(picked, o.Name)
+			}
+		}
+		text := "全部都賣"
+		if !sv.All {
+			text = "只賣 " + strings.Join(picked, "、")
+		}
+		if !sv.Enabled {
+			text += "（目前停用）"
+		}
+		e.AddField("🏧 自動販售機販售項目", runes(text, 1000)+"\n👇 用下方選單勾選要自動賣的東西", false)
+		opts := sv.Options[:min(len(sv.Options), ui.MaxOptions)]
+		multi := &ui.Select{Placeholder: "🏧 勾選自動販售機要賣的東西（可複選）…", Row: 3, MinValues: 1, MaxValues: len(opts),
+			OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
+				p.act(ctx, it, p.call("set_auto_seller_items", func(ctx context.Context) (services.ActionResult, error) {
+					return p.svc().SetAutoSellerItems(ctx, p.playerID, values)
+				}), actOpts{})
+				return nil
+			}}
+		for _, o := range opts {
+			emoji := cropEmoji(o.Code)
+			switch o.Code {
+			case services.AutoSellHybrid:
+				emoji = "🧬"
+			case services.AutoSellFish:
+				emoji = "🐟"
+			}
+			multi.Options = append(multi.Options, ui.SelectOption{Label: o.Name, Value: o.Code, Emoji: emoji, Default: o.Selected})
+		}
+		p.View.Add(multi)
 	}
 	p.navBack(4)
 	return e, nil

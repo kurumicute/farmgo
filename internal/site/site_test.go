@@ -574,8 +574,8 @@ func TestGuideHasRuinsNewsSeasonsAndFishLimits(t *testing.T) {
 	if num(gold[0]) != news.TreasureGoldLow || num(gold[1]) != news.TreasureGoldHigh || !strings.Contains("春夏秋冬", m(g["seasons"])["current"].(string)) {
 		t.Fatal(g["news"], g["seasons"])
 	}
-	if !strings.Contains(rec.Body.String(), `"months":{"春":"3–5 月","夏":"6–8 月","秋":"9–11 月","冬":"12–2 月"}`) {
-		t.Fatal("months 順序")
+	if !strings.Contains(rec.Body.String(), `"order":["❄️冬","🌸春","☀️夏","🍂秋"]`) || num(m(g["seasons"])["rotation_days"]) != 14 {
+		t.Fatal("季節輪替", g["seasons"])
 	}
 	if find(g["crops"], "name", "小麥")["season_text"] != "" || find(g["crops"], "name", "玉米")["season_text"] != "🌸☀️春、夏季限定" {
 		t.Fatal("season_text")

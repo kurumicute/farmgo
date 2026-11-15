@@ -189,7 +189,7 @@ func TestShopKeepsSelectionAndShowsHoldings(t *testing.T) {
 	e := setup(t)
 	p := e.makePlayer(alice, guildA, "玩家")
 	p.goPage("shop")
-	contains(t, p.Text, "持有", "🧪", "✦")
+	contains(t, p.Text, "持有", "🌰 種子", "✦")
 	p.choose("選擇要買的商品", "seed:carrot")
 	if got := p.defaults(optLabel); !slices.Equal(got, []string{"胡蘿蔔種子"}) {
 		t.Fatal(got)
@@ -213,8 +213,14 @@ func TestShopSingleSelectAndReadablePrices(t *testing.T) {
 	if len(selects) != 1 {
 		t.Fatal(len(selects))
 	}
+	// 2026-11-15 起商店分類：種子、道具、工具與倉庫分開
 	values := p.options("選擇要買的商品")
-	if !slices.Contains(values, "seed:wheat") || !slices.Contains(values, "item:fertilizer") {
+	if !slices.Contains(values, "seed:wheat") || slices.Contains(values, "item:fertilizer") {
+		t.Fatal(values)
+	}
+	p.click("道具")
+	contains(t, p.Text, "🧪 道具")
+	if values := p.options("選擇要買的商品"); !slices.Contains(values, "item:fertilizer") || slices.Contains(values, "seed:wheat") {
 		t.Fatal(values)
 	}
 	p.choose("選擇要買的商品", "item:fertilizer")
@@ -238,7 +244,9 @@ func TestShopLuxuryConfirmAndWarehouse(t *testing.T) {
 	gold := 2_000_000
 	must[services.FarmValues](t)(e.admin.SetFarmValues(e.ctx, "root", p.panel.playerID, &gold, nil))
 	p.goPage("shop")
-	contains(t, p.Text, "收成 ×2 🌾小麥", "🎒 持有 **0**", "🔒 未擁有")
+	contains(t, p.Text, "收成 ×2 🌾小麥", "🎒 持有 **0**")
+	p.click("工具與倉庫")
+	contains(t, p.Text, "🔒 未擁有", "📦 倉庫")
 	p.choose("選擇要買的商品", "item:auto_seller")
 	price := balance.Items[balance.ToolAutoSeller].Price
 	if got := p.labels()[0]; got != fmt.Sprintf("確認購買（%s 金）", money(price)) {
@@ -275,5 +283,31 @@ func TestPanelRecordsOpenGotoAndAct(t *testing.T) {
 	}
 	if !acted {
 		t.Fatal(names)
+	}
+}
+
+// TestShopSeedPages 商店種子分頁（2026-11-15）：每頁 6 種，選單只列這一頁的種子；換分類時回到第 1 頁。
+func TestShopSeedPages(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "玩家")
+	p.goPage("shop")
+	first := p.options("選擇要買的商品")
+	if len(first) != shopSeedsPerPage {
+		t.Fatal(first)
+	}
+	contains(t, p.Text, "🌰 種子（第 1/")
+	p.click("種子下一頁")
+	contains(t, p.Text, "🌰 種子（第 2/")
+	second := p.options("選擇要買的商品")
+	if len(second) == 0 || slices.Contains(second, first[0]) {
+		t.Fatal(second)
+	}
+	p.choose("選擇要買的商品", second[0])
+	contains(t, p.Text, "已選擇", "🌰 種子（第 2/")
+	p.click("道具")
+	p.click("種子")
+	contains(t, p.Text, "🌰 種子（第 1/")
+	if strings.Contains(p.Text, "已選擇") {
+		t.Fatal("換分類時取消選取")
 	}
 }

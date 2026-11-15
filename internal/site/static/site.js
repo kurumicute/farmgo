@@ -154,7 +154,9 @@
   function renderSeasons(g) {
     const se = g.seasons;
     setText("g-season-now", `現在是${se.current}季`);
-    if (se.months) setText("g-season-months", Object.entries(se.months).map(([k, v]) => `${k} ${v}`).join("、"));
+    if (se.order) setText("g-season-months", se.order.join(" → "));
+    if (se.rotation_days != null) setText("g-season-days", String(se.rotation_days));
+    if (se.next_text) setText("g-season-next", `（${se.next_text}）`);
     if (se.off_season_sell_pct != null) {
       setText("g-offseason", String(se.off_season_sell_pct));
       setText("g-offseason-sell", String(se.off_season_sell_pct));

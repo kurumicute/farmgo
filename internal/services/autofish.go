@@ -165,7 +165,7 @@ func (s *GameService) settleAutoFish(ctx context.Context, t *db.Tx, farm *models
 	if last.After(now) {
 		last = now
 	}
-	if st.AutoSell, err = s.toolEnabled(ctx, t, farm.ID, balance.ToolAutoSeller); err != nil {
+	if st.AutoSell, err = s.autoSells(ctx, t, farm.ID, AutoSellFish); err != nil { // 販售項目沒勾魚時放進魚簍
 		return st, err
 	}
 	st.AutoSell = st.AutoSell && cfg.AutoSellFish

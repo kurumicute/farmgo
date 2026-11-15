@@ -1,7 +1,8 @@
 // Package seasons 季節與時段限定（純規則）：部分作物只能在特定季節種植，部分魚只在特定季節或時段釣得到。
 // 對應 Python app/game/seasons.py。
 //
-// 季節依台灣時間的真實月份（使用者選擇）：春 3–5 月、夏 6–8 月、秋 9–11 月、冬 12–2 月。
+// 季節輪替（2026-11-15 使用者要求，原本依台灣真實月份）：從 Epoch（2026-11-15 00:00 台灣時間）的冬季開始，
+// 每 RotationDays 天依序換成冬 → 春 → 夏 → 秋，再回到冬。
 // 時段也是台灣時間的整點區間 [開始, 結束)，可以跨午夜（例如 18–6 = 晚上 6 點到早上 6 點）。
 // 沒有設定（nil）就是不限制。作物只在「種下」的當下檢查，種下後過了季節照樣會長大、收成；
 // 魚在「拋竿」的當下檢查。
@@ -23,9 +24,25 @@ var SeasonNames = map[string]string{"spring": "春", "summer": "夏", "autumn": 
 
 var SeasonEmoji = map[string]string{"spring": "🌸", "summer": "☀️", "autumn": "🍂", "winter": "❄️"}
 
-var monthSeason = map[time.Month]string{
-	3: "spring", 4: "spring", 5: "spring", 6: "summer", 7: "summer", 8: "summer",
-	9: "autumn", 10: "autumn", 11: "autumn", 12: "winter", 1: "winter", 2: "winter",
+// RotationDays 每個季節持續的天數。
+const RotationDays = 14
+
+// Epoch 第一個冬季開始的時間（台灣時間 2026-11-15 00:00）；之前的時間也依同樣的週期往回推算。
+var Epoch = time.Date(2026, 11, 15, 0, 0, 0, 0, clock.TaipeiTZ)
+
+// Rotation 輪替順序（從 Epoch 的冬季開始）。
+var Rotation = []string{"winter", "spring", "summer", "autumn"}
+
+const period = RotationDays * 24 * time.Hour
+
+// periodIndex now 所在的季節是 Epoch 之後的第幾個（Epoch 之前為負數）。
+func periodIndex(now time.Time) int {
+	d := now.Sub(Epoch)
+	n := int(d / period)
+	if d < 0 && d%period != 0 {
+		n--
+	}
+	return n
 }
 
 // 預設限定（作物與 0033 的魚由 Migration 0034 寫入，0035 的特殊魚由 0035 寫入，數值相同）
@@ -80,7 +97,13 @@ var FishLimits = map[string]FishLimit{
 }
 
 func SeasonOf(now time.Time) string {
-	return monthSeason[now.In(clock.TaipeiTZ).Month()]
+	n := len(Rotation)
+	return Rotation[((periodIndex(now)%n)+n)%n]
+}
+
+// NextChange 下一次換季的時間。
+func NextChange(now time.Time) time.Time {
+	return Epoch.Add(time.Duration(periodIndex(now)+1) * period)
 }
 
 // InHours start／end 為 nil 或相同時不限制。
@@ -137,8 +160,10 @@ func Describe(seasons []string, start, end *int) string {
 }
 
 func NowText(now time.Time) string {
-	s := SeasonOf(now)
-	return fmt.Sprintf("%s 現在是%s季　🕒 台灣時間 %s", SeasonEmoji[s], SeasonNames[s], now.In(clock.TaipeiTZ).Format("15:04"))
+	s, next := SeasonOf(now), NextChange(now)
+	ns := SeasonOf(next)
+	return fmt.Sprintf("%s 現在是%s季（%s 換成%s%s季）　🕒 台灣時間 %s", SeasonEmoji[s], SeasonNames[s],
+		next.In(clock.TaipeiTZ).Format("1/2"), SeasonEmoji[ns], SeasonNames[ns], now.In(clock.TaipeiTZ).Format("15:04"))
 }
 
 // Validate 管理網站送來的設定：季節清單（空 = 不限）、開始與結束整點（0–23，兩個都填或都不填）。

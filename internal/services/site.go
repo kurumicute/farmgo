@@ -734,13 +734,15 @@ func buildNews() map[string]any {
 }
 
 func buildSeasons(now time.Time) map[string]any {
-	months := NewOrderedMap()
-	months.Set("春", "3–5 月")
-	months.Set("夏", "6–8 月")
-	months.Set("秋", "9–11 月")
-	months.Set("冬", "12–2 月")
+	order := make([]string, len(seasons.Rotation))
+	for i, s := range seasons.Rotation {
+		order[i] = seasons.SeasonEmoji[s] + seasons.SeasonNames[s]
+	}
+	next := seasons.NextChange(now)
+	// 季節每 rotation_days 天輪替一次（2026-11-15 起，原本依台灣月份）
 	return map[string]any{"now_text": seasons.NowText(now), "current": seasons.SeasonNames[seasons.SeasonOf(now)],
-		"months": months,
+		"rotation_days": seasons.RotationDays, "order": order, "next_at": next,
+		"next_text": next.In(clock.TaipeiTZ).Format("1/2") + " 換成" + seasons.SeasonNames[seasons.SeasonOf(next)] + "季",
 		// 非當季的作物售價加成（Go 版新增；商店只賣當季可以種的種子）
 		"off_season_sell_pct": seasons.OffSeasonSellPct - 100}
 }

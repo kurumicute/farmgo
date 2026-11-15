@@ -506,7 +506,7 @@ func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.
 	}
 	catBonus := petrules.BonusQuantity(quantity, petrules.BonusPct(cat), s.PetRng())
 	quantity += catBonus
-	autoSell, err := s.toolEnabled(ctx, t, farm.ID, balance.ToolAutoSeller)
+	autoSell, err := s.autoSells(ctx, t, farm.ID, autoSellKey(crop.Code)) // 販售項目沒勾的作物放進倉庫
 	if err != nil {
 		return "", 0, "", err
 	}

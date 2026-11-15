@@ -470,7 +470,7 @@
                 <label>排序 <input id="ftf-sort" type="number" min="0" max="100000" step="1" value="0"></label>
                 <label>說明 <input id="ftf-desc" type="text" maxlength="200"></label>
                 <fieldset id="ftf-baits" class="checks wide"><legend>指定魚餌（都不勾 = 任何魚餌都釣得到）</legend></fieldset>
-                <fieldset class="checks wide"><legend>季節限定（台灣月份；都不勾 = 四季都可以）</legend><label><input id="ftf-s-spring" type="checkbox"> 🌸 春（3–5 月）</label><label><input id="ftf-s-summer" type="checkbox"> ☀️ 夏（6–8 月）</label><label><input id="ftf-s-autumn" type="checkbox"> 🍂 秋（9–11 月）</label><label><input id="ftf-s-winter" type="checkbox"> ❄️ 冬（12–2 月）</label></fieldset>
+                <fieldset class="checks wide"><legend>季節限定（每 14 天輪替：冬→春→夏→秋；都不勾 = 四季都可以）</legend><label><input id="ftf-s-spring" type="checkbox"> 🌸 春</label><label><input id="ftf-s-summer" type="checkbox"> ☀️ 夏</label><label><input id="ftf-s-autumn" type="checkbox"> 🍂 秋</label><label><input id="ftf-s-winter" type="checkbox"> ❄️ 冬</label></fieldset>
                 <label>時段開始（台灣時間 0–23 點，留空 = 不限） <input id="ftf-hs" type="number" min="0" max="23" step="1"></label>
                 <label>時段結束（不含；可跨午夜，例如 18 → 6） <input id="ftf-he" type="number" min="0" max="23" step="1"></label>
               </div>
@@ -1064,7 +1064,7 @@
                 <label class="req">售價 <input id="crf-sell" type="number" min="0" step="1" value="15" required></label>
                 <label class="req">珍稀變種代碼 <input id="crf-vcode" type="text" maxlength="32" placeholder="golden_pumpkin" required pattern="[a-z][a-z0-9_]{1,31}" data-pattern-hint="小寫英文字母開頭，只能包含小寫字母、數字與底線，2–32 字"></label>
                 <label class="req">珍稀變種名稱 <input id="crf-vname" type="text" maxlength="32" required></label>
-                <fieldset class="checks wide"><legend>季節限定（台灣月份；都不勾 = 四季都可以）</legend><label><input id="crf-s-spring" type="checkbox"> 🌸 春（3–5 月）</label><label><input id="crf-s-summer" type="checkbox"> ☀️ 夏（6–8 月）</label><label><input id="crf-s-autumn" type="checkbox"> 🍂 秋（9–11 月）</label><label><input id="crf-s-winter" type="checkbox"> ❄️ 冬（12–2 月）</label></fieldset>
+                <fieldset class="checks wide"><legend>季節限定（每 14 天輪替：冬→春→夏→秋；都不勾 = 四季都可以）</legend><label><input id="crf-s-spring" type="checkbox"> 🌸 春</label><label><input id="crf-s-summer" type="checkbox"> ☀️ 夏</label><label><input id="crf-s-autumn" type="checkbox"> 🍂 秋</label><label><input id="crf-s-winter" type="checkbox"> ❄️ 冬</label></fieldset>
                 <label>時段開始（台灣時間 0–23 點，留空 = 不限） <input id="crf-hs" type="number" min="0" max="23" step="1"></label>
                 <label>時段結束（不含；可跨午夜，例如 18 → 6） <input id="crf-he" type="number" min="0" max="23" step="1"></label>
               </div>

@@ -16,15 +16,25 @@ func ip(v int) *int { return &v }
 
 // 移植自 tests/test_seasons.py::test_rules_real_seasons_and_hours
 func TestRulesRealSeasonsAndHours(t *testing.T) {
+	// 2026-11-15 起每 14 天輪替：冬 → 春 → 夏 → 秋（之前的時間往回推算）
 	var got []string
-	for _, m := range []int{3, 6, 9, 12, 2} {
-		got = append(got, SeasonOf(taipei(m, 1, 12)))
+	for _, d := range []int{15, 28, 29, 13 + 30, 27 + 30, 10 + 61, 14 + 30} { // 11/15、11/28、11/29、12/13、12/27、1/10、12/14
+		got = append(got, SeasonOf(taipei(11, d, 12)))
 	}
-	if !reflect.DeepEqual(got, []string{"spring", "summer", "autumn", "winter", "winter"}) {
+	if !reflect.DeepEqual(got, []string{"winter", "winter", "spring", "summer", "autumn", "winter", "summer"}) {
 		t.Fatal(got)
 	}
-	if SeasonOf(time.Date(2026, 2, 28, 16, 0, 0, 0, time.UTC)) != "spring" { // 台灣時間 3/1 00:00
-		t.Fatal("3/1")
+	if SeasonOf(time.Date(2026, 11, 28, 15, 59, 0, 0, time.UTC)) != "winter" || SeasonOf(time.Date(2026, 11, 28, 16, 0, 0, 0, time.UTC)) != "spring" {
+		t.Fatal("台灣時間 11/29 00:00 換季")
+	}
+	if SeasonOf(taipei(11, 14, 12)) != "autumn" || SeasonOf(taipei(11, 1, 12)) != "autumn" || SeasonOf(taipei(10, 31, 12)) != "summer" {
+		t.Fatal("Epoch 之前往回推算")
+	}
+	if n := NextChange(taipei(11, 20, 12)); !n.Equal(time.Date(2026, 11, 28, 16, 0, 0, 0, time.UTC)) {
+		t.Fatal(n)
+	}
+	if s := NowText(taipei(11, 20, 12)); s != "❄️ 現在是冬季（11/29 換成🌸春季）　🕒 台灣時間 12:00" {
+		t.Fatal(s)
 	}
 	if !InHours(taipei(1, 1, 20), ip(18), ip(6)) || !InHours(taipei(1, 1, 5), ip(18), ip(6)) {
 		t.Fatal("overnight")

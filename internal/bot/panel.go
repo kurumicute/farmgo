@@ -119,6 +119,9 @@ type Panel struct {
 	lab               labState // 種子實驗室：選取的種子與雜交設定
 	// 文字清單的頁碼：作物價格、操作紀錄、培育紀錄（2026-11-14 改成分頁，避免資料一多就被截掉或洗掉）
 	pricePage, logPage, labRecordPage, seedMakerPage int
+	// 農場商店的分類與種子頁碼（2026-11-15）
+	shopTab  string
+	shopPage int
 	// 庭院擺設頁（2026-11-15）：要購買的裝飾、選取的位置
 	decorBuy      string
 	decorSlot     int

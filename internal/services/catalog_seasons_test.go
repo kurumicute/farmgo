@@ -23,9 +23,10 @@ import (
 
 var newCrops = []string{"corn", "pumpkin", "grape", "watermelon"}
 
-// taipei 台灣時間 2026 年 month/day hour:00。
-func taipei(month, day, hour int) time.Time {
-	return time.Date(2026, time.Month(month), day, hour, 0, 0, 0, time.UTC).Add(-8 * time.Hour)
+// seasonAt 第一輪（2026-11-15 起）的某個季節開始後第 day 天、台灣時間 hour 點（季節每 14 天輪替，2026-11-15 使用者要求）。
+func seasonAt(season string, day, hour int) time.Time {
+	idx := slices.Index(seasons.Rotation, season)
+	return seasons.Epoch.AddDate(0, 0, idx*seasons.RotationDays+day).Add(time.Duration(hour) * time.Hour)
 }
 
 // applySeasonDefaults 套用與正式環境相同的預設限定（setup 會把限定清空）。
@@ -235,6 +236,7 @@ func TestLockedLegendaryIsReallyCaughtWithDragonBait(t *testing.T) {
 
 func TestCropOnlyPlantedInSeason(t *testing.T) {
 	e := setup(t)
+	e.clock.Set(seasonAt("winter", 3, 12))
 	e.applySeasonDefaults()
 	pid := e.player()
 	gold := 10_000
@@ -250,7 +252,7 @@ func TestCropOnlyPlantedInSeason(t *testing.T) {
 	if info["corn"].InSeason || info["corn"].SeasonText != "🌸☀️春、夏季限定" || !info["wheat"].InSeason {
 		t.Fatalf("%+v %+v", info["corn"], info["wheat"])
 	}
-	if !info["strawberry"].InSeason || !info["carrot"].InSeason { // 現在（1 月）是冬天
+	if !info["strawberry"].InSeason || !info["carrot"].InSeason { // 現在是冬天
 		t.Fatalf("%+v %+v", info["strawberry"], info["carrot"])
 	}
 	wantSeason := func(err error) {
@@ -264,12 +266,12 @@ func TestCropOnlyPlantedInSeason(t *testing.T) {
 	wantSeason(err)
 	_, err = e.a.PlantAll(e.ctx, pid, "玉米")
 	wantSeason(err)
-	e.clock.Set(taipei(3, 1, 9))
-	e.ok(e.a.PlantCrop(e.ctx, pid, 2, "corn"))   // 春天可以種
-	e.clock.Set(taipei(9, 1, 0).Add(-time.Hour)) // 8/31 23:00（夏天）種下
+	e.clock.Set(seasonAt("spring", 0, 9))
+	e.ok(e.a.PlantCrop(e.ctx, pid, 2, "corn"))            // 春天可以種
+	e.clock.Set(seasonAt("autumn", 0, 0).Add(-time.Hour)) // 夏天最後一小時種下
 	e.ok(e.a.PlantCrop(e.ctx, pid, 3, "corn"))
 	e.ok(e.a.WaterCrop(e.ctx, pid, 3))
-	e.clock.Set(taipei(9, 1, 0)) // 過了夏天（秋天）：不能再種，但已經種下的照樣收成
+	e.clock.Set(seasonAt("autumn", 0, 0)) // 過了夏天（秋天）：不能再種，但已經種下的照樣收成
 	_, err = e.a.PlantCrop(e.ctx, pid, 1, "corn")
 	wantSeason(err)
 	if r := e.ok(e.a.HarvestCrop(e.ctx, pid, 3)); r.Quantity != 3 {
@@ -305,10 +307,10 @@ func TestFishOnlyInSeasonAndHours(t *testing.T) {
 			}
 		}
 	}
-	e.clock.Set(taipei(1, 10, 9)) // 冬天早上 9 點
+	e.clock.Set(seasonAt("winter", 9, 9)) // 冬天早上 9 點
 	check(e.fishable(pid), []string{"pond_smelt", "mullet", "bluegill"},
 		[]string{"eel", "snakehead", "moon_ray", "mackerel", "swordfish", "yellowfin_tuna", "dragon_king_carp"})
-	e.clock.Set(taipei(4, 10, 21)) // 春天晚上 9 點
+	e.clock.Set(seasonAt("spring", 9, 21)) // 春天晚上 9 點
 	check(e.fishable(pid), []string{"eel", "snakehead", "moon_ray", "dragon_king_carp"}, []string{"bluegill", "pond_smelt", "mullet"})
 	codex := map[string]FishCodexEntry{}
 	for _, x := range must[FishCodex](t)(e.a.FishCodex(e.ctx, pid)).Entries {

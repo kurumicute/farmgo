@@ -205,15 +205,31 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		events = append(events, line+"\n　"+effects)
 	}
-	e := &ui.Embed{Title: "🏪 ✦ 農場商店 ✦", Color: Gold, Description: sections(
-		fmt.Sprintf("💰 你的金幣：**%s**　｜　🎣 釣具在「釣具商店」分頁　｜　🎁 溫室、每週特賣、稱號在「特賣與升級」", money(d.gold)),
-		seasons.NowText(time.Now())+"：🌰 商店只賣當季可以種的種子，換季後會換一批。",
-		Section{Title: "🌰 種子", Lines: seeds, Sep: "\n\n"},
-		Section{Title: "🧪 道具", Lines: consumables, Sep: "\n\n"},
-		Section{Title: "📦 倉庫", Lines: []string{warehouse}},
-		Section{Title: "💎 工具與奢侈品", Lines: tools, Sep: "\n\n"},
-		Section{Title: "🎉 今天的活動", Lines: events, Sep: "\n\n"},
-	)}
+	// 2026-11-15 起商店分成「種子／道具／工具與倉庫」三個分類，種子多時再分頁（使用者覺得全部擠在一頁太多）
+	tab := p.shopTab
+	if tab != shopTabItems && tab != shopTabTools {
+		tab = shopTabSeeds
+	}
+	head := fmt.Sprintf("💰 你的金幣：**%s**　｜　🎣 釣具在「釣具商店」分頁　｜　🎁 溫室、每週特賣、稱號在「特賣與升級」", money(d.gold))
+	var parts []any
+	seedPages := 1
+	switch tab {
+	case shopTabSeeds:
+		var shown []string
+		shown, p.shopPage, seedPages = pageSlice(seeds, p.shopPage, shopSeedsPerPage)
+		title := "🌰 種子"
+		if seedPages > 1 {
+			title = fmt.Sprintf("🌰 種子（第 %d/%d 頁）", p.shopPage+1, seedPages)
+		}
+		parts = []any{head, seasons.NowText(time.Now()) + "：🌰 商店只賣當季可以種的種子，換季後會換一批。",
+			Section{Title: title, Lines: shown, Sep: "\n\n"}, Section{Title: "🎉 今天的活動", Lines: events, Sep: "\n\n"}}
+	case shopTabItems:
+		parts = []any{head, Section{Title: "🧪 道具", Lines: consumables, Sep: "\n\n"}}
+	default:
+		parts = []any{head, Section{Title: "📦 倉庫", Lines: []string{warehouse}},
+			Section{Title: "💎 工具與奢侈品", Lines: tools, Sep: "\n\n"}}
+	}
+	e := &ui.Embed{Title: "🏪 ✦ 農場商店 ✦", Color: Gold, Description: sections(parts...)}
 	if p.picker != nil {
 		hint := "👇 按下方的數量按鈕購買"
 		if p.picker.Confirm {
@@ -274,25 +290,47 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 	}
 
 	var options []option
-	for _, c := range d.crops {
-		options = append(options, option{c.Name + "種子", "seed:" + c.Code, fmt.Sprintf("🌰 種子｜💰 %d 金", c.SeedPrice), cropEmoji(c.Code)})
-	}
-	for _, code := range balance.ItemOrder {
-		if it := balance.ItemOf(code); it.Kind != "tool" {
-			options = append(options, option{it.Name, "item:" + code, fmt.Sprintf("🧪 道具｜💰 %d 金", it.Price), ItemEmoji[code]})
+	switch tab {
+	case shopTabSeeds: // 選單只列這一頁的種子
+		crops, _, _ := pageSlice(d.crops, p.shopPage, shopSeedsPerPage)
+		for _, c := range crops {
+			options = append(options, option{c.Name + "種子", "seed:" + c.Code, fmt.Sprintf("🌰 種子｜💰 %d 金", c.SeedPrice), cropEmoji(c.Code)})
 		}
-	}
-	if canExpand && expandPrice != 0 {
-		options = append(options, option{"倉庫擴大卷", "special:warehouse",
-			fmt.Sprintf("📦 +%d 格｜💰 %s 金", balance.WarehouseExpansionStep, money(expandPrice)), "📦"})
-	}
-	for _, code := range balance.ItemOrder {
-		if it := balance.ItemOf(code); it.Kind == "tool" && held["item:"+code] == 0 {
-			options = append(options, option{it.Name, "item:" + code, fmt.Sprintf("💎 工具｜💰 %s 金", money(it.Price)), ItemEmoji[code]})
+	case shopTabItems:
+		for _, code := range balance.ItemOrder {
+			if it := balance.ItemOf(code); it.Kind != "tool" {
+				options = append(options, option{it.Name, "item:" + code, fmt.Sprintf("🧪 道具｜💰 %d 金", it.Price), ItemEmoji[code]})
+			}
+		}
+	default:
+		if canExpand && expandPrice != 0 {
+			options = append(options, option{"倉庫擴大卷", "special:warehouse",
+				fmt.Sprintf("📦 +%d 格｜💰 %s 金", balance.WarehouseExpansionStep, money(expandPrice)), "📦"})
+		}
+		for _, code := range balance.ItemOrder {
+			if it := balance.ItemOf(code); it.Kind == "tool" && held["item:"+code] == 0 {
+				options = append(options, option{it.Name, "item:" + code, fmt.Sprintf("💎 工具｜💰 %s 金", money(it.Price)), ItemEmoji[code]})
+			}
 		}
 	}
 	p.selectMenu("🛒 選擇要買的商品…", options, pick, 0, selected)
 	p.quantityButtons(1)
+	if tab == shopTabSeeds {
+		p.pageButtons("種子", &p.shopPage, seedPages, 2, "shop")
+	}
+	for _, x := range []struct{ key, label, emoji string }{
+		{shopTabSeeds, "種子", "🌰"}, {shopTabItems, "道具", "🧪"}, {shopTabTools, "工具與倉庫", "💎"},
+	} {
+		style := ui.Secondary
+		if tab == x.key {
+			style = ui.Primary
+		}
+		p.button(x.label, func(ctx context.Context, it ui.Interaction) error {
+			p.shopTab, p.shopPage, p.picker = x.key, 0, nil // 換分類時取消選取的商品
+			p.goTo(ctx, it, "shop", "")
+			return nil
+		}, btn{emoji: x.emoji, row: 3, style: style, disabled: tab == x.key})
+	}
 	// 商店分成兩個分頁：農場商店（種子、道具、工具）與釣具商店
 	p.button("農場商店", p.noop, btn{emoji: "🌾", row: 4, style: ui.Primary, disabled: true})
 	p.nav("釣具商店", "fish_shop", btn{emoji: "🎣", row: 4})
@@ -352,6 +390,16 @@ func (p *Panel) buildPrices(_ context.Context, data any) (*ui.Embed, error) {
 	p.pageButtons("", &p.pricePage, pages, 1, "prices")
 	return e, nil
 }
+
+// 農場商店的分類（2026-11-15）。
+const (
+	shopTabSeeds = "seeds"
+	shopTabItems = "items"
+	shopTabTools = "tools"
+)
+
+// shopSeedsPerPage 商店種子每頁幾種。
+const shopSeedsPerPage = 6
 
 // pricesPerPage 作物價格每頁幾種（每種約 150 字，8 種約 1,300 字，遠低於 Embed 的 4,000 字）。
 const pricesPerPage = 8

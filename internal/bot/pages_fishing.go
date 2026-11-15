@@ -781,7 +781,7 @@ func (p *Panel) buildFishCodex(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	e := &ui.Embed{Title: "📖 魚類圖鑑", Color: Sea, Description: runes(fmt.Sprintf("已發現 **%d / %d** 種\n%s\n%s", d.Discovered, d.Total, Line,
 		strings.Join(blocks, "\n\n")), 4000),
-		Footer: "釣到一次就會登記；賣掉的魚也算。❓ 是還沒釣過的魚。🔒 要裝備指定的魚餌才釣得到；季節依台灣月份（春 3–5、夏 6–8、秋 9–11、冬 12–2 月），時段是台灣時間。"}
+		Footer: "釣到一次就會登記；賣掉的魚也算。❓ 是還沒釣過的魚。🔒 要裝備指定的魚餌才釣得到；季節每 14 天輪替（冬→春→夏→秋），時段是台灣時間。"}
 	p.nav("釣魚中心", "fishing", btn{emoji: "🎣", row: 0})
 	p.nav("回總覽", "main", btn{emoji: "🏠", row: 0})
 	return e, nil
