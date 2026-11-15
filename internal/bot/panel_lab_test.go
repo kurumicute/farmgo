@@ -138,7 +138,7 @@ func TestLabPageFlow(t *testing.T) {
 	e.checkLedger()
 }
 
-// TestLabClonePanel 種子庫的「育苗」（2026-11-15）：沒有藥草時停用；按下後研究槽顯示育苗，領取後多一顆同基因的種子。
+// TestLabClonePanel 育苗頁（2026-11-15）：種子庫按「育苗」進入，選次數、加不加藥草；只要金幣就能育苗，領取後每次得到 1–3 顆。
 func TestLabClonePanel(t *testing.T) {
 	e := setup(t)
 	p := e.makePlayer(alice, guildA, "阿明")
@@ -148,25 +148,49 @@ func TestLabClonePanel(t *testing.T) {
 	p.goPage("lab")
 	p.click("建造實驗室")
 	p.click("確認建造")
-	e.admin.LabRng = func() float64 { return 0.9 } // 基因都是 1 級：育苗費 300
+	e.admin.LabRng = func() float64 { return 0.9 } // 基因都是 1 級：每次育苗 300 金；0.9 → 每次 1 顆
 	e.setInventory(pid, "seed_wheat", 1)
 	p.goPage("lab")
 	p.choose("鑑定一般種子", "wheat")
 	p.goPage("lab_seeds")
 	p.choose("選擇種子", p.options("選擇種子")[0])
-	contains(t, p.Text, "🌱 育苗：300 金幣＋🌿藥草 ×1", "不含突變")
-	if !p.button("育苗（300 金）").Disabled {
-		t.Fatal("沒有藥草時育苗按鈕應停用")
+	contains(t, p.Text, "🌱 育苗：每次 300 金幣", "得到 1–3 顆")
+	p.click("育苗")
+	contains(t, p.Text, "✦ 育苗 ✦", "1 顆 70%、2 顆 20%、3 顆 10%", "1 顆 50%、2 顆 20%、3 顆 30%", "排程 **1** 次：300 金幣")
+	if !p.button("加藥草（需要 1，持有 0）").Disabled {
+		t.Fatal("沒有藥草時不能選加藥草")
 	}
-	e.setInventory(pid, "herb", 1)
-	p.goPage("lab_seeds")
-	p.choose("選擇種子", p.options("選擇種子")[0])
-	p.click("育苗（300 金）")
-	contains(t, p.Text, "開始育苗：小麥種子 第 1 代", "🌱 育苗：小麥 第 1 代")
-	e.clock.Advance(time.Hour.Seconds())
+	p.choose("選擇育苗次數", "3")
+	contains(t, p.Text, "排程 **3** 次：900 金幣", "預計得到 **3–9** 顆")
+	p.click("開始育苗（900 金）")
+	contains(t, p.Text, "開始育苗 ×3 次：小麥種子 第 1 代", "🌱 育苗 ×3 次：小麥 第 1 代")
+	if e.gold(pid) != 100_000-5000-900-10 { // 建造 5,000、鑑定 10
+		t.Fatal(e.gold(pid))
+	}
+	e.clock.Advance((3 * time.Hour).Seconds())
 	p.goPage("lab")
 	p.click("領取（1）")
-	contains(t, p.Text, "育苗完成", "種子庫 2／")
+	contains(t, p.Text, "育苗完成（3 次：1、1、1）", "種子庫 4／")
+	e.checkLedger()
+}
+
+// TestFertilizerMultiSelect 農田頁的化肥選單可以複選（2026-11-15）：勾選的每一格都施肥，最多選持有的數量。
+func TestFertilizerMultiSelect(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	pid := p.panel.playerID
+	e.waterWheat(p)
+	e.setInventory(pid, "fertilizer", 2)
+	p.goPage("plots")
+	s := p.selectMenu("勾選要施化肥的農田")
+	if s == nil || s.MaxValues != 2 || len(s.Options) < 2 {
+		t.Fatalf("%+v", s)
+	}
+	p.chooseMany("勾選要施化肥的農田", []string{"1", "2"})
+	contains(t, p.Text, "已對第 1 格施化肥", "已對第 2 格施化肥")
+	if n := e.scalar("SELECT count(*) FROM farm_plots p JOIN farms f ON f.id = p.farm_id WHERE f.player_id = $1 AND p.fertilized", pid); n != int64(2) {
+		t.Fatal(n)
+	}
 	e.checkLedger()
 }
 

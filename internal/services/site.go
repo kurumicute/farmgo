@@ -1055,6 +1055,8 @@ func buildSeedLab(rareSeeds []string) map[string]any {
 	for _, h := range seedlab.CurrentHybrids() {
 		minMin, maxMin = min(minMin, h.Minutes), max(maxMin, h.Minutes)
 	}
+	two, three := seedlab.CloneChanceBP(false)
+	htwo, hthree := seedlab.CloneChanceBP(true)
 	cloneFees := []map[string]any{}
 	for lv := 2; lv <= seedlab.GeneMax; lv++ {
 		g := seedlab.Genes{Growth: lv, Yield: lv, Quality: lv, Mutation: lv}
@@ -1086,6 +1088,8 @@ func buildSeedLab(rareSeeds []string) map[string]any {
 		"level_exp": []int{c.LevelExp[2], c.LevelExp[3]}, "rare_seeds": rareSeeds,
 		// 2026-11-15 起：優勢遺傳、育苗
 		"dominant_pct": bpPct(c.DominantBP), "clone_herb": c.CloneHerb, "clone_minutes": c.CloneMinutes, "clone_fees": cloneFees,
+		"clone_max_batches": c.CloneMaxBatches, "clone_two_pct": bpPct(two), "clone_three_pct": bpPct(three),
+		"clone_herb_two_pct": bpPct(htwo), "clone_herb_three_pct": bpPct(hthree),
 	}
 }
 

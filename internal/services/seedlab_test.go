@@ -236,44 +236,53 @@ func TestSeedLabCross(t *testing.T) {
 	e.invariant()
 }
 
-// TestSeedLabClone 育苗（2026-11-15）：付金幣與藥草複製一顆同基因、同世代的種子；不複製突變；佔研究槽；種子庫要有空位。
+// TestSeedLabClone 育苗（2026-11-15）：只要金幣、藥草選用；每次 1–3 顆；可以排程多次（費用、時間 × 次數）；
+// 不複製突變；佔研究槽；種子庫要能放下每次至少 1 顆。
 func TestSeedLabClone(t *testing.T) {
 	e := setup(t)
 	pid := e.labOwner("阿明", e.group("主群組"))
 	e.s.LabRng = func() float64 { return 0.1 }
-	wheat := e.identify(pid, "wheat") // 基因都是 2 級：育苗費 300 + 20 × 4² = 620
+	wheat := e.identify(pid, "wheat") // 基因都是 2 級：育苗費每次 300 + 20 × 4² = 620
 	corn := e.identify(pid, "corn")
 	e.exec("UPDATE lab_seeds SET mutation = 'glow', generation = 4 WHERE id = $1", wheat.ID)
 	fee := seedlab.CloneFee(wheat.Genes)
 	if fee != 620 {
 		t.Fatal(fee)
 	}
-
-	_, err := e.s.StartClone(e.ctx, pid, wheat.ID)
+	_, err := e.s.StartClone(e.ctx, pid, wheat.ID, 0, false)
+	wantMsg(t, err, gameerr.Validation, "1–10 次")
+	_, err = e.s.StartClone(e.ctx, pid, wheat.ID, 11, false)
+	wantMsg(t, err, gameerr.Validation, "1–10 次")
+	_, err = e.s.StartClone(e.ctx, pid, wheat.ID, 3, true)
 	wantMsg(t, err, gameerr.InsufficientItems, "藥草")
-	e.give(pid, seedlab.MatHerb, 2)
+
+	// 不加藥草、排程 3 次：620 × 3 = 1,860 金幣、3 小時
 	gold := e.gold(pid)
-	r := e.ok(e.s.StartClone(e.ctx, pid, wheat.ID))
-	if !strings.Contains(r.Message, "開始育苗") || !strings.Contains(r.Message, "620 金幣") || r.GoldDelta != -fee {
+	r := e.ok(e.s.StartClone(e.ctx, pid, wheat.ID, 3, false))
+	if !strings.Contains(r.Message, "開始育苗 ×3 次") || !strings.Contains(r.Message, "1,860 金幣") || r.GoldDelta != -3*fee {
 		t.Fatalf("%+v", r)
 	}
-	if e.gold(pid) != gold-fee || e.qty(pid, seedlab.MatHerb) != 1 {
-		t.Fatal(e.gold(pid), e.qty(pid, seedlab.MatHerb))
+	if e.gold(pid) != gold-3*fee {
+		t.Fatal(e.gold(pid))
 	}
 	v := e.lab(pid)
-	if len(v.Jobs) != 1 || v.Jobs[0].Kind != "clone" || v.Jobs[0].SuccessPct != 100 || !strings.Contains(v.Jobs[0].Materials, "620 金幣") {
+	if len(v.Jobs) != 1 || v.Jobs[0].Kind != "clone" || v.Jobs[0].Batches != 3 || !strings.Contains(v.Jobs[0].Materials, "1860 金幣") {
 		t.Fatalf("%+v", v.Jobs)
 	}
-	_, err = e.s.StartClone(e.ctx, pid, corn.ID)
+	_, err = e.s.StartClone(e.ctx, pid, corn.ID, 1, false)
 	wantMsg(t, err, gameerr.Validation, "研究槽已滿")
 	_, err = e.s.PlantLabSeed(e.ctx, pid, wheat.ID, 1)
 	wantMsg(t, err, gameerr.Validation, "培育中")
+	e.clock.Advance((2 * time.Hour).Seconds())
 	_, err = e.s.CollectLab(e.ctx, pid)
 	wantMsg(t, err, gameerr.Validation, "還沒完成")
 
-	e.clock.Advance(seedlab.CloneDuration().Seconds())
+	// 3 次分別擲 0.05（3 顆）、0.2（2 顆）、0.9（1 顆）→ 6 顆
+	rolls := []float64{0.05, 0.2, 0.9}
+	e.s.LabRng = func() float64 { v := rolls[0]; rolls = append(rolls[1:], 0.9); return v }
+	e.clock.Advance(time.Hour.Seconds())
 	r = e.ok(e.s.CollectLab(e.ctx, pid))
-	if !strings.Contains(r.Message, "育苗完成") {
+	if !strings.Contains(r.Message, "育苗完成（3 次：3、2、1）") || !strings.Contains(r.Message, "**+6**") {
 		t.Fatal(r.Message)
 	}
 	v = e.lab(pid)
@@ -283,28 +292,45 @@ func TestSeedLabClone(t *testing.T) {
 			copies = append(copies, s)
 		}
 	}
-	if len(copies) != 2 || copies[0].Busy || copies[1].Genes != wheat.Genes || copies[1].Generation != 4 ||
-		copies[0].Mutation != "glow" || copies[1].Mutation != "none" {
+	if len(copies) != 7 || copies[0].Busy || copies[0].Mutation != "glow" {
 		t.Fatalf("%+v", copies)
 	}
-	if v.Exp != 2*seedlab.Current().ExpIdentify+seedlab.Current().ExpClone {
+	for _, c := range copies[1:] {
+		if c.Genes != wheat.Genes || c.Generation != 4 || c.Mutation != "none" {
+			t.Fatalf("%+v", c)
+		}
+	}
+	if v.Exp != 2*seedlab.Current().ExpIdentify+3*seedlab.Current().ExpClone {
 		t.Fatal(v.Exp)
 	}
 	recs := must[[]LabRecordView](t)(e.s.LabRecords(e.ctx, pid, 10))
-	if recs[0].Kind != "clone" || !strings.Contains(recs[0].Text, "育苗：小麥 第 4 代") {
+	if recs[0].Kind != "clone" || !strings.Contains(recs[0].Text, "育苗：小麥 第 4 代") || !strings.Contains(recs[0].Text, "×6") {
 		t.Fatalf("%+v", recs[0])
 	}
 
-	// 金幣不足
+	// 加藥草（每次 1 個）：3 顆 30%、2 顆以上 50%；0.25 → 3 顆、0.45 → 2 顆
+	e.give(pid, seedlab.MatHerb, 2)
+	e.ok(e.s.StartClone(e.ctx, pid, corn.ID, 2, true))
+	if e.qty(pid, seedlab.MatHerb) != 0 {
+		t.Fatal("藥草應該用掉 2 個")
+	}
+	rolls = []float64{0.25, 0.45}
+	e.clock.Advance((2 * time.Hour).Seconds())
+	if r = e.ok(e.s.CollectLab(e.ctx, pid)); !strings.Contains(r.Message, "（2 次：3、2）") {
+		t.Fatal(r.Message)
+	}
+
+	// 金幣不足、種子庫放不下每次至少 1 顆
 	e.setGoldRecorded(pid, fee-1)
-	_, err = e.s.StartClone(e.ctx, pid, corn.ID)
+	_, err = e.s.StartClone(e.ctx, pid, corn.ID, 1, false)
 	wantKind(t, err, gameerr.InsufficientGold)
-	// 種子庫已滿（3 顆 + 補滿）
 	e.setGoldRecorded(pid, 100_000)
+	n := len(e.lab(pid).Seeds)
 	e.exec(`INSERT INTO lab_seeds (farm_id, breeder_farm_id, crop_code, gene_growth, gene_yield, gene_quality, gene_mutation)
-		SELECT id, id, 'wheat', 1, 1, 1, 1 FROM farms, generate_series(1, $2) WHERE player_id = $1`, pid, seedlab.Current().LibraryCapacity-3)
-	_, err = e.s.StartClone(e.ctx, pid, corn.ID)
+		SELECT id, id, 'wheat', 1, 1, 1, 1 FROM farms, generate_series(1, $2) WHERE player_id = $1`, pid, seedlab.Current().LibraryCapacity-n-1)
+	_, err = e.s.StartClone(e.ctx, pid, corn.ID, 2, false)
 	wantMsg(t, err, gameerr.Validation, "種子庫已滿")
+	e.ok(e.s.StartClone(e.ctx, pid, corn.ID, 1, false))
 	e.invariant()
 }
 

@@ -65,6 +65,7 @@ type LabJobView struct {
 	ResultName string       // 雜交成功時的品種
 	SuccessPct float64      // 成功率（%）
 	Unknown    bool         // 未發現的配方（ResultName 是「結果未知」，SuccessPct 不顯示）
+	Batches    int          // 育苗排程的次數（其他工作為 0）
 	Materials  string       // 使用的材料說明
 	ReadyAt    time.Time
 	Ready      bool
@@ -399,7 +400,7 @@ func (s *GameService) jobView(ctx context.Context, t *db.Tx, j models.LabJob, by
 			jv.ResultName, jv.SuccessPct, jv.Unknown = "❔ 結果未知", 0, true
 		}
 	} else if j.Kind == "clone" {
-		jv.SuccessPct = 100
+		jv.SuccessPct, jv.Batches = 100, cloneBatches(j.Materials)
 	} else {
 		core, _ := toInt(j.Materials[seedlab.MatAncientCore])
 		jv.SuccessPct = float64(seedlab.MutateChanceBP(mother.GeneMutation, core > 0)) / 100
@@ -749,9 +750,15 @@ func (s *GameService) StartMutation(ctx context.Context, playerID, seedID int64,
 	})
 }
 
-// StartClone 開始育苗（Go 版新增，2026-11-15）：付金幣（依基因總和，seedlab.CloneFee）與藥草，在研究槽複製一顆同基因、
-// 同世代的特殊種子，用來種滿農田。不複製突變（避免水晶突變等無限複製）。種子庫要有空位（含其他還沒領取的育苗）。
-func (s *GameService) StartClone(ctx context.Context, playerID, seedID int64) (ActionResult, error) {
+// StartClone 開始育苗（Go 版新增，2026-11-15）：在研究槽複製同基因、同世代的特殊種子，用來種滿農田。
+//   - 只要金幣（seedlab.CloneFee，依基因總和）就能育苗；藥草選用（每次 CloneHerb 個），提高得到 2、3 顆的機率。
+//   - 排程：一次 1–CloneMaxBatches 次，費用、藥草、時間 × 次數，全部完成後一起領取；每次得到 1–3 顆（seedlab.RollCloneCopies）。
+//   - 不複製突變（避免水晶突變等無限複製）。種子庫要能放下每次至少 1 顆（含其他還沒領取的育苗）；多出來的照樣放進種子庫。
+func (s *GameService) StartClone(ctx context.Context, playerID, seedID int64, batches int, herb bool) (ActionResult, error) {
+	cfg := seedlab.Current()
+	if batches < 1 || batches > cfg.CloneMaxBatches {
+		return ActionResult{}, gameerr.Validationf("一次可以排程 1–%d 次育苗。", cfg.CloneMaxBatches)
+	}
 	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
 		farm, err := s.lockedFarm(ctx, t, playerID)
 		if err != nil {
@@ -776,20 +783,21 @@ func (s *GameService) StartClone(ctx context.Context, playerID, seedID int64) (A
 		pending := 0
 		for _, j := range jobs {
 			if j.Kind == "clone" {
-				pending++
+				pending += cloneBatches(j.Materials)
 			}
 		}
-		if err := s.checkLibrary(ctx, t, farm.ID, 1+pending, ""); err != nil {
+		if err := s.checkLibrary(ctx, t, farm.ID, batches+pending, ""); err != nil {
 			return ActionResult{}, err
 		}
 		genes := labrepo.GenesOf(seed)
-		fee := seedlab.CloneFee(genes)
+		fee := seedlab.CloneFee(genes) * batches
 		if farm.Gold < fee {
-			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：育苗需要 %d，目前只有 %d。", fee, farm.Gold)
+			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：育苗 %d 次需要 %d，目前只有 %d。", batches, fee, farm.Gold)
 		}
-		herb := seedlab.Current().CloneHerb
-		if herb > 0 {
-			if err := s.removeMaterials(ctx, t, farm, map[string]int{seedlab.MatHerb: herb}, []string{seedlab.MatHerb}); err != nil {
+		herbs := 0
+		if herb {
+			herbs = cfg.CloneHerb * batches
+			if err := s.removeMaterials(ctx, t, farm, map[string]int{seedlab.MatHerb: herbs}, []string{seedlab.MatHerb}); err != nil {
 				return ActionResult{}, err
 			}
 		}
@@ -801,22 +809,37 @@ func (s *GameService) StartClone(ctx context.Context, playerID, seedID int64) (A
 		if err := labrepo.SetStatus(ctx, t, seed.ID, models.LabSeedBusy, now); err != nil {
 			return ActionResult{}, err
 		}
-		stored := map[string]any{"clone_fee": fee}
-		if herb > 0 {
-			stored[seedlab.MatHerb] = herb
+		stored := map[string]any{"clone_fee": fee, "batches": batches}
+		if herbs > 0 {
+			stored[seedlab.MatHerb] = herbs
 		}
-		readyAt := now.Add(seedlab.CloneDuration())
+		readyAt := now.Add(seedlab.CloneDuration(batches))
 		if _, err := labrepo.AddJob(ctx, t, farm.ID, slot, "clone", seed.ID, nil, stored, now, readyAt); err != nil {
 			return ActionResult{}, err
 		}
-		desc := fmt.Sprintf("研究槽 #%d 開始育苗：%s種子 第 %d 代（%s）", slot, s.cropName(ctx, t, seed.CropCode), seed.Generation, genes.Text())
+		times := ""
+		if batches > 1 {
+			times = fmt.Sprintf(" ×%d 次", batches)
+		}
+		desc := fmt.Sprintf("研究槽 #%d 開始育苗%s：%s種子 第 %d 代（%s）", slot, times, s.cropName(ctx, t, seed.CropCode), seed.Generation, genes.Text())
+		if herbs > 0 {
+			desc += fmt.Sprintf("，加藥草 ×%d", herbs)
+		}
 		if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(fmt.Sprintf("%s，金幣 -%d", desc, fee), 200),
 			rec{GoldDelta: -fee}); err != nil {
 			return ActionResult{}, err
 		}
 		return result(fmt.Sprintf("🌱 %s，花費 %s 金幣，%s後完成。", desc, numfmt.Comma(fee),
-			rules.FormatDuration(int(seedlab.CloneDuration().Seconds()))), farm.Gold, -fee, "", 0), nil
+			rules.FormatDuration(int(seedlab.CloneDuration(batches).Seconds()))), farm.Gold, -fee, "", 0), nil
 	})
+}
+
+// cloneBatches 育苗工作排程的次數（2026-11-15 排程上線前的工作沒有記錄，算 1 次）。
+func cloneBatches(m map[string]any) int {
+	if n, ok := toInt(m["batches"]); ok && n > 0 {
+		return n
+	}
+	return 1
 }
 
 func (s *GameService) collectClone(ctx context.Context, t *db.Tx, farm *models.Farm, j models.LabJob, now time.Time) (string, int, error) {
@@ -835,22 +858,46 @@ func (s *GameService) collectClone(ctx context.Context, t *db.Tx, farm *models.F
 		breeder = *seed.BreederFarmID
 	}
 	genes := labrepo.GenesOf(seed)
-	id, err := labrepo.AddSeed(ctx, t, labrepo.NewSeed{FarmID: farm.ID, BreederFarmID: breeder, CropCode: seed.CropCode,
-		Genes: genes, Generation: seed.Generation, Mutation: "none"}, now)
-	if err != nil {
-		return "", 0, err
+	herbs, _ := toInt(j.Materials[seedlab.MatHerb])
+	batches := cloneBatches(j.Materials)
+	total, firstID := 0, int64(0)
+	rolls := make([]string, batches)
+	for i := range batches {
+		n := seedlab.RollCloneCopies(herbs > 0, s.LabRng())
+		rolls[i] = fmt.Sprint(n)
+		for range n {
+			id, err := labrepo.AddSeed(ctx, t, labrepo.NewSeed{FarmID: farm.ID, BreederFarmID: breeder, CropCode: seed.CropCode,
+				Genes: genes, Generation: seed.Generation, Mutation: "none"}, now)
+			if err != nil {
+				return "", 0, err
+			}
+			if firstID == 0 {
+				firstID = id
+			}
+		}
+		total += n
 	}
 	before := labrepo.SnapshotOf(seed)
-	if err := labrepo.AddRecord(ctx, t, labrepo.NewRecord{FarmID: farm.ID, Kind: "clone", Mother: &before, ResultSeedID: &id,
+	before.Copies = total
+	if err := labrepo.AddRecord(ctx, t, labrepo.NewRecord{FarmID: farm.ID, Kind: "clone", Mother: &before, ResultSeedID: &firstID,
 		CropCode: seed.CropCode, Genes: genes, Generation: seed.Generation, Mutation: "none", Success: true}, now); err != nil {
 		return "", 0, err
 	}
-	line := fmt.Sprintf("🌱 #%d 育苗完成：%s種子 第 %d 代（%s）+1，原本的種子也放回種子庫。", j.Slot,
-		s.cropName(ctx, t, seed.CropCode), seed.Generation, genes.Text())
-	if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(line, 200), rec{}); err != nil {
+	times := ""
+	if batches > 1 {
+		times = fmt.Sprintf("（%d 次：%s）", batches, strings.Join(rolls, "、"))
+	}
+	line := fmt.Sprintf("🌱 #%d 育苗完成%s：%s種子 第 %d 代（%s）**+%d**，原本的種子也放回種子庫。", j.Slot, times,
+		s.cropName(ctx, t, seed.CropCode), seed.Generation, genes.Text(), total)
+	if n, err := labrepo.CountLibrary(ctx, t, farm.ID); err == nil && n > seedlab.Current().LibraryCapacity {
+		line += fmt.Sprintf("\n⚠️ 種子庫 %d／%d 顆已超過上限，先種下或分享一些種子才能再鑑定、育苗。", n, seedlab.Current().LibraryCapacity)
+	} else if err != nil {
 		return "", 0, err
 	}
-	return line, seedlab.Current().ExpClone, nil
+	if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(stripMarks(line), 200), rec{}); err != nil {
+		return "", 0, err
+	}
+	return line, seedlab.Current().ExpClone * batches, nil
 }
 
 // CollectLab 領取所有已完成的研究槽。
@@ -1216,7 +1263,9 @@ func (s *GameService) LabRecords(ctx context.Context, playerID int64, limit int)
 				v.Text = fmt.Sprintf("%s %s × %s → %s 第 %d 代（%s）%s", mark, snapView(m, cropsByCode).Label(),
 					snapView(f, cropsByCode).Label(), name(r.CropCode), r.Generation, genes.Text(), mut)
 			case "clone":
-				v.Text = fmt.Sprintf("🌱 育苗：%s 第 %d 代（%s）", name(r.CropCode), r.Generation, genes.Text())
+				var m labrepo.Snapshot
+				_ = jsonUnmarshal(r.Mother, &m)
+				v.Text = fmt.Sprintf("🌱 育苗：%s 第 %d 代（%s）×%d", name(r.CropCode), r.Generation, genes.Text(), max(1, m.Copies))
 			case "mutate":
 				if r.Success {
 					v.Text = fmt.Sprintf("✨ 突變研究：%s 第 %d 代 →%s", name(r.CropCode), r.Generation, mut)

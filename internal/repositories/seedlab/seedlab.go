@@ -139,11 +139,12 @@ type Snapshot struct {
 	Genes      rules.Genes `json:"genes"`
 	Generation int         `json:"generation"`
 	Mutation   string      `json:"mutation"`
+	Copies     int         `json:"copies,omitempty"` // 育苗紀錄：得到的顆數（2026-11-15 起）
 }
 
 // SnapshotOf 種子的快照。
 func SnapshotOf(s *models.LabSeed) Snapshot {
-	return Snapshot{s.ID, s.CropCode, GenesOf(s), s.Generation, s.Mutation}
+	return Snapshot{ID: s.ID, CropCode: s.CropCode, Genes: GenesOf(s), Generation: s.Generation, Mutation: s.Mutation}
 }
 
 // NewRecord 新增培育紀錄的內容。

@@ -27,6 +27,10 @@ type labState struct {
 	resin    bool
 	herb     bool
 	catalyst string // 基因代碼；"" = 不使用
+	// 育苗頁：選取的種子、排程次數（0 = 1 次）、是否加藥草
+	cloneSeed    int64
+	cloneBatches int
+	cloneHerb    bool
 	// 種子超過 25 顆（Discord 選單上限）時分頁：種子庫頁、雜交頁的母本與父本選單各自的頁碼
 	seedPage, motherPage, fatherPage int
 }
@@ -102,7 +106,7 @@ func labSeedSources() []string {
 	return []string{
 		"🔬 **鑑定**：背包的一般種子 → 特殊種子（商店不賣的稀有種子，例如琥珀瓜、月光花，基因比較高）",
 		"🧬 **雜交／改良**：兩顆特殊種子培育出一顆新的（只消耗父本，母本放回種子庫）；不同品種配對成功會得到雜交作物",
-		"🌱 **育苗**：付金幣與藥草複製一顆同基因的種子（不含突變），用來種滿農田",
+		"🌱 **育苗**：付金幣複製同基因的種子，每次 1–3 顆（加藥草機率更高，不含突變），可以一次排程好幾次，用來種滿農田",
 		fmt.Sprintf("🌾 **收成取回**：種下特殊種子，收成時有 %s%% 機率取回 1 顆同基因的種子", bpPct(seedlab.Current().InheritBP)),
 		fmt.Sprintf("🎁 **朋友分享**：同伺服器的玩家每天最多送 %d 顆，沒有實驗室也能收", seedlab.Current().ShareSendPerDay),
 		"🍈 稀有的一般種子（琥珀瓜、月光花）來自⛰️ 山洞探險、🎁 每週特賣與🧬 稀有作物培育器，拿到後可以鑑定；雜交作物的種子只能靠雜交、收成取回或朋友分享。",
@@ -228,7 +232,7 @@ func (p *Panel) buildLab(_ context.Context, data any) (*ui.Embed, error) {
 		case j.Kind == "cross" && j.Father != nil:
 			what = fmt.Sprintf("🧬 %s × %s → %s（成功率 %s%%）", j.Mother.CropName, j.Father.CropName, j.ResultName, fmtPct(j.SuccessPct))
 		case j.Kind == "clone":
-			what = fmt.Sprintf("🌱 育苗：%s 第 %d 代（%s）", j.Mother.CropName, j.Mother.Generation, j.Mother.Genes.Stars())
+			what = fmt.Sprintf("🌱 育苗 ×%d 次：%s 第 %d 代（%s）", max(1, j.Batches), j.Mother.CropName, j.Mother.Generation, j.Mother.Genes.Stars())
 		default:
 			what = fmt.Sprintf("☢️ 突變研究：%s（成功率 %s%%）", j.Mother.CropName, fmtPct(j.SuccessPct))
 		}
@@ -359,8 +363,9 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 			detail = append(detail, "⚠️ 農田目前沒有空地：收成後空出來的土地就能種下這顆種子。")
 		}
 		if v.Built {
-			detail = append(detail, fmt.Sprintf("🌱 育苗：%s 金幣＋🌿藥草 ×%d，約 %s，複製一顆同基因、同世代的種子（不含突變）。",
-				money(seedlab.CloneFee(sel.Genes)), cfg.CloneHerb, services.LongDuration(int(seedlab.CloneDuration().Seconds()))))
+			two, three := seedlab.CloneChanceBP(false)
+			detail = append(detail, fmt.Sprintf("🌱 育苗：每次 %s 金幣、約 %s，得到 1–3 顆同基因、同世代的種子（2 顆以上 %s%%、3 顆 %s%%；加藥草更高，不含突變），可以一次排程好幾次。",
+				money(seedlab.CloneFee(sel.Genes)), services.LongDuration(int(seedlab.CloneDuration(1).Seconds())), bpPct(two), bpPct(three)))
 			detail = append(detail, fmt.Sprintf("☢️ 突變研究成功率 %s%%（使用古代核心 %s%%），需要💎水晶 ×%d，約 %s。",
 				bpPct(seedlab.MutateChanceBP(sel.Genes.Mutation, false)), bpPct(seedlab.MutateChanceBP(sel.Genes.Mutation, true)),
 				cfg.MutateCrystal, services.LongDuration(int(seedlab.MutateDuration().Seconds()))))
@@ -457,19 +462,96 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 			}), actOpts{page: "lab", noProgress: true})
 			return nil
 		}, btn{emoji: "🌳", row: 3, disabled: !free || !crystals || v.Materials[seedlab.MatAncientCore] == 0})
-		fee := seedlab.CloneFee(sel.Genes)
-		canClone := free && v.Gold >= fee && v.Materials[seedlab.MatHerb] >= cfg.CloneHerb && len(v.Seeds) < v.Capacity
-		p.button(fmt.Sprintf("育苗（%s 金）", money(fee)), func(ctx context.Context, it ui.Interaction) error {
-			p.lab.seed = 0
-			p.act(ctx, it, p.call("start_clone", func(ctx context.Context) (services.ActionResult, error) {
-				return p.svc().StartClone(ctx, p.playerID, seedID)
-			}), actOpts{page: "lab", noProgress: true})
+		p.button("育苗", func(ctx context.Context, it ui.Interaction) error {
+			p.lab.cloneSeed, p.lab.cloneBatches, p.lab.cloneHerb = seedID, 1, false
+			p.goTo(ctx, it, "lab_clone", "")
 			return nil
-		}, btn{emoji: "🌱", style: ui.Success, row: 3, disabled: !canClone})
+		}, btn{emoji: "🌱", style: ui.Success, row: 3, disabled: !free})
 	}
 	p.pageButtons("", &p.lab.seedPage, pages, 3, "lab_seeds")
 	p.labNav(4)
 	p.nav("回農田", "plots", btn{emoji: "🌱", row: 4})
+	return e, nil
+}
+
+// ---------- 育苗（2026-11-15） ----------
+
+func (p *Panel) buildLabClone(ctx context.Context, data any) (*ui.Embed, error) {
+	v := data.(services.SeedLabView)
+	st := &p.lab
+	sel := findSeed(v, st.cloneSeed)
+	if !v.Built || sel == nil || sel.Busy {
+		st.cloneSeed = 0
+		return p.buildLabSeeds(ctx, labSeedsData{lab: v})
+	}
+	cfg := seedlab.Current()
+	batches := max(1, min(st.cloneBatches, cfg.CloneMaxBatches))
+	st.cloneBatches = batches
+	herbNeed := cfg.CloneHerb * batches
+	if st.cloneHerb && v.Materials[seedlab.MatHerb] < herbNeed {
+		st.cloneHerb = false
+	}
+	fee := seedlab.CloneFee(sel.Genes)
+	total := fee * batches
+	two, three := seedlab.CloneChanceBP(false)
+	htwo, hthree := seedlab.CloneChanceBP(true)
+	room := v.Capacity - len(v.Seeds) // 每次至少 1 顆要放得下（還沒領取的育苗在服務端另外算）
+	e := &ui.Embed{Title: "🌱 ✦ 育苗 ✦", Color: Teal}
+	chance := func(two, three int) string {
+		return fmt.Sprintf("1 顆 %s%%、2 顆 %s%%、3 顆 %s%%", bpPct(10_000-two), bpPct(two-three), bpPct(three))
+	}
+	herbLine := fmt.Sprintf("🌿 不加藥草：%s", chance(two, three))
+	herbLine2 := fmt.Sprintf("🌿 加藥草（每次 ×%d）：%s", cfg.CloneHerb, chance(htwo, hthree))
+	plan := []string{
+		fmt.Sprintf("排程 **%d** 次：%s 金幣%s，約 %s 後一起領取", batches, money(total),
+			map[bool]string{true: fmt.Sprintf("＋🌿藥草 ×%d", herbNeed), false: ""}[st.cloneHerb],
+			services.LongDuration(int(seedlab.CloneDuration(batches).Seconds()))),
+		fmt.Sprintf("預計得到 **%d–%d** 顆（%s）", batches, batches*3, map[bool]string{true: "加藥草", false: "不加藥草"}[st.cloneHerb]),
+	}
+	if v.Gold < total {
+		plan = append(plan, fmt.Sprintf("❌ 金幣不足（目前 %s）", money(v.Gold)))
+	}
+	if room < batches {
+		plan = append(plan, fmt.Sprintf("❌ 種子庫空位不夠：排程 %d 次至少要 %d 個空位（目前 %d）", batches, batches, max(0, room)))
+	}
+	e.Description = sections(
+		Section{Title: "要育苗的種子", Lines: []string{seedLine(*sel), sel.Genes.Text()}},
+		Section{Title: "每次的結果", Lines: []string{fmt.Sprintf("💰 每次 %s 金幣、約 %s", money(fee),
+			services.LongDuration(int(seedlab.CloneDuration(1).Seconds()))), herbLine, herbLine2}},
+		Section{Title: "這次排程", Lines: plan},
+		"🧰 "+labMaterialLine(v, seedlab.MatHerb)+fmt.Sprintf("　💰 金幣 %s", money(v.Gold)),
+	)
+	e.Footer = "育苗的種子基因、世代和原本的一樣，但不會複製突變。完成前原本的種子不能種或雜交，完成後放回種子庫。"
+
+	var counts []option
+	for n := 1; n <= cfg.CloneMaxBatches; n++ {
+		counts = append(counts, option{fmt.Sprintf("排程 %d 次", n), fmt.Sprint(n),
+			fmt.Sprintf("%s 金幣、約 %s、得到 %d–%d 顆", money(fee*n), services.LongDuration(int(seedlab.CloneDuration(n).Seconds())), n, n*3), "🗓️"})
+	}
+	p.selectMenu("🗓️ 選擇育苗次數…", counts, func(ctx context.Context, it ui.Interaction, value string) error {
+		st.cloneBatches, _ = strconv.Atoi(value)
+		p.goTo(ctx, it, "lab_clone", "")
+		return nil
+	}, 0, fmt.Sprint(batches))
+	herbLabel, herbStyle := fmt.Sprintf("加藥草（需要 %d，持有 %d）", herbNeed, v.Materials[seedlab.MatHerb]), ui.Secondary
+	if st.cloneHerb {
+		herbLabel, herbStyle = "✓ "+herbLabel, ui.Success
+	}
+	p.button(herbLabel, func(ctx context.Context, it ui.Interaction) error {
+		st.cloneHerb = !st.cloneHerb
+		p.goTo(ctx, it, "lab_clone", "")
+		return nil
+	}, btn{emoji: "🌿", style: herbStyle, row: 1, disabled: !st.cloneHerb && v.Materials[seedlab.MatHerb] < herbNeed})
+	seedID, herb := sel.ID, st.cloneHerb
+	p.button(fmt.Sprintf("開始育苗（%s 金）", money(total)), func(ctx context.Context, it ui.Interaction) error {
+		st.cloneSeed, st.seed = 0, 0
+		p.act(ctx, it, p.call("start_clone", func(ctx context.Context) (services.ActionResult, error) {
+			return p.svc().StartClone(ctx, p.playerID, seedID, batches, herb)
+		}), actOpts{page: "lab", noProgress: true})
+		return nil
+	}, btn{emoji: "🌱", style: ui.Success, row: 1, disabled: v.FreeSlots == 0 || v.Gold < total || room < batches})
+	p.nav("回種子庫", "lab_seeds", btn{emoji: "🌰", row: 2})
+	p.labNav(2)
 	return e, nil
 }
 

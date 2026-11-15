@@ -47,8 +47,12 @@ type Config struct {
 	DominantBP            int // 優勢遺傳：每個基因直接繼承雙親中較高等級的機率（其餘機率才是母本、父本各半）
 	CloneFeeBase          int // 育苗的基本費用（金幣）
 	CloneFeePerLevel      int // 育苗費用：每多 (基因總和 − 4)² 的金幣
-	CloneHerb             int // 育苗需要的藥草
-	CloneMinutes          int // 育苗時間
+	CloneHerb             int // 育苗加藥草（選用）時每次用掉的藥草
+	CloneMinutes          int // 每次育苗的時間
+	CloneTwoBP            int // 每次育苗得到 2 顆以上的機率
+	CloneThreeBP          int // 每次育苗得到 3 顆的機率
+	CloneHerbBonusBP      int // 加藥草時，2 顆以上與 3 顆的機率各增加
+	CloneMaxBatches       int // 一次最多排程幾次育苗
 	ShareSendPerDay       int
 	ShareReceiveSenders   int
 	GrowthPctPerLevel     int
@@ -98,6 +102,9 @@ var defaultHybrids = map[string]HybridSetting{
 //   - 育苗（新功能）：付金幣與藥草，在研究槽複製一顆同基因的種子（不複製突變），用來種滿農田；
 //     費用 300 + 20 ×（基因總和 − 4）²：2222 620、3333 1,580、4444 3,180、5555 5,420 金幣。
 //   - 收成取回種子 60% → 85%、基因退化 5% → 2%、水晶催化 +20% → +30%。
+//
+// 2026-11-15 育苗改版（使用者要求）：只要金幣就能育苗，藥草改成選用；每次得到 1–3 顆（2 顆以上 30%、3 顆 10%，
+// 加藥草各 +20% → 50%、30%；平均 1.4 顆 → 1.8 顆）；一次可以排程 1–10 次（費用、時間 × 次數，最後一起領取）。
 func DefaultConfig() *Config {
 	c := &Config{
 		UnlockLevel: 5, BuildGold: 5000, LibraryCapacity: 25,
@@ -108,6 +115,7 @@ func DefaultConfig() *Config {
 		MutateCrystal: 2, MutateBaseBP: 3000, MutatePerLevelBP: 500, MutateMaxBP: 9000,
 		InheritBP: 8500, ShareSendPerDay: 5, ShareReceiveSenders: 1,
 		DominantBP: 7000, CloneFeeBase: 300, CloneFeePerLevel: 20, CloneHerb: 1, CloneMinutes: 60,
+		CloneTwoBP: 3000, CloneThreeBP: 1000, CloneHerbBonusBP: 2000, CloneMaxBatches: 10,
 		GrowthPctPerLevel: 6, YieldPctPerLevel: 15, QualityBPPerLevel: 500, MutationBPPerLevel: 150,
 		ExpIdentify: 2, ExpCross: 10, ExpCrossFail: 15, ExpMutate: 8, ExpClone: 3,
 		LevelExp: [MaxLevel + 1]int{0, 0, 100, 300},
@@ -173,8 +181,12 @@ var intFields = []intField{
 	{"dominant_bp", "優勢遺傳（繼承較高親本）的機率", 0, 10_000, func(c *Config) *int { return &c.DominantBP }},
 	{"clone_fee_base", "育苗基本費用", 0, 10_000_000, func(c *Config) *int { return &c.CloneFeeBase }},
 	{"clone_fee_per_level", "育苗費用（每 (基因總和−4)²）", 0, 1_000_000, func(c *Config) *int { return &c.CloneFeePerLevel }},
-	{"clone_herb", "育苗需要的藥草", 0, 100, func(c *Config) *int { return &c.CloneHerb }},
-	{"clone_minutes", "育苗時間（分鐘）", 1, 1440, func(c *Config) *int { return &c.CloneMinutes }},
+	{"clone_herb", "育苗加藥草時每次用掉的藥草", 1, 100, func(c *Config) *int { return &c.CloneHerb }},
+	{"clone_minutes", "每次育苗時間（分鐘）", 1, 1440, func(c *Config) *int { return &c.CloneMinutes }},
+	{"clone_two_bp", "育苗得到 2 顆以上的機率", 0, 10_000, func(c *Config) *int { return &c.CloneTwoBP }},
+	{"clone_three_bp", "育苗得到 3 顆的機率", 0, 10_000, func(c *Config) *int { return &c.CloneThreeBP }},
+	{"clone_herb_bonus_bp", "育苗加藥草增加的機率", 0, 10_000, func(c *Config) *int { return &c.CloneHerbBonusBP }},
+	{"clone_max_batches", "一次最多排程幾次育苗", 1, 25, func(c *Config) *int { return &c.CloneMaxBatches }},
 	{"share_send_per_day", "每天最多送出的種子", 0, 100, func(c *Config) *int { return &c.ShareSendPerDay }},
 	{"share_receive_senders", "每天最多收幾位玩家的分享", 1, 100, func(c *Config) *int { return &c.ShareReceiveSenders }},
 	{"growth_pct_per_level", "生長基因每級縮短的時間（%）", 0, 20, func(c *Config) *int { return &c.GrowthPctPerLevel }},
@@ -221,6 +233,9 @@ func parseConfig(raw featurecfg.Value) (*Config, error) {
 	}
 	if c.GeneUpBP+c.GeneDownBP > 10_000 {
 		return nil, gameerr.Validationf("基因升級與退化機率加起來不能超過 100%%。")
+	}
+	if c.CloneThreeBP > c.CloneTwoBP {
+		return nil, gameerr.Validationf("育苗得到 3 顆的機率不能高於 2 顆以上的機率。")
 	}
 	if c.MutateBaseBP > c.MutateMaxBP {
 		return nil, gameerr.Validationf("突變研究基礎成功率不能高於上限。")

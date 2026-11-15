@@ -301,6 +301,13 @@
         setText("g-lab-clone-herb", String(l.clone_herb));
         setText("g-lab-clone-time", mins(l.clone_minutes));
         setText("g-lab-clone-fees", l.clone_fees.map((f) => `${f.genes} 是 ${num.format(f.fee)}`).join("、") + " 金幣");
+        if (l.clone_two_pct != null) {
+          setText("g-lab-clone-two", String(l.clone_two_pct));
+          setText("g-lab-clone-three", String(l.clone_three_pct));
+          setText("g-lab-clone-herb-two", String(l.clone_herb_two_pct));
+          setText("g-lab-clone-herb-three", String(l.clone_herb_three_pct));
+          setText("g-lab-clone-max", String(l.clone_max_batches));
+        }
       }
       if (l.rare_seeds && l.rare_seeds.length) setText("g-lab-rare-seeds", l.rare_seeds.join("、"));
       fillRows("g-lab-levels", [

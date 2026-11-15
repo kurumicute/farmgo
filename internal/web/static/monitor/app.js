@@ -4306,9 +4306,11 @@ if (typeof document !== "undefined") {
     ["🌱 基因效果（每高 1 級）", [["growth_pct_per_level", "生長時間減少（%）", 0, 20], ["yield_pct_per_level", "產量：收成數量增加（%，無條件進位）", 0, 50],
       ["quality_bp_per_level", "品質加成（%）", 0, 1000, true], ["mutation_bp_per_level", "突變加成（%）", 0, 1000, true],
       ["inherit_bp", "收成時取回種子（%）", 0, 10000, true]]],
-    ["🌱 育苗（複製同基因的種子，不含突變）", [["clone_fee_base", "基本費用（金幣）", 0, 10000000],
-      ["clone_fee_per_level", "費用：每 (基因總和 − 4)² 的金幣", 0, 1000000], ["clone_herb", "需要的藥草（個）", 0, 100],
-      ["clone_minutes", "育苗時間（分鐘）", 1, 1440]]],
+    ["🌱 育苗（複製同基因的種子，每次 1–3 顆，不含突變）", [["clone_fee_base", "每次基本費用（金幣）", 0, 10000000],
+      ["clone_fee_per_level", "費用：每 (基因總和 − 4)² 的金幣", 0, 1000000], ["clone_minutes", "每次育苗時間（分鐘）", 1, 1440],
+      ["clone_max_batches", "一次最多排程幾次", 1, 25],
+      ["clone_two_bp", "得到 2 顆以上的機率（%）", 0, 10000, true], ["clone_three_bp", "得到 3 顆的機率（%）", 0, 10000, true],
+      ["clone_herb", "加藥草（選用）時每次用掉幾個", 1, 100], ["clone_herb_bonus_bp", "加藥草增加的機率（2 顆以上、3 顆各 +%）", 0, 10000, true]]],
     ["🎁 分享", [["share_send_per_day", "每人每天最多送出（顆）", 0, 100], ["share_receive_senders", "每人每天最多收幾位玩家", 1, 100]]],
     ["📈 研究經驗", [["exp_identify", "鑑定", 0, 10000], ["exp_cross", "雜交成功", 0, 10000], ["exp_cross_fail", "雜交失敗", 0, 10000],
       ["exp_mutate", "突變研究", 0, 10000], ["exp_clone", "育苗", 0, 10000], ["level2_exp", "Lv.2 需要（2 個研究槽）", 1, 1000000], ["level3_exp", "Lv.3 需要（3 個研究槽）", 1, 1000000]]],
@@ -4365,6 +4367,7 @@ if (typeof document !== "undefined") {
         }
       }
       if (value.gene_up_bp + value.gene_down_bp > 10000) throw new Error("基因升級與退化機率加起來不能超過 100%。");
+      if (value.clone_three_bp > value.clone_two_bp) throw new Error("育苗得到 3 顆的機率不能高於 2 顆以上的機率。");
       if (value.level3_exp <= value.level2_exp) throw new Error("Lv.3 需要的經驗必須大於 Lv.2。");
       value.hybrids = {};
       for (const { h, success, minutes } of hybridEds) {

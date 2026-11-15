@@ -31,6 +31,7 @@ func (p *Panel) registerPages() {
 		"lab":             {p.loadLab, p.buildLab},
 		"lab_seeds":       {p.loadLabSeeds, p.buildLabSeeds},
 		"lab_cross":       {p.loadLab, p.buildLabCross},
+		"lab_clone":       {p.loadLab, p.buildLabClone},
 		"lab_records":     {p.loadLabRecords, p.buildLabRecords},
 		"backpack":        {p.loadBackpack, p.buildBackpack},
 		"shop":            {p.loadShop, p.buildShop},
@@ -493,19 +494,31 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 		}
 	}
 	if fert := lineQty(bp.Consumables, balance.ItemFertilizer); len(growing) > 0 && fert > 0 {
-		var options []option
-		for _, pl := range growing {
-			options = append(options, option{fmt.Sprintf("#%d %s", pl.PlotNumber, deref(pl.CropName)), fmt.Sprint(pl.PlotNumber),
-				fmt.Sprintf("剩餘時間 -%d%%", balance.FertilizerPct), "🧪"})
-		}
-		p.selectMenu(fmt.Sprintf("🧪 施化肥（持有 %d，剩餘時間 -%d%%）…", fert, balance.FertilizerPct), options,
-			func(ctx context.Context, it ui.Interaction, value string) error {
-				n, _ := parseDigits(value)
+		// 2026-11-15 起可以複選：勾選要施肥的農田（最多持有的化肥數量），選完直接施肥
+		growing = growing[:min(len(growing), ui.MaxOptions)]
+		multi := &ui.Select{Placeholder: fmt.Sprintf("🧪 勾選要施化肥的農田（持有 %d，剩餘時間 -%d%%，可複選）…", fert, balance.FertilizerPct),
+			Row: 2, MinValues: 1, MaxValues: min(len(growing), fert),
+			OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
+				plots := make([]int, 0, len(values))
+				for _, v := range values {
+					if n, ok := parseDigits(v); ok {
+						plots = append(plots, n)
+					}
+				}
 				p.act(ctx, it, p.call("use_fertilizer", func(ctx context.Context) (services.ActionResult, error) {
-					return p.svc().UseFertilizer(ctx, p.playerID, n)
+					return p.svc().UseFertilizerPlots(ctx, p.playerID, plots)
 				}), actOpts{})
 				return nil
-			}, 2, "")
+			}}
+		for _, pl := range growing {
+			desc := fmt.Sprintf("剩餘時間 -%d%%", balance.FertilizerPct)
+			if pl.RemainingSeconds > 0 {
+				desc += "，目前還要 " + rules.FormatDuration(pl.RemainingSeconds)
+			}
+			multi.Options = append(multi.Options, ui.SelectOption{Label: cut(fmt.Sprintf("#%d %s", pl.PlotNumber, deref(pl.CropName)), 100),
+				Value: fmt.Sprint(pl.PlotNumber), Emoji: "🧪", Description: cut(desc, 100)})
+		}
+		p.View.Add(multi)
 	}
 	if worms := lineQty(bp.Consumables, balance.ItemEarthworm); worms > 0 {
 		p.button(fmt.Sprintf("使用蚯蚓（持有 %d）", worms), func(ctx context.Context, it ui.Interaction) error {

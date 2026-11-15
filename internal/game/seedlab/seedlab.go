@@ -4,7 +4,7 @@
 //   - 雜交：同品種一定相容（改良基因）；不同品種只有 Hybrids 表中的組合可以雜交，成功時得到雜交作物，失敗時得到母本品種。
 //   - 每個基因先擲優勢遺傳（直接繼承較高的親本），沒中時 50% 繼承母本或父本，再擲升級／維持／退化；
 //     催化劑（水晶）提高指定基因的升級機率。雜交只消耗父本，母本放回種子庫。
-//   - 育苗：付金幣與藥草，在研究槽複製一顆同基因的種子（不複製突變）。
+//   - 育苗：付金幣（藥草選用），在研究槽複製同基因的種子，每次 1–3 顆（不複製突變）；可以一次排程多次。
 //   - 突變研究：消耗水晶，成功時種子帶上突變（含實驗室限定的夜光、豐收、水晶），突變會隨種子傳承。
 //   - 數值都在 config.go（管理網站可調整），這裡一律經 Current() 讀取。
 //
@@ -416,8 +416,32 @@ func CloneFee(g Genes) int {
 	return c.CloneFeeBase + c.CloneFeePerLevel*d*d
 }
 
-// CloneDuration 育苗的時間。
-func CloneDuration() time.Duration { return time.Duration(Current().CloneMinutes) * time.Minute }
+// CloneDuration 排程 batches 次育苗的總時間。
+func CloneDuration(batches int) time.Duration {
+	return time.Duration(Current().CloneMinutes*max(1, batches)) * time.Minute
+}
+
+// CloneChanceBP 每次育苗得到 2 顆以上、3 顆的機率（加藥草時各增加 CloneHerbBonusBP，上限 100%）。
+func CloneChanceBP(herb bool) (two, three int) {
+	c := Current()
+	two, three = c.CloneTwoBP, c.CloneThreeBP
+	if herb {
+		two, three = two+c.CloneHerbBonusBP, three+c.CloneHerbBonusBP
+	}
+	return min(10_000, two), min(10_000, three)
+}
+
+// RollCloneCopies 一次育苗得到的顆數（1–3）：u < 3 顆的機率 → 3；u < 2 顆以上的機率 → 2；否則 1。
+func RollCloneCopies(herb bool, u float64) int {
+	two, three := CloneChanceBP(herb)
+	switch n := int(u * 10_000); {
+	case n < three:
+		return 3
+	case n < max(two, three):
+		return 2
+	}
+	return 1
+}
 
 // MutateDuration 突變研究的時間。
 func MutateDuration() time.Duration { return time.Duration(Current().MutateMinutes) * time.Minute }

@@ -111,6 +111,8 @@ func TestConfigDefaultsAndOverrides(t *testing.T) {
 	for _, bad := range []func(featurecfg.Value){
 		func(v featurecfg.Value) { v["gene_up_bp"], v["gene_down_bp"] = 6000, 5000 },
 		func(v featurecfg.Value) { v["level3_exp"] = 50 },
+		func(v featurecfg.Value) { v["clone_two_bp"], v["clone_three_bp"] = 1000, 2000 },
+		func(v featurecfg.Value) { v["clone_max_batches"] = 26 },
 		func(v featurecfg.Value) { v["library_capacity"] = 201 },
 		func(v featurecfg.Value) { delete(v["hybrids"].(map[string]any), "dawn_melon") },
 		func(v featurecfg.Value) { v["build_gold"] = 1.5 },
@@ -222,8 +224,18 @@ func TestCloneFee(t *testing.T) {
 			t.Errorf("%+v：%d，應該是 %d", c.g, got, c.want)
 		}
 	}
-	if CloneDuration() != time.Hour {
-		t.Fatal(CloneDuration())
+	if CloneDuration(1) != time.Hour || CloneDuration(3) != 3*time.Hour {
+		t.Fatal(CloneDuration(1), CloneDuration(3))
+	}
+	// 不加藥草：3 顆 10%、2 顆以上 30%；加藥草各 +20%
+	for _, c := range []struct {
+		herb bool
+		u    float64
+		want int
+	}{{false, 0.09, 3}, {false, 0.1, 2}, {false, 0.29, 2}, {false, 0.3, 1}, {true, 0.29, 3}, {true, 0.3, 2}, {true, 0.49, 2}, {true, 0.5, 1}} {
+		if got := RollCloneCopies(c.herb, c.u); got != c.want {
+			t.Errorf("藥草 %v、u=%v：%d 顆，應該是 %d", c.herb, c.u, got, c.want)
+		}
 	}
 }
 

@@ -5,6 +5,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -137,51 +138,95 @@ func (s *GameService) BuyItem(ctx context.Context, playerID int64, itemCode stri
 }
 
 func (s *GameService) UseFertilizer(ctx context.Context, playerID int64, plotNumber int) (ActionResult, error) {
-	name := balance.Items[balance.ItemFertilizer].Name
 	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
 		farm, err := s.lockedFarm(ctx, t, playerID)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		plot, now, state, err := s.plotForAction(ctx, t, farm, plotNumber)
+		msg, err := s.fertilizePlot(ctx, t, farm, plotNumber)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		if state != rules.PlotGrowing {
-			return ActionResult{}, gameerr.Validationf("%s只能用在生長中的土地（第 %d 格目前：%s）。", name, plotNumber, rules.PlotStateLabels[state])
-		}
-		if plot.Fertilized {
-			return ActionResult{}, gameerr.Validationf("第 %d 格這次種植已經施過%s了。", plotNumber, name)
-		}
-		ok, err := inventory.Remove(ctx, t, farm.ID, balance.ItemFertilizer, 1, "normal", "none")
-		if err != nil {
-			return ActionResult{}, err
-		}
-		if !ok {
-			return ActionResult{}, gameerr.New(gameerr.InsufficientItems, "沒有%s，請先購買（buy fertilizer 1）。", name)
-		}
-		newReady := now.Add(mulDuration(plot.ReadyAt.Sub(now), balance.FertilizerTimeFactor))
-		if !newReady.After(*plot.WateredAt) {
-			newReady = plot.WateredAt.Add(time.Microsecond)
-		}
-		if _, err := t.Exec(ctx, "UPDATE farm_plots SET ready_at = $2, fertilized = true, updated_at = now() WHERE id = $1",
-			plot.ID, newReady); err != nil {
-			return ActionResult{}, err
-		}
-		plot.ReadyAt, plot.Fertilized = &newReady, true
-		crop, err := crops.Get(ctx, t, *plot.CropTypeID)
-		if err != nil {
-			return ActionResult{}, err
-		}
-		if err := s.record(ctx, t, farm, rules.EvUseItem,
-			fmt.Sprintf("對第 %d 格%s施%s，剩餘時間減少 %d%%", plotNumber, crop.Name, name, balance.FertilizerPct),
-			rec{ItemCode: balance.ItemFertilizer, Quantity: 1}); err != nil {
-			return ActionResult{}, err
-		}
-		left := rules.FormatDuration(rules.RemainingSeconds(&newReady, now))
-		return result(fmt.Sprintf("已對第 %d 格施%s，剩餘時間減少 %d%%，還需要 %s成熟。", plotNumber, name, balance.FertilizerPct, left),
-			farm.Gold, 0, "", 0), nil
+		return result(msg, farm.Gold, 0, "", 0), nil
 	})
+}
+
+// UseFertilizerPlots 一次對多格施化肥（Go 版新增，2026-11-15：面板的化肥選單可以複選）。同一筆交易：任何一格不能施肥時全部不施。
+func (s *GameService) UseFertilizerPlots(ctx context.Context, playerID int64, plotNumbers []int) (ActionResult, error) {
+	name := balance.Items[balance.ItemFertilizer].Name
+	var plots []int // 去掉重複的格子
+	for _, n := range plotNumbers {
+		if !slices.Contains(plots, n) {
+			plots = append(plots, n)
+		}
+	}
+	if len(plots) == 0 {
+		return ActionResult{}, gameerr.Validationf("請選擇要施%s的土地。", name)
+	}
+	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
+		farm, err := s.lockedFarm(ctx, t, playerID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		have, err := inventory.GetQuantity(ctx, t, farm.ID, balance.ItemFertilizer, "normal", "none")
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if have < len(plots) {
+			return ActionResult{}, gameerr.New(gameerr.InsufficientItems, "%s不足：選了 %d 格，只有 %d 個。", name, len(plots), have)
+		}
+		var lines []string
+		for _, n := range plots {
+			msg, err := s.fertilizePlot(ctx, t, farm, n)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			lines = append(lines, msg)
+		}
+		return result(strings.Join(lines, "\n"), farm.Gold, 0, balance.ItemFertilizer, len(lines)), nil
+	})
+}
+
+// fertilizePlot 對一格施化肥（交易內、農場已鎖定）。
+func (s *GameService) fertilizePlot(ctx context.Context, t *db.Tx, farm *models.Farm, plotNumber int) (string, error) {
+	name := balance.Items[balance.ItemFertilizer].Name
+	plot, now, state, err := s.plotForAction(ctx, t, farm, plotNumber)
+	if err != nil {
+		return "", err
+	}
+	if state != rules.PlotGrowing {
+		return "", gameerr.Validationf("%s只能用在生長中的土地（第 %d 格目前：%s）。", name, plotNumber, rules.PlotStateLabels[state])
+	}
+	if plot.Fertilized {
+		return "", gameerr.Validationf("第 %d 格這次種植已經施過%s了。", plotNumber, name)
+	}
+	ok, err := inventory.Remove(ctx, t, farm.ID, balance.ItemFertilizer, 1, "normal", "none")
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", gameerr.New(gameerr.InsufficientItems, "沒有%s，請先購買（buy fertilizer 1）。", name)
+	}
+	newReady := now.Add(mulDuration(plot.ReadyAt.Sub(now), balance.FertilizerTimeFactor))
+	if !newReady.After(*plot.WateredAt) {
+		newReady = plot.WateredAt.Add(time.Microsecond)
+	}
+	if _, err := t.Exec(ctx, "UPDATE farm_plots SET ready_at = $2, fertilized = true, updated_at = now() WHERE id = $1",
+		plot.ID, newReady); err != nil {
+		return "", err
+	}
+	plot.ReadyAt, plot.Fertilized = &newReady, true
+	crop, err := crops.Get(ctx, t, *plot.CropTypeID)
+	if err != nil {
+		return "", err
+	}
+	if err := s.record(ctx, t, farm, rules.EvUseItem,
+		fmt.Sprintf("對第 %d 格%s施%s，剩餘時間減少 %d%%", plotNumber, crop.Name, name, balance.FertilizerPct),
+		rec{ItemCode: balance.ItemFertilizer, Quantity: 1}); err != nil {
+		return "", err
+	}
+	left := rules.FormatDuration(rules.RemainingSeconds(&newReady, now))
+	return fmt.Sprintf("已對第 %d 格施%s，剩餘時間減少 %d%%，還需要 %s成熟。", plotNumber, name, balance.FertilizerPct, left), nil
 }
 
 func (s *GameService) UseEarthworm(ctx context.Context, playerID int64) (ActionResult, error) {
