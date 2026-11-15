@@ -142,6 +142,8 @@ var (
 	fileCache = map[string][]byte{}
 	petCache  = map[string][]byte{}
 	sceneMemo = map[string][]byte{}
+	// decorCache 預先產生的農田圖 + 寵物 + 庭院擺設（Go 版新增）；組合可能很多，超過 decorCacheMax 筆時清空重來
+	decorCache = map[string][]byte{}
 )
 
 // ResetCache 清除已讀取的 manifest 與素材（改變 Assets 後使用）。
@@ -154,6 +156,7 @@ func ResetCache() {
 	petCache = map[string][]byte{}
 	sceneMemo = map[string][]byte{}
 	cellarMemo = map[string][]byte{}
+	decorCache = map[string][]byte{}
 }
 
 func getManifest() (*manifest, error) {

@@ -5,8 +5,11 @@ package farmimage
 // 沒有擺任何裝飾時不畫，圖片與之前完全相同（仍可使用預先產生的圖與快取）。
 
 import (
+	"fmt"
 	"image"
+	"maps"
 	"slices"
+	"strings"
 
 	"farmgm/internal/game/decor"
 )
@@ -22,30 +25,6 @@ type decorSides struct {
 
 func hasDecor(codes []string) bool {
 	return slices.ContainsFunc(codes, func(c string) bool { return c != "" })
-}
-
-// bareFieldCanvas 不含寵物的農田畫面；命中預先產生的圖時也拼成畫布（要再加兩側的庭院）。
-func bareFieldCanvas(plots []Plot) (*image.NRGBA, error) {
-	canvas, cached, err := fieldCanvas(plots, nil)
-	if err != nil || cached == nil {
-		return canvas, err
-	}
-	m, err := getManifest()
-	if err != nil {
-		return nil, err
-	}
-	if len(plots) > m.Field.Slots {
-		plots = plots[:m.Field.Slots]
-	}
-	hit, err := presetFor(m, plots)
-	if err != nil {
-		return nil, err
-	}
-	base, err := img(hit.rel)
-	if err != nil {
-		return nil, err
-	}
-	return clone(base), nil
 }
 
 // withDecor 農田左右加庭院、上方加草地帶，畫裝飾與寵物。
@@ -109,7 +88,13 @@ func withDecor(m *manifest, field *image.NRGBA, pets map[string]int, codes []str
 	return canvas, nil
 }
 
+// decorCacheMax 預先產生的圖 + 庭院擺設最多快取幾張（每張約 100–200 KB）。
+const decorCacheMax = 256
+
 // FarmPNGWithDecor 農田圖片加上庭院擺設（codes：1–6 號位置的裝飾代碼，"" = 空）。
+//
+// 命中預先產生的農田圖（空地、全部同一種狀態）時，依「農田圖、有哪幾隻寵物、擺設」快取，之後同樣的組合直接回傳，
+// 不必重拼（沒有快取時每次約 20 毫秒）；其他情況每次重拼（比沒有擺設多約 6 毫秒）。
 func FarmPNGWithDecor(plots []Plot, pets map[string]int, codes []string) ([]byte, error) {
 	if !hasDecor(codes) {
 		return FarmPNG(plots, pets)
@@ -118,9 +103,36 @@ func FarmPNGWithDecor(plots []Plot, pets map[string]int, codes []string) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	field, err := bareFieldCanvas(plots)
+	field, cached, err := fieldCanvas(plots, nil)
 	if err != nil {
 		return nil, err
+	}
+	if cached != nil {
+		if len(plots) > m.Field.Slots {
+			plots = plots[:m.Field.Slots]
+		}
+		hit, err := presetFor(m, plots)
+		if err != nil {
+			return nil, err
+		}
+		petCodes := slices.Sorted(maps.Keys(pets))
+		key := fmt.Sprintf("%s|%v|%s", hit.rel, petCodes, strings.Join(codes, ","))
+		mu.Lock()
+		if len(decorCache) >= decorCacheMax {
+			decorCache = map[string][]byte{}
+		}
+		mu.Unlock()
+		return memo(&decorCache, key, func() ([]byte, error) {
+			base, err := img(hit.rel)
+			if err != nil {
+				return nil, err
+			}
+			canvas, err := withDecor(m, clone(base), pets, codes)
+			if err != nil {
+				return nil, err
+			}
+			return encodePalette(canvas, PanelColors)
+		})
 	}
 	canvas, err := withDecor(m, field, pets, codes)
 	if err != nil {

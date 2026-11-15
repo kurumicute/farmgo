@@ -113,7 +113,7 @@
   - **⏳ 加速沙漏**（`balance.ItemHourglass`，新設定 key `hourglass`：價格 500、剩餘時間 -50%、剩不到 60 秒不能用）：實驗室主頁的「使用加速沙漏」選單（研究槽的雜交、突變研究、育苗）與地下菇房的「加速沙漏」按鈕（所有生長中的菇床，開始時間往前移）。道具價格可調的做法改成 `balance.RegisterPrice`／`ItemPrice`（自動釣魚機也改用這個）。
   - **種子庫擴充**（`seed_labs.library_level`；`seedlab.LibraryStep` 10 格、`LibraryPrices` 10,000／20,000／40,000／80,000）：種子庫頁的「種子庫 +10 格」；容量一律經 `seedlab.LibraryCap`／`GameService.libraryCap`。
   - **研究槽擴充**（`seed_labs.extra_slots`；`seedlab.ExtraSlotPrices` 預設 100,000 一個，最多 5 個）：研究 Lv.3 後實驗室主頁出現「研究槽擴充」；研究槽數一律經 `seedlab.SlotsFor`。
-  - **🎨 農場裝飾**（`game/decor`，24 種：普通 5,000（原本素材裡沒用到的 11 種）、精緻 20,000、稀有 100,000、節慶 50,000；價格固定在程式裡）：新表 `farm_decorations`，「🌱 農田」→「🎨 庭院擺設」購買與擺放（6 個位置：左上、左中、左下、右上、右中、右下，新買的自動擺到第一個空位）。農田圖有擺裝飾時，左右各加 96 像素的草地（點綴花叢），左邊放 1–3 號、右邊放 4–6 號，上方一律加寵物帶高度的草地，圖片接近正方形（16 格 704×602；`farmimage.FarmPNGWithDecor`，版面在 manifest 的 `decor_sides`）。沒有擺時圖片與之前完全相同。13 種新裝飾由使用者提供的 `農場花園像素裝飾素材表.png` 裁切（背景本來就是透明的，透明度 < 128 的光暈去掉），縮成 64×64（底部對齊）。（同日第一版是畫在農田下方的一條，使用者覺得位置抽象、圖片太長，改成左右兩側。）
+  - **🎨 農場裝飾**（`game/decor`，24 種：普通 5,000（原本素材裡沒用到的 11 種）、精緻 20,000、稀有 100,000、節慶 50,000；價格固定在程式裡）：新表 `farm_decorations`，「🌱 農田」→「🎨 庭院擺設」購買與擺放（6 個位置：左上、左中、左下、右上、右中、右下，新買的自動擺到第一個空位）。農田圖有擺裝飾時，左右各加 96 像素的草地（點綴花叢），左邊放 1–3 號、右邊放 4–6 號，上方一律加寵物帶高度的草地，圖片接近正方形（16 格 704×602；`farmimage.FarmPNGWithDecor`，版面在 manifest 的 `decor_sides`）。沒有擺時圖片與之前完全相同。13 種新裝飾由使用者提供的 `農場花園像素裝飾素材表.png` 裁切（背景本來就是透明的，透明度 < 128 的光暈去掉），縮成 64×64（底部對齊）。（同日第一版是畫在農田下方的一條，使用者覺得位置抽象、圖片太長，改成左右兩側。）效能（i5-12400F 實測）：有擺設時每張農田圖多約 6 毫秒（約 18 → 24 毫秒），PNG 約 70 → 120 KB；命中預先產生的農田圖時依「農田圖、寵物、擺設」快取（`decorCache`，最多 256 張，超過清空），第二次起約 0.006 毫秒。
   - 農場狀態多讀一次庭院擺設，面板 SQL 次數上限 145 → 150（`bot/querycount_test.go`）。
   - **Migration 0042**（Python 專案）：`seed_labs.library_level`（0–10）、`seed_labs.extra_slots`（0–5）、新表 `farm_decorations`。`db.AlembicHead` 改為 0042。
   - 管理網站：「種子實驗室」卡片新增擴充格數與兩個價格清單、「自動釣魚與魚簍」卡片新增消耗魚餌與加速、新卡片「加速沙漏」。介紹網站的商店、釣魚與實驗室說明同步更新。
@@ -566,10 +566,10 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/discordio/wire.go` | `77678a836b80bd6fb95faafd2fdc82661eba818da178d750942ba1d1ef12d04b` |
 | `internal/bot/farmimage/cellar.go` | `e10745fcd7fe90db8c12fb2b266eae249859c983720f98671afead9a46766e42` |
 | `internal/bot/farmimage/cellar_test.go` | `99925428cc76f070969820f22ff1fb25823847f234dee6bdd0a8d132456135e0` |
-| `internal/bot/farmimage/decor.go` | `aed8863be622aeea768eb3f9b7357d50b33e6c3621e80213bf0f1ea55e6241ac` |
+| `internal/bot/farmimage/decor.go` | `e639ac9b4d8ca7f319659070937d0339912f8252b783b12952f259607d615fcf` |
 | `internal/bot/farmimage/decor_test.go` | `11ca61b171f62046a8334fce8a34145091b567923d5931b841396cb2bd21d36c` |
 | `internal/bot/farmimage/farm/` | `56716c16b5c75de556b49632bb345d8deb37e40d83b9b078aa66b1f6a4eca547` |
-| `internal/bot/farmimage/farmimage.go` | `d0a9615cc7a172f159ca3ea095d6c010e79d0c115778bc5f2a1e710706429440` |
+| `internal/bot/farmimage/farmimage.go` | `c995be346b03d71e5cbd41eb257163fb787568731a2c86816695bbf62911c067` |
 | `internal/bot/farmimage/farmimage_test.go` | `9480b8963ecd1b09955b2dcf8bcf27a858e35ba6adbddac968a3195b40954a20` |
 | `internal/bot/farmimage/memo_test.go` | `268df8771eb003325caa13707a788b02faf7601b3b33fe1a2bc31b45c28a6463` |
 | `internal/bot/farmimage/pillow.go` | `47755d2852d9e0649decab39b8cfdee7d2ed3ab7ac0a1676ca2b118f85fb420a` |
