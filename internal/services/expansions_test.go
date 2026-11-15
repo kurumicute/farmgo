@@ -133,7 +133,7 @@ func TestDecorations(t *testing.T) {
 	wantKind(t, err, gameerr.NotFound)
 	e.setGoldRecorded(pid, 500_000)
 	r := e.ok(e.s.BuyDecor(e.ctx, pid, "scarecrow"))
-	if !strings.Contains(r.Message, "稻草人") || !strings.Contains(r.Message, "1 號位置") || r.GoldDelta != -20_000 {
+	if !strings.Contains(r.Message, "稻草人") || !strings.Contains(r.Message, "擺在庭院的左上") || r.GoldDelta != -20_000 {
 		t.Fatalf("%+v", r)
 	}
 	_, err = e.s.BuyDecor(e.ctx, pid, "scarecrow")

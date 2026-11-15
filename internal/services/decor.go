@@ -1,6 +1,6 @@
 package services
 
-// 農場裝飾（Go 版新增，2026-11-15；目錄在 game/decor）：買一次永久擁有，擺在農田圖下方的庭院擺飾區（1–6 號位置），
+// 農場裝飾（Go 版新增，2026-11-15；目錄在 game/decor）：買一次永久擁有，擺在農田圖左右兩側的庭院（6 個位置），
 // 只改外觀、沒有加成。資料在 farm_decorations（Migration 0042）。
 
 import (
@@ -115,7 +115,7 @@ func (s *GameService) BuyDecor(ctx context.Context, playerID int64, code string)
 		where := "，已收進庭院擺設（擺飾區滿了，到「🎨 庭院擺設」換位置）"
 		for n := 1; n <= decor.Slots; n++ {
 			if !used[n] {
-				slot, where = n, fmt.Sprintf("，擺在庭院 %d 號位置", n)
+				slot, where = n, fmt.Sprintf("，擺在庭院的%s", decor.SlotName(n))
 				break
 			}
 		}
@@ -135,7 +135,7 @@ func (s *GameService) BuyDecor(ctx context.Context, playerID int64, code string)
 // PlaceDecor 把裝飾擺到某個位置（原本在那裡的裝飾收起來；這個裝飾原本在別的位置就搬過來）；code 為 "" 時把那個位置清空。
 func (s *GameService) PlaceDecor(ctx context.Context, playerID int64, slot int, code string) (ActionResult, error) {
 	if slot < 1 || slot > decor.Slots {
-		return ActionResult{}, gameerr.Validationf("庭院只有 1–%d 號位置。", decor.Slots)
+		return ActionResult{}, gameerr.Validationf("庭院只有 %d 個位置（左上、左中、左下、右上、右中、右下）。", decor.Slots)
 	}
 	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
 		farm, err := s.lockedFarm(ctx, t, playerID)
@@ -163,11 +163,11 @@ func (s *GameService) PlaceDecor(ctx context.Context, playerID int64, slot int, 
 				farm.ID, slot, code); err != nil {
 				return ActionResult{}, err
 			}
-			return result(fmt.Sprintf("🎨 把%s %s擺到庭院 %d 號位置。", it.Emoji, it.Name, slot), farm.Gold, 0, "", 0), nil
+			return result(fmt.Sprintf("🎨 把%s %s擺到庭院的%s。", it.Emoji, it.Name, decor.SlotName(slot)), farm.Gold, 0, "", 0), nil
 		}
 		if _, err := t.Exec(ctx, "UPDATE farm_decorations SET slot = NULL WHERE farm_id = $1 AND slot = $2", farm.ID, slot); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🎨 庭院 %d 號位置已清空。", slot), farm.Gold, 0, "", 0), nil
+		return result(fmt.Sprintf("🎨 庭院的%s已清空。", decor.SlotName(slot)), farm.Gold, 0, "", 0), nil
 	})
 }

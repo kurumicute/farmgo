@@ -995,12 +995,42 @@
     },
     "note": "有寵物時在農田圖上方加一條草地（band_height），狗在左上、貓在右上，不壓到欄杆；素材由根目錄 dogcat.png 切出縮小（64 色）"
   },
-  "decor_band": {
-    "height": 96,
-    "strip": "decor/_yard_strip.png",
+  "decor_sides": {
+    "width": 96,
     "tile": "tiles/grass.png",
-    "slots": 6,
+    "flower": "tiles/flowers.png",
     "size": 64,
-    "bottom": 4
+    "rows": [
+      120,
+      286,
+      452
+    ],
+    "flowers": [
+      [
+        16,
+        150
+      ],
+      [
+        16,
+        316
+      ],
+      [
+        -80,
+        150
+      ],
+      [
+        -80,
+        316
+      ],
+      [
+        16,
+        442
+      ],
+      [
+        -80,
+        442
+      ]
+    ],
+    "note": "庭院擺設（Go 版新增）：農田左右各加 width 寬的草地，左邊 1–3 號、右邊 4–6 號裝飾底部對齊在 rows（相對農田頂端）；flowers 是點綴的花叢（x 為負數時從右邊算）。有擺裝飾時上方一律加寵物帶高度的草地，圖片接近正方形"
   }
 }

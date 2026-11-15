@@ -87,12 +87,12 @@ type manifest struct {
 		AnimalSpots  [][][3]int            `json:"animal_spots"`
 		Bases        map[string]string     `json:"bases"`
 	} `json:"yard"`
-	Animals   map[string]string `json:"animals"`
-	Products  map[string]string `json:"products"`
-	Goods     map[string]string `json:"goods"`
-	Buildings map[string]string `json:"buildings"`
-	Scenes    map[string]string `json:"scenes"`
-	DecorBand decorBand         `json:"decor_band"` // 庭院擺飾區（Go 版新增）
+	Animals    map[string]string `json:"animals"`
+	Products   map[string]string `json:"products"`
+	Goods      map[string]string `json:"goods"`
+	Buildings  map[string]string `json:"buildings"`
+	Scenes     map[string]string `json:"scenes"`
+	DecorSides decorSides        `json:"decor_sides"` // 庭院擺設（Go 版新增）
 
 	// 依 JSON 順序展開（Python dict 的走訪順序）
 	petSprites []petSprite

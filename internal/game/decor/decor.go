@@ -1,11 +1,21 @@
-// Package decor 農場裝飾（Go 版新增，2026-11-15）：只改外觀、沒有加成。買一次永久擁有，擺在農田圖下方的庭院擺飾區
+// Package decor 農場裝飾（Go 版新增，2026-11-15）：只改外觀、沒有加成。買一次永久擁有，擺在農田圖左右兩側的庭院
 // （最多 Slots 個位置）。目錄固定在程式裡（使用者指定裝飾不需要在管理網站調整）；圖片在 bot/farmimage/farm/decor/<代碼>.png。
 package decor
 
 import "slices"
 
-// Slots 庭院擺飾區的位置數（farm_decorations.slot 的 CHECK 是 1–6）。
+// Slots 庭院擺設的位置數（farm_decorations.slot 的 CHECK 是 1–6）：1–3 在農田左邊（上、中、下），4–6 在右邊。
 const Slots = 6
+
+var slotNames = [Slots]string{"左上", "左中", "左下", "右上", "右中", "右下"}
+
+// SlotName 位置名稱（1–6 → 左上…右下）。
+func SlotName(slot int) string {
+	if slot < 1 || slot > Slots {
+		return ""
+	}
+	return slotNames[slot-1]
+}
 
 // Tier 等級。
 type Tier struct {

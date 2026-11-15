@@ -1,6 +1,6 @@
 package bot
 
-// 面板頁面：庭院擺設（Go 版新增，2026-11-15；從「🌱 農田」頁進入）。購買裝飾、選位置擺放；擺好的裝飾畫在農田圖下方。
+// 面板頁面：庭院擺設（Go 版新增，2026-11-15；從「🌱 農田」頁進入）。購買裝飾、選位置擺放；擺好的裝飾畫在農田圖左右兩側。
 
 import (
 	"context"
@@ -27,9 +27,9 @@ func (p *Panel) buildDecor(_ context.Context, data any) (*ui.Embed, error) {
 	e := &ui.Embed{Title: "🎨 ✦ 庭院擺設 ✦", Color: Green}
 	slots := make([]string, decor.Slots)
 	for i, code := range v.Placed {
-		slots[i] = fmt.Sprintf("%d 號：（空）", i+1)
+		slots[i] = fmt.Sprintf("%s：（空）", decor.SlotName(i+1))
 		if it, ok := byCode[code]; ok && code != "" {
-			slots[i] = fmt.Sprintf("%d 號：%s %s", i+1, it.Emoji, it.Name)
+			slots[i] = fmt.Sprintf("%s：%s %s", decor.SlotName(i+1), it.Emoji, it.Name)
 		}
 	}
 	var tiers []any
@@ -56,7 +56,7 @@ func (p *Panel) buildDecor(_ context.Context, data any) (*ui.Embed, error) {
 		}
 	}
 	parts := []any{
-		"擺在農田圖下方的庭院，只改外觀、沒有加成。買一次永久擁有，可以隨時換位置或收起來。",
+		"擺在農田圖左右兩側的庭院，只改外觀、沒有加成。買一次永久擁有，可以隨時換位置或收起來。",
 		Section{Title: "庭院位置", Lines: slots},
 		fmt.Sprintf("**裝飾目錄**（已擁有 %d／%d）", owned, len(v.Items)),
 	}
@@ -83,7 +83,7 @@ func (p *Panel) buildDecor(_ context.Context, data any) (*ui.Embed, error) {
 		if it, ok := byCode[v.Placed[i]]; ok && v.Placed[i] != "" {
 			desc = it.Emoji + " " + it.Name
 		}
-		places = append(places, option{fmt.Sprintf("庭院 %d 號位置", i+1), fmt.Sprint(i + 1), desc, "📍"})
+		places = append(places, option{"庭院" + decor.SlotName(i+1), fmt.Sprint(i + 1), desc, "📍"})
 	}
 	selSlot := ""
 	if p.decorSlot > 0 {
@@ -103,11 +103,11 @@ func (p *Panel) buildDecor(_ context.Context, data any) (*ui.Embed, error) {
 			}
 			where := "收起來的"
 			if it.Slot > 0 {
-				where = fmt.Sprintf("目前在 %d 號", it.Slot)
+				where = "目前在" + decor.SlotName(it.Slot)
 			}
 			put = append(put, option{it.Name, it.Code, where, it.Emoji})
 		}
-		p.selectMenu(fmt.Sprintf("🎨 擺到 %d 號位置…", slot), put, func(ctx context.Context, it ui.Interaction, code string) error {
+		p.selectMenu(fmt.Sprintf("🎨 擺到%s…", decor.SlotName(slot)), put, func(ctx context.Context, it ui.Interaction, code string) error {
 			if code == "none" {
 				code = ""
 			}
