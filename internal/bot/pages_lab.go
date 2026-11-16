@@ -729,14 +729,14 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 	if mother != nil {
 		selected = fmt.Sprint(mother.ID)
 	}
-	// 種子超過 25 顆時分頁：還沒選母本時翻母本選單，選好母本後翻父本選單
+	// 種子超過 25 顆時分頁：母本、父本選單各有一組翻頁按鈕（母本在最後一列，選好母本後仍可翻頁改選）
 	mothers, mPage, mPages := pageOf(mothers, st.motherPage)
 	st.motherPage = mPage
+	fPages := 0 // 父本選單的總頁數（還沒選母本時沒有父本選單）
 	mHolder := "♀ 選擇母本…"
 	if mPages > 1 {
 		mHolder = fmt.Sprintf("♀ 選擇母本（第 %d/%d 頁）…", mPage+1, mPages)
 	}
-	pagesFor, pageField, pageLabel := mPages, &st.motherPage, "母本"
 	p.selectMenu(mHolder, mothers, func(ctx context.Context, it ui.Interaction, value string) error {
 		st.mother, _ = strconv.ParseInt(value, 10, 64)
 		p.goTo(ctx, it, "lab_cross", "")
@@ -765,13 +765,13 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 			fathers = nil
 			e.Description += "\n\n⚠️ 種子庫沒有其他可以配對的種子。"
 		}
-		fathers, fPage, fPages := pageOf(fathers, st.fatherPage)
+		var fPage int
+		fathers, fPage, fPages = pageOf(fathers, st.fatherPage)
 		st.fatherPage = fPage
 		fHolder := "♂ 選擇父本…"
 		if fPages > 1 {
 			fHolder = fmt.Sprintf("♂ 選擇父本（第 %d/%d 頁）…", fPage+1, fPages)
 		}
-		pagesFor, pageField, pageLabel = fPages, &st.fatherPage, "父本"
 		p.selectMenu(fHolder, fathers, func(ctx context.Context, it ui.Interaction, value string) error {
 			st.father, _ = strconv.ParseInt(value, 10, 64)
 			p.goTo(ctx, it, "lab_cross", "")
@@ -818,8 +818,9 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 		}), actOpts{page: "lab", noProgress: true})
 		return nil
 	}, btn{emoji: "🧬", style: ui.Success, row: 3, disabled: mother == nil || father == nil || v.FreeSlots == 0})
-	p.pageButtons(pageLabel, pageField, pagesFor, 3, "lab_cross")
+	p.pageButtons("父本", &st.fatherPage, fPages, 3, "lab_cross")
 	p.labNav(4)
+	p.pageButtons("母本", &st.motherPage, mPages, 4, "lab_cross")
 	return e, nil
 }
 

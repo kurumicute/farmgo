@@ -591,7 +591,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/pages_cellar.go` | `47f501028f1f8eee929023594162a2082803eacb7001f32de0e8a8b27e424b51` |
 | `internal/bot/pages_decor.go` | `737aae071e6868280cf88a8ee60daef34e2ea670909aa371d1c34094d8a059a8` |
 | `internal/bot/pages_fishing.go` | `5f32ff6019a3f3c367460da8aaa2b303be63774afa6a0a45f6644cd0d4d9401a` |
-| `internal/bot/pages_lab.go` | `73d02e08608de96a6405b1babd592d9a139adc1fed7602a2e1a14df2d66c815e` |
+| `internal/bot/pages_lab.go` | `3a4ee84eb6b608ba23ca70a2d2ca859def20522daed34846d6023c685457892a` |
 | `internal/bot/pages_main.go` | `af9348c1580f5c6dc2fd007e6de26bbdae0a8d3dbadab8cdcd735e4990ce0127` |
 | `internal/bot/pages_progress.go` | `9fcb999b900410e1cbecbc6338339ceee091eadf044e89544438f53163eba3d3` |
 | `internal/bot/pages_ranch.go` | `d73f2349bfe889062b690597506e8810f85356bda716e1bff51a831e4a90d13f` |
@@ -605,7 +605,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/panel_expansions_test.go` | `a1361fd328308ea29e157c4c5dbec2f9b0ae55180e0b81e7d6cb02b97f4295e0` |
 | `internal/bot/panel_fishing_test.go` | `1d1e60f880aad39d6c7d29c1619cd953f7bca4f1708db412a4bb1e37d5c07b66` |
 | `internal/bot/panel_go_features_test.go` | `cfdd4a2ac687a8863e287f65b33fd0207f7b3909fa4ba0f16e08919b9a618d91` |
-| `internal/bot/panel_lab_test.go` | `3c0906198f3f29bfd56f3fb615c7dddd231904f60e6bdf673fe55699507ec347` |
+| `internal/bot/panel_lab_test.go` | `6386ef7797499fb45518993c95ea1d888be765a97a1f17fe09c028461ac28663` |
 | `internal/bot/panel_progress_test.go` | `f2b834cd3f0f1faaa97a44e86b5dd116f90a32010738ad113ba918e4e4ac5bd0` |
 | `internal/bot/panel_ranch_test.go` | `eba6ddacfe5a0eae2696a5491ce0a90d7d5b04a514613655146e4937514c0ccd` |
 | `internal/bot/panel_shop_test.go` | `bb4b6db006965bd60e6b8d261bb2f7b84e022d0a91a7ae89702e4f7c32735d30` |

@@ -252,6 +252,17 @@ func TestLabSeedPages(t *testing.T) {
 	if got := p.options("選擇父本"); len(got) != 4 {
 		t.Fatal(len(got))
 	}
+	// 選好母本後仍可把母本選單翻回第 1 頁改選（以前翻頁按鈕只會翻父本選單）
+	p.click("母本上一頁（2/2）")
+	mothers = p.options("選擇母本")
+	if len(mothers) != 25 {
+		t.Fatal(len(mothers))
+	}
+	p.choose("選擇母本", mothers[0])
+	contains(t, p.Text, "♀ 母本：")
+	if got := p.options("選擇母本"); len(got) != 25 {
+		t.Fatal(len(got))
+	}
 }
 
 // 農田沒有空地時，種子庫仍顯示停用的「種下」選單與原因（以前選單會整個消失，玩家以為特殊種子不能種）。
