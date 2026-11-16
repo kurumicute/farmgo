@@ -1050,7 +1050,7 @@ func (r *RanchService) CancelCraft(ctx context.Context, playerID, orderID int64)
 			rec{ItemCode: order.OutputCode}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已取消加工訂單 #%d（%d 份%s），退回原料 %s。", order.ID, order.OutputQuantity, outName, returned),
+		return result(fmt.Sprintf("已取消加工訂單（%d 份%s），退回原料 %s。", order.OutputQuantity, outName, returned),
 			farm.Gold, 0, order.OutputCode, 0), nil
 	})
 }

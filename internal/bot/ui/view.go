@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -93,6 +94,22 @@ func (v *View) Add(it Item) Item {
 	}
 	v.items = append(v.items, it)
 	return it
+}
+
+// MoveLast 把元件移到元件清單最後並改放在第 row 列（同一列中排在最右邊）。元件必須已在 View 中；
+// 呼叫端要自行確認該列放得下（不檢查，避免移動途中暫時超過上限）。
+func (v *View) MoveLast(it Item, row int) {
+	i := slices.Index(v.items, it)
+	if i < 0 {
+		return
+	}
+	v.items = append(slices.Delete(v.items, i, i+1), it)
+	switch x := it.(type) {
+	case *Button:
+		x.Row = row
+	case *Select:
+		x.Row = row
+	}
 }
 
 // Rows 依列分組（列號由小到大；每列內依加入順序），給轉接層組成 Discord 的 ActionsRow。

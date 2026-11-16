@@ -89,11 +89,16 @@ func (p *Panel) buildDecor(_ context.Context, data any) (*ui.Embed, error) {
 	if p.decorSlot > 0 {
 		selSlot = fmt.Sprint(p.decorSlot)
 	}
-	p.selectMenu("📍 選擇庭院位置…", places, func(ctx context.Context, it ui.Interaction, value string) error {
-		p.decorSlot, _ = strconv.Atoi(value)
-		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
-		return nil
-	}, 1, selSlot)
+	// 2026-11-16 還沒有任何裝飾時不顯示位置選單（以前選了只是重繪，沒有任何反應）
+	if owned > 0 {
+		p.selectMenu("📍 選擇庭院位置…", places, func(ctx context.Context, it ui.Interaction, value string) error {
+			p.decorSlot, _ = strconv.Atoi(value)
+			p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+			return nil
+		}, 1, selSlot)
+	} else {
+		e.Footer = fmt.Sprintf("💳 金幣 %s　先從下方選單買一個裝飾，才能擺到庭院。", money(v.Gold))
+	}
 	if p.decorSlot > 0 && owned > 0 {
 		slot := p.decorSlot
 		put := []option{{"收起來（清空這個位置）", "none", "", "📦"}}
@@ -111,9 +116,13 @@ func (p *Panel) buildDecor(_ context.Context, data any) (*ui.Embed, error) {
 			if code == "none" {
 				code = ""
 			}
-			p.act(ctx, it, p.call("place_decor", func(ctx context.Context) (services.ActionResult, error) {
+			place := p.call("place_decor", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().PlaceDecor(ctx, p.playerID, slot, code)
-			}), actOpts{noProgress: true})
+			})
+			p.act(ctx, it, func(ctx context.Context) (string, error) {
+				msg, err := place(ctx)
+				return msg + "\n🌱 回「🌱 農田」就能看到擺好的庭院。", err
+			}, actOpts{noProgress: true})
 			return nil
 		}, 2, "")
 	}

@@ -232,6 +232,9 @@
     [["world_boss"], (g) => renderWorldBoss(g.world_boss)],
     [["progress"], (g) => renderProgress(g.progress)],
     [["special_shop"], (g) => renderSpecialShop(g.special_shop)],
+    // 庭院擺設的等級、價格與名稱（2026-11-16 起由程式的目錄帶入）
+    [["decor"], (g) => setText("g-decor-tiers", g.decor.map((t) => `${t.emoji} ${t.name} ${num.format(t.price)}（${t.items.join("、")}）`)
+      .join("、") + "。")],
     [["pets"], (g) => renderPets(g.pets)],
     [["mushroom"], (g) => renderMushroom(g.mushroom)],
     [["seedlab"], (g) => renderSeedLab(g.seedlab)],
@@ -430,10 +433,15 @@
       : [["目前沒有指定物品", "", ""]]);
     const r = b.rewards;
     const rows = [];
+    // 領獎條件（2026-11-16 統一說法）：有參與門檻時，未達門檻的玩家沒有任何獎勵
+    const who = r.min_points ? "達參與門檻的玩家" : "所有捐獻過的玩家";
+    setText("g-boss-claim-who", r.min_points
+      ? `個人積分達參與門檻（${num.format(r.min_points)} 分）的玩家才能領`
+      : "只要捐獻過就能領");
     if (r.min_points) rows.push(["🎯 參與門檻", `個人積分 ≥ ${num.format(r.min_points)}`, "未達門檻沒有任何獎勵（含排名）"]);
     rows.push(
-      ["🏆 勝利獎勵", "Boss 被擊敗，所有貢獻者", r.victory],
-      ["🤝 參與獎勵", "Boss 未被擊敗，所有貢獻者", r.participation],
+      ["🏆 勝利獎勵", `Boss 被擊敗，${who}`, r.victory],
+      ["🤝 參與獎勵", `Boss 未被擊敗，${who}`, r.participation],
     );
     if (r.bonus_points) rows.push(["⭐ 貢獻達標", `個人積分 ≥ ${num.format(r.bonus_points)}`, r.bonus]);
     r.rank.forEach((t, i) => rows.push([i < 3 ? ["🥇", "🥈", "🥉"][i] + " 排名獎勵" : "🏅 排名獎勵", `個人第 ${i + 1} 名`, t]));
@@ -690,6 +698,13 @@
     });
     window.addEventListener("hashchange", openFromHash);
     openFromHash();
+    // 首頁功能卡的「看手冊說明」：同一個錨點再點一次不會觸發 hashchange，直接打開欄位
+    document.querySelectorAll("a.card-more").forEach((a) => {
+      a.addEventListener("click", () => {
+        const d = document.getElementById(a.hash.slice(1));
+        if (d) d.open = true;
+      });
+    });
   }
 
   async function loadSummary() {
@@ -807,6 +822,45 @@
     const all = () => document.querySelectorAll("#guide details.guide");
     $("guide-expand").addEventListener("click", () => all().forEach((d) => { d.open = true; }));
     $("guide-collapse").addEventListener("click", () => all().forEach((d) => { d.open = false; }));
+    initGuideToc();
+  }
+
+  // 操作手冊目錄：依各欄位標題產生錨點連結（點擊時打開該欄位）＋關鍵字篩選（只比對 textContent）
+  function initGuideToc() {
+    const toc = $("guide-toc");
+    const filter = $("guide-filter");
+    const note = $("guide-filter-note");
+    if (!toc || !filter) return;
+    const sections = Array.from(document.querySelectorAll("#guide-list > details.guide[id]"));
+    const chips = sections.map((d) => {
+      const a = document.createElement("a");
+      a.className = "toc-chip";
+      a.href = `#${d.id}`;
+      a.textContent = d.querySelector("summary").textContent.trim();
+      a.addEventListener("click", () => { d.open = true; }); // 同一個錨點再點一次不會觸發 hashchange
+      const li = document.createElement("li");
+      li.appendChild(a);
+      toc.appendChild(li);
+      return li;
+    });
+    let timer = null;
+    const apply = () => {
+      const words = filter.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      let shown = 0;
+      sections.forEach((d, i) => {
+        const text = d.textContent.toLowerCase();
+        const match = words.every((w) => text.includes(w));
+        d.hidden = !match;
+        chips[i].hidden = !match;
+        if (match) shown += 1;
+      });
+      note.hidden = !words.length;
+      note.textContent = shown ? `找到 ${shown} 個符合的欄位。` : "沒有符合的欄位，換個關鍵字試試。";
+    };
+    filter.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(apply, 200);
+    });
   }
 
   // ---------- 銀河星空背景 ----------
@@ -1072,8 +1126,10 @@
   loadInfo();
   loadSummary();
   loadStats();
-  setInterval(loadStats, 30000);
+  // 統計每 30 秒更新；分頁隱藏時不讀取，切回分頁時立即更新（2026-11-16）
+  setInterval(() => { if (!document.hidden) loadStats(); }, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) loadStats(); });
   // 手冊數值：伺服器快取 60 秒，頁面每分鐘重新讀取已打開過的部分，切回分頁時也立即更新
-  setInterval(refreshGuide, 60000);
+  setInterval(() => { if (!document.hidden) refreshGuide(); }, 60000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshGuide(); });
 })();

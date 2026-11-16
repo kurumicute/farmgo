@@ -103,18 +103,19 @@ func (p *Panel) buildSteal(_ context.Context, data any) (*ui.Embed, error) {
 	var lines []string
 	for _, t := range shown {
 		lines = append(lines, fmt.Sprintf("🥷 **%s**　農田 `#%d`　%s\n　🧺 剩 ×%d　👜 這次最多偷 ×%d",
-			t.PlayerName, t.PlotNumber, t.CropName, t.RemainingQuantity, t.MaxSteal))
+			escapeMD(t.PlayerName), t.PlotNumber, t.CropName, t.RemainingQuantity, t.MaxSteal))
 	}
 	var list any = "目前沒有可以偷的成熟作物。"
 	if len(lines) > 0 {
-		list = Section{Title: "可以偷的成熟作物", Lines: lines, Sep: "\n\n"}
+		title := "可以偷的成熟作物"
+		if pages > 1 {
+			title += fmt.Sprintf("（第 %d/%d 頁）", p.stealPage+1, pages)
+		}
+		list = Section{Title: title, Lines: lines, Sep: "\n\n"}
 	}
 	e := &ui.Embed{Title: fmt.Sprintf("🥷 ✦ 偷菜｜%s ✦", p.groupName), Color: Red, Description: sections(
 		"👀 用第一個選單選一位玩家，可以打開他的農田畫面，再選要偷哪一格。", list)}
 	e.Footer = stealFooter(d.glove)
-	if pages > 1 {
-		e.Footer += fmt.Sprintf("第 %d/%d 頁", p.stealPage+1, pages)
-	}
 
 	// 玩家選單：選一位玩家打開他的農田
 	playerPages := pageCount(len(d.players), ui.MaxOptions)
@@ -142,6 +143,8 @@ func (p *Panel) buildSteal(_ context.Context, data any) (*ui.Embed, error) {
 		p.goTo(ctx, it, "steal_farm", "")
 		return nil
 	}, 0, "")
+	// 2026-11-16 兩組翻頁統一格式（都顯示頁數），而且緊貼在各自的選單下一列
+	p.pageButtons("玩家", &p.stealPlayerPage, playerPages, 1, "steal")
 
 	var crops []option
 	for _, t := range shown {
@@ -156,30 +159,9 @@ func (p *Panel) buildSteal(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		p.act(ctx, it, p.stealAction(victim, rest), actOpts{})
 		return nil
-	}, 1, "")
-	if pages > 1 {
-		move := func(delta int) ui.Handler {
-			return func(ctx context.Context, it ui.Interaction) error {
-				p.stealPage = ((p.stealPage+delta)%pages + pages) % pages
-				p.goTo(ctx, it, "steal", "")
-				return nil
-			}
-		}
-		p.button("作物上一頁", move(-1), btn{emoji: "◀️", row: 2})
-		p.button("作物下一頁", move(1), btn{emoji: "▶️", row: 2})
-	}
-	p.nav("重新整理", "steal", btn{emoji: "🔄", row: 2})
-	if playerPages > 1 {
-		move := func(delta int) ui.Handler {
-			return func(ctx context.Context, it ui.Interaction) error {
-				p.stealPlayerPage = ((p.stealPlayerPage+delta)%playerPages + playerPages) % playerPages
-				p.goTo(ctx, it, "steal", "")
-				return nil
-			}
-		}
-		p.button(fmt.Sprintf("玩家上一頁（%d/%d）", p.stealPlayerPage+1, playerPages), move(-1), btn{emoji: "◀️", row: 3})
-		p.button("玩家下一頁", move(1), btn{emoji: "▶️", row: 3})
-	}
+	}, 2, "")
+	p.pageButtons("作物", &p.stealPage, pages, 3, "steal")
+	p.nav("重新整理", "steal", btn{emoji: "🔄", row: 3})
 	p.navBack(4)
 	return e, nil
 }
@@ -219,9 +201,9 @@ func (p *Panel) buildStealFarm(_ context.Context, data any) (*ui.Embed, error) {
 	var status string
 	switch {
 	case v.LimitReached:
-		status = fmt.Sprintf("✅ 你今天已經偷過 %s 的田了（每天只能偷同一位玩家 %d 格），明天再來。", v.PlayerName, balance.StealPlotsPerVictimPerDay)
+		status = fmt.Sprintf("✅ 你今天已經偷過 %s 的田了（每天只能偷同一位玩家 %d 格），明天再來。", escapeMD(v.PlayerName), balance.StealPlotsPerVictimPerDay)
 	case v.VictimFull:
-		status = fmt.Sprintf("🔒 %s 今天已經被 %d 個人偷過了（每人每天最多被 %d 人偷），明天再來。", v.PlayerName,
+		status = fmt.Sprintf("🔒 %s 今天已經被 %d 個人偷過了（每人每天最多被 %d 人偷），明天再來。", escapeMD(v.PlayerName),
 			balance.StealThievesPerVictimPerDay, balance.StealThievesPerVictimPerDay)
 	case v.WarehouseFull:
 		status = "📦 你的倉庫已滿，先清出空間才能偷菜。"
@@ -232,11 +214,12 @@ func (p *Panel) buildStealFarm(_ context.Context, data any) (*ui.Embed, error) {
 	default:
 		status = "🌱 目前沒有可以偷的成熟作物（偷過的作物不能再偷）。"
 	}
+	// 2026-11-16 能不能偷、還能偷幾格放在最下面：說明最後一段＋footer（大圖排在欄位之後，footer 才緊貼按鈕）；規則留在偷菜頁與說明頁
 	e := &ui.Embed{Title: fmt.Sprintf("🥷 ✦ %s 的農田 ✦", v.PlayerName), Color: Red, Description: sections(
 		fmt.Sprintf("🏡 **%s**　%s", v.FarmName, summaryCounts(v.Plots)),
-		status,
 		Section{Title: "農田", Lines: lines},
-	), Footer: stealFooter(v.Glove)}
+		status,
+	), Footer: plainText(status)}
 	var options []option
 	for _, t := range v.Targets {
 		options = append(options, option{fmt.Sprintf("#%d %s", t.PlotNumber, t.CropName), fmt.Sprintf("%d|%d", t.PlotNumber, t.MaxSteal),
@@ -271,7 +254,16 @@ type boardRow struct {
 type boardData struct {
 	rows   []boardRow
 	titles map[int64]string
+	// 個人排行：自己的名次（前 boardScan 名內才找得到）；mineScanned 表示有查過自己的名次
+	mine        *boardRow
+	mineScanned bool
 }
+
+// boardShown 排行榜顯示的名次數；boardScan 為了找出自己的名次多讀的名次數（服務層上限 50）。
+const (
+	boardShown = 10
+	boardScan  = services.LeaderboardMax
+)
 
 func playerRows(rows []leaderboard.Row) []boardRow {
 	out := make([]boardRow, len(rows))
@@ -292,7 +284,7 @@ func (p *Panel) loadBoard(ctx context.Context) (any, error) {
 			return nil, gameerr.Validationf("本伺服器排行需要在 Discord 伺服器中查看。")
 		}
 		pid := p.playerID
-		rows, err := svc.Leaderboard(ctx, b.kind, p.groupID, &pid, 10)
+		rows, err := svc.Leaderboard(ctx, b.kind, p.groupID, &pid, boardScan)
 		if err != nil {
 			return nil, err
 		}
@@ -310,17 +302,27 @@ func (p *Panel) loadBoard(ctx context.Context) (any, error) {
 				income: r.SalesIncome, memberCount: r.MemberCount, group: true})
 		}
 	case b.period == "all":
-		rows, err := svc.Leaderboard(ctx, b.kind, nil, nil, 10)
+		rows, err := svc.Leaderboard(ctx, b.kind, nil, nil, boardScan)
 		if err != nil {
 			return nil, err
 		}
 		d.rows = playerRows(rows)
 	default:
-		rows, err := svc.PeriodLeaderboard(ctx, b.kind, b.period, 10)
+		rows, err := svc.PeriodLeaderboard(ctx, b.kind, b.period, boardScan)
 		if err != nil {
 			return nil, err
 		}
 		d.rows = playerRows(rows)
+	}
+	if b.scope != "groups" { // 個人排行：找出自己的名次，再只留前 10 名顯示
+		d.mineScanned = true
+		for i := range d.rows {
+			if r := d.rows[i]; r.playerID != nil && *r.playerID == p.playerID {
+				d.mine = &r
+				break
+			}
+		}
+		d.rows = d.rows[:min(len(d.rows), boardShown)]
 	}
 	var ids []int64
 	for _, r := range d.rows {
@@ -341,39 +343,49 @@ func (p *Panel) buildBoard(_ context.Context, data any) (*ui.Embed, error) {
 		period = "全部期間"
 	}
 	e := &ui.Embed{Title: fmt.Sprintf("🏆 %s｜%s｜%s", ScopeNames[b.scope], KindNames[b.kind], period), Color: Gold}
+	valueOf := func(r boardRow) string {
+		switch b.kind {
+		case "money":
+			value := money(r.score) + " 金"
+			if b.period != "all" && b.scope != "group" {
+				value += "（賣農產品收入）"
+			}
+			return value
+		case "sales":
+			return fmt.Sprintf("%s 個（%s 金）", money(r.soldQty), money(r.income))
+		default:
+			return fmt.Sprintf("%s 金（%s 個）", money(r.income), money(r.soldQty))
+		}
+	}
 	var lines []string
 	for _, r := range d.rows {
 		medal, ok := Medals[r.rank]
 		if !ok {
 			medal = fmt.Sprintf("`%2d.`", r.rank)
 		}
-		name := r.name
+		name := escapeMD(r.name)
 		if r.playerID != nil {
 			if title := d.titles[*r.playerID]; title != "" {
 				name = fmt.Sprintf("%s〔%s〕", name, title)
 			}
 		}
-		var value string
-		switch b.kind {
-		case "money":
-			value = money(r.score) + " 金"
-			if b.period != "all" && b.scope != "group" {
-				value += "（賣農產品收入）"
-			}
-		case "sales":
-			value = fmt.Sprintf("%s 個（%s 金）", money(r.soldQty), money(r.income))
-		default:
-			value = fmt.Sprintf("%s 金（%s 個）", money(r.income), money(r.soldQty))
-		}
 		extra := ""
 		if r.group {
 			extra = fmt.Sprintf("｜%d 人", r.memberCount)
 		}
-		lines = append(lines, fmt.Sprintf("%s **%s**　%s%s", medal, name, value, extra))
+		lines = append(lines, fmt.Sprintf("%s **%s**　%s%s", medal, name, valueOf(r), extra))
 	}
 	e.Description = "目前沒有資料。"
 	if len(lines) > 0 {
 		e.Description = sections(Section{Lines: lines, Sep: "\n\n"})
+	}
+	// 自己的名次放在最後一個欄位，貼近按鈕（2026-11-16：只列前 10 名時，不在榜上的玩家看不到自己的位置）
+	if d.mineScanned {
+		mine := fmt.Sprintf("還沒進前 %d 名，繼續加油！", boardScan)
+		if d.mine != nil {
+			mine = fmt.Sprintf("第 **%d** 名　%s", d.mine.rank, valueOf(*d.mine))
+		}
+		e.AddField("🙋 我的名次", mine, false)
 	}
 
 	setValue := func(set func(v string)) func(ctx context.Context, it ui.Interaction, value string) error {
@@ -400,15 +412,20 @@ func (p *Panel) buildBoard(_ context.Context, data any) (*ui.Embed, error) {
 	return e, nil
 }
 
-// codeBlock CMD 文字放進程式碼區塊（Python cut(f"```\n{text}\n```", 4096)）。
-func codeBlock(text string) string { return cut("```\n"+text+"\n```", 4096) }
+// rankMark 名次標記：前三名用獎牌，其他用「`4.`」。
+func rankMark(rank int) string {
+	if m, ok := Medals[rank]; ok {
+		return m
+	}
+	return fmt.Sprintf("`%d.`", rank)
+}
 
 func (p *Panel) loadRewards(ctx context.Context) (any, error) { return p.rankingRewardsText(ctx) }
 
 func (p *Panel) buildRewards(_ context.Context, data any) (*ui.Embed, error) {
 	p.nav("回排行榜", "board", btn{emoji: "🏆", row: 0})
 	p.navBack(0)
-	return &ui.Embed{Title: "🎁 排名獎勵", Color: Gold, Description: codeBlock(data.(string))}, nil
+	return &ui.Embed{Title: "🎁 排名獎勵", Color: Gold, Description: cut(data.(string), 4096)}, nil
 }
 
 // rankingRewardsText Python CMD「leaderboard rewards」：先結算已到期的排名獎勵，再列出進行中的規則與自己最近的獎勵。
@@ -421,15 +438,15 @@ func (p *Panel) rankingRewardsText(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	lines := []string{"===== 排名獎勵 ====="}
+	lines := []string{"**🎁 進行中的排名獎勵**"}
 	n := 0
 	for _, r := range all {
 		if !r.Enabled {
 			continue
 		}
 		n++
-		lines = append(lines, fmt.Sprintf("#%d %s｜%s・%s・%s結算", r.ID, r.Name, r.ScopeLabel, r.MetricLabel, r.PeriodLabel),
-			"    "+r.RewardsText)
+		lines = append(lines, fmt.Sprintf("**%s**　%s・%s・%s結算", r.Name, r.ScopeLabel, r.MetricLabel, r.PeriodLabel),
+			"　🎁 "+r.RewardsText)
 	}
 	if n == 0 {
 		lines = append(lines, "目前沒有進行中的排名獎勵。")
@@ -438,12 +455,12 @@ func (p *Panel) rankingRewardsText(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	lines = append(lines, "----- 我最近獲得的排名獎勵 -----")
+	lines = append(lines, "", "**🏅 我最近獲得的排名獎勵**")
 	for _, a := range awards {
-		lines = append(lines, fmt.Sprintf("%s（%s）第 %d 名：%s", a.RuleName, a.Period, a.Rank, a.RewardText))
+		lines = append(lines, fmt.Sprintf("%s %s（%s）：%s", rankMark(a.Rank), a.RuleName, a.Period, a.RewardText))
 	}
 	if len(awards) == 0 {
-		lines = append(lines, "（尚未獲得）")
+		lines = append(lines, "尚未獲得")
 	}
 	return strings.Join(lines, "\n"), nil
 }
@@ -485,6 +502,7 @@ func (p *Panel) buildQuests(_ context.Context, data any) (*ui.Embed, error) {
 		if q.State == "completed" {
 			mark = "✅"
 			if q.MyContribution > 0 {
+				mark = "🎁" // 可以領獎的任務和單純已完成的分開標示
 				claimable = append(claimable, q)
 			}
 		}
@@ -503,6 +521,10 @@ func (p *Panel) buildQuests(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	e := &ui.Embed{Title: "📜 ✦ 群組任務與競賽 ✦", Color: Blue, Description: sections(qs, cs),
 		Footer: "只有在農場所屬伺服器中的操作才會計入該群組的任務與競賽。"}
+	if len(claimable) > 0 { // 有獎勵可領時寫在最下面，貼近領取選單
+		e.Description = cut(e.Description+fmt.Sprintf("\n\n🎁 **有 %d 個任務獎勵可以領**，從下方選單領取", len(claimable)), 4096)
+		e.Footer = fmt.Sprintf("🎁 有 %d 個任務獎勵可以領", len(claimable))
+	}
 
 	var claims []option
 	for _, q := range claimable {
@@ -545,79 +567,74 @@ func (p *Panel) loadCompetition(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return competitionStatusText(c) + "\n\n" + competitionBoardText(c), nil
+	// 自己的成績放在最後，貼近按鈕
+	return competitionStatusText(c) + "\n\n" + competitionBoardText(c) + "\n\n" + competitionMineText(c), nil
 }
 
 func (p *Panel) buildCompetition(_ context.Context, data any) (*ui.Embed, error) {
 	p.nav("回任務競賽", "quests", btn{emoji: "📜", row: 0})
 	p.navBack(0)
-	return &ui.Embed{Title: "⚔️ 競賽", Color: Blue, Description: codeBlock(data.(string))}, nil
+	return &ui.Embed{Title: "⚔️ 競賽", Color: Blue, Description: cut(data.(string), 4096)}, nil
 }
 
-// localTimePtr Python CMD _local：沒有時間時為「-」。
-func localTimePtr(t *time.Time) string {
-	if t == nil {
-		return "-"
-	}
-	return localTime(*t)
-}
-
-// competitionStatusText Python CMD「competition status <ID>」（面板一定有玩家）。
+// competitionStatusText 競賽資訊（Python CMD「competition status <ID>」的內容，改成 Discord 排版）。
 func competitionStatusText(c services.CompetitionDetail) string {
 	rewards := make([]string, len(c.Rewards))
 	for i, g := range c.Rewards {
-		rewards[i] = fmt.Sprintf("第 %d 名 %d 金幣／人", i+1, g)
+		rewards[i] = fmt.Sprintf("%s %s 金", rankMark(i+1), money(g))
 	}
 	lines := []string{
-		fmt.Sprintf("===== 競賽 #%d「%s」（%s）=====", c.CompetitionID, c.Name, c.StateLabel),
-		"類型：" + c.TypeName,
-		fmt.Sprintf("計分規則：%s；只計入在主要群組中進行的操作", c.ScoringRule),
-		fmt.Sprintf("期間：%s ～ %s", localTime(c.StartsAt), localTime(c.EndsAt)),
-		fmt.Sprintf("結算獎勵：%s（發給該群組中以此為主要群組的全體成員）", strings.Join(rewards, "、")),
+		fmt.Sprintf("### %s（%s）", c.Name, c.StateLabel),
+		"📂 類型：" + c.TypeName,
+		fmt.Sprintf("🎯 計分：%s（只計入在所屬群組中的操作）", c.ScoringRule),
+		fmt.Sprintf("📅 期間：%s ～ %s", ts(&c.StartsAt, "f"), ts(&c.EndsAt, "f")),
+		fmt.Sprintf("🎁 獎勵（群組全體成員每人）：%s", strings.Join(rewards, "　")),
 	}
 	if c.Description != "" {
-		lines = slices.Insert(lines, 2, "說明："+c.Description)
+		lines = slices.Insert(lines, 1, "📝 "+c.Description)
 	}
 	if c.CancelReason != nil && *c.CancelReason != "" {
-		lines = append(lines, "取消原因："+*c.CancelReason)
+		lines = append(lines, "❌ 取消原因："+*c.CancelReason)
 	}
-	lines = append(lines, fmt.Sprintf("我的貢獻：%d 分", c.MyPoints))
+	return strings.Join(lines, "\n")
+}
+
+// competitionMineText 自己的貢獻、所屬群組名次與已發放的獎勵。
+func competitionMineText(c services.CompetitionDetail) string {
+	lines := []string{"**👤 我的成績**", fmt.Sprintf("貢獻 **%s** 分", money(c.MyPoints))}
 	if c.MyHomeGroupID != nil {
 		for _, r := range c.Ranking {
 			if r.GroupID == *c.MyHomeGroupID {
-				lines = append(lines, fmt.Sprintf("我的主要群組：第 %d 名，%d 分", r.Rank, r.Score))
+				lines = append(lines, fmt.Sprintf("所屬群組 **%s**：第 **%d** 名，%s 分", escapeMD(r.GroupName), r.Rank, money(r.Score)))
 				break
 			}
 		}
 	}
 	if c.MyAward != nil {
-		lines = append(lines, fmt.Sprintf("我的獎勵：第 %d 名 %d 金幣（已發放）", c.MyAward.Rank, c.MyAward.Gold))
+		lines = append(lines, fmt.Sprintf("🎉 獲得第 %d 名獎勵 **%s** 金（已發放）", c.MyAward.Rank, money(c.MyAward.Gold)))
 	}
 	return strings.Join(lines, "\n")
 }
 
-// competitionBoardText Python CMD「competition leaderboard <ID>」。
+// competitionBoardText 群組排名與個人貢獻（Python CMD「competition leaderboard <ID>」的內容）。
 func competitionBoardText(c services.CompetitionDetail) string {
 	kind := "即時排名"
 	if c.Final {
 		kind = "最終排名"
 	}
-	lines := []string{
-		fmt.Sprintf("===== 競賽 #%d「%s」%s（%s）=====", c.CompetitionID, c.Name, kind, c.StateLabel),
-		"排名  群組              分數   貢獻人數",
-	}
+	lines := []string{"**🏆 " + kind + "**"}
 	for _, r := range c.Ranking {
-		lines = append(lines, fmt.Sprintf("%3d   %-16s %6d   %6d", r.Rank, r.GroupName, r.Score, r.Contributors))
+		lines = append(lines, fmt.Sprintf("%s **%s**　%s 分・%d 人貢獻", rankMark(r.Rank), escapeMD(r.GroupName), money(r.Score), r.Contributors))
 	}
 	if len(c.Ranking) == 0 {
-		lines = append(lines, "（尚無群組得分）")
+		lines = append(lines, "尚無群組得分")
 	}
-	lines = append(lines, "個人貢獻：")
+	lines = append(lines, "", "**🙋 個人貢獻**")
 	for i, pp := range c.TopPlayers {
-		lines = append(lines, fmt.Sprintf("  %d. %s（%s）：%d 分", i+1, pp.FarmName, pp.GroupName, pp.Points))
+		lines = append(lines, fmt.Sprintf("%s %s（%s）：%s 分", rankMark(i+1), escapeMD(pp.FarmName), escapeMD(pp.GroupName), money(pp.Points)))
 	}
 	if len(c.TopPlayers) == 0 {
-		lines = append(lines, "  （尚無貢獻）")
+		lines = append(lines, "尚無貢獻")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -636,29 +653,29 @@ func competitionHistoryText(history []services.CompetitionDetail) string {
 	if len(history) == 0 {
 		return "目前沒有已結算的競賽。"
 	}
-	blocks := []string{"===== 競賽歷史（最終排名）====="}
+	var blocks []string
 	for _, c := range history {
 		var top []string
 		for _, r := range c.Ranking[:min(3, len(c.Ranking))] {
-			top = append(top, fmt.Sprintf("第 %d 名 %s（%d）", r.Rank, r.GroupName, r.Score))
+			top = append(top, fmt.Sprintf("%s %s（%s）", rankMark(r.Rank), escapeMD(r.GroupName), money(r.Score)))
 		}
-		topText := strings.Join(top, "、")
+		topText := strings.Join(top, "　")
 		if topText == "" {
 			topText = "無人參賽"
 		}
 		mine := ""
 		if c.MyAward != nil {
-			mine = fmt.Sprintf("｜我獲得第 %d 名獎勵 %d 金幣", c.MyAward.Rank, c.MyAward.Gold)
+			mine = fmt.Sprintf("\n　🎉 我獲得第 %d 名獎勵 %s 金", c.MyAward.Rank, money(c.MyAward.Gold))
 		}
-		blocks = append(blocks, fmt.Sprintf("#%d %s（結算於 %s）：%s%s", c.CompetitionID, c.Name, localTimePtr(c.SettledAt), topText, mine))
+		blocks = append(blocks, fmt.Sprintf("**%s**　結算於 %s\n　%s%s", c.Name, ts(c.SettledAt, "f"), topText, mine))
 	}
-	return strings.Join(blocks, "\n")
+	return strings.Join(blocks, "\n\n")
 }
 
 func (p *Panel) buildHistory(_ context.Context, data any) (*ui.Embed, error) {
 	p.nav("回任務競賽", "quests", btn{emoji: "📜", row: 0})
 	p.navBack(0)
-	return &ui.Embed{Title: "📚 已結算的競賽", Color: Blue, Description: codeBlock(data.(string))}, nil
+	return &ui.Embed{Title: "📚 已結算的競賽", Color: Blue, Description: cut(data.(string), 4096)}, nil
 }
 
 // ======================================================================
@@ -704,7 +721,7 @@ func (p *Panel) buildGroup(_ context.Context, data any) (*ui.Embed, error) {
 		if m.Farm.RankedInGroup {
 			mark = "🏠"
 		}
-		lines = append(lines, fmt.Sprintf("%s **%s**　⭐ Lv %d\n　💰 %s 金　✅ 可收成 %d 格", mark, m.PlayerName, m.Farm.Level, money(m.Farm.Gold), m.Farm.Ready))
+		lines = append(lines, fmt.Sprintf("%s **%s**　⭐ Lv %d\n　💰 %s 金　✅ 可收成 %d 格", mark, escapeMD(m.PlayerName), m.Farm.Level, money(m.Farm.Gold), m.Farm.Ready))
 	}
 	e := &ui.Embed{Title: fmt.Sprintf("👥 ✦ %s ✦", g.Name), Color: Blue, Description: sections(
 		fmt.Sprintf("👥 成員 **%d** 人", g.MemberCount),

@@ -35,6 +35,7 @@ import (
 	"farmgm/internal/game/genetics"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/seasons"
+	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/animals"
 	"farmgm/internal/repositories/catalog"
 	"farmgm/internal/repositories/community"
@@ -1214,11 +1215,54 @@ func (a *AdminService) adjust(ctx context.Context, t *db.Tx, farm *models.Farm, 
 
 // ---------- 玩家：背包 ----------
 
+// AdminReasonMaxLen 管理員調整金幣、物品時填寫的原因長度上限（字元）。
+const AdminReasonMaxLen = 200
+
+// adminReason 去掉前後空白並檢查長度（空字串 = 沒有填）。
+func adminReason(reason string) (string, error) {
+	reason = strings.TrimSpace(reason)
+	if utf8.RuneCountInString(reason) > AdminReasonMaxLen {
+		return "", gameerr.Validationf("原因最多 %d 字。", AdminReasonMaxLen)
+	}
+	return reason, nil
+}
+
+// withReason 有填原因時加進管理操作紀錄的 details。
+func withReason(details map[string]any, reason string) map[string]any {
+	if reason != "" {
+		details["reason"] = reason
+	}
+	return details
+}
+
 // SetInventory 把某一筆庫存（物品＋品質＋突變）設為指定數量；0 表示刪除。增加時不可超過倉庫容量。
 func (a *AdminService) SetInventory(ctx context.Context, actor string, playerID int64, itemCode, quality, mutation string,
 	quantity int) (InventoryChange, error) {
-	if quantity < 0 || quantity > balance.AdminMaxItemQuantity {
+	return a.AdjustInventory(ctx, actor, playerID, itemCode, quality, mutation, InventoryAdjust{Quantity: &quantity})
+}
+
+// InventoryAdjust 管理網站調整一筆庫存（2026-11-16）：Quantity（設為）與 Delta（增減）擇一。
+// Expect 是管理員畫面上看到的目前數量：和資料庫不同時拒絕，避免蓋掉畫面載入後玩家的變動。
+type InventoryAdjust struct {
+	Quantity, Delta, Expect *int
+	Reason                  string
+}
+
+// AdjustInventory 設定或增減一筆庫存；結果為 0 時刪除。增加時不可超過倉庫容量。
+func (a *AdminService) AdjustInventory(ctx context.Context, actor string, playerID int64, itemCode, quality, mutation string,
+	in InventoryAdjust) (InventoryChange, error) {
+	if (in.Quantity == nil) == (in.Delta == nil) {
+		return InventoryChange{}, gameerr.Validationf("請指定要設定的數量或要增減的數量（擇一）。")
+	}
+	if in.Quantity != nil && (*in.Quantity < 0 || *in.Quantity > balance.AdminMaxItemQuantity) {
 		return InventoryChange{}, gameerr.Validationf("數量必須是 0–%d 之間的整數。", balance.AdminMaxItemQuantity)
+	}
+	if in.Delta != nil && *in.Delta == 0 {
+		return InventoryChange{}, gameerr.Validationf("增減的數量不可為 0。")
+	}
+	reason, err := adminReason(in.Reason)
+	if err != nil {
+		return InventoryChange{}, err
 	}
 	return inTx(ctx, a.GameService, func(t *db.Tx) (InventoryChange, error) {
 		farm, err := a.lockedFarm(ctx, t, playerID)
@@ -1253,6 +1297,20 @@ func (a *AdminService) SetInventory(ctx context.Context, actor string, playerID 
 		before, err := inventory.GetQuantity(ctx, t, farm.ID, itemCode, quality, mutation)
 		if err != nil {
 			return InventoryChange{}, err
+		}
+		if in.Expect != nil && *in.Expect != before {
+			return InventoryChange{}, gameerr.Validationf("玩家目前的%s有 %s 個，和畫面上的 %s 個不同（畫面載入後數量有變動），請重新整理後再調整。",
+				entry.Name+GeneticsLabel(quality, mutation), numfmt.Comma(before), numfmt.Comma(*in.Expect))
+		}
+		var quantity int
+		if in.Quantity != nil {
+			quantity = *in.Quantity
+		} else {
+			quantity = before + *in.Delta
+			if quantity < 0 || quantity > balance.AdminMaxItemQuantity {
+				return InventoryChange{}, gameerr.Validationf("目前 %s 個，調整後會是 %s 個；數量必須是 0–%s 之間的整數。",
+					numfmt.Comma(before), numfmt.Comma(quantity), numfmt.Comma(balance.AdminMaxItemQuantity))
+			}
 		}
 		delta := quantity - before
 		if delta == 0 {
@@ -1289,7 +1347,8 @@ func (a *AdminService) SetInventory(ctx context.Context, actor string, playerID 
 		}
 		label := entry.Name + GeneticsLabel(quality, mutation)
 		err = a.adjust(ctx, t, farm, actor, "set_inventory", fmt.Sprintf("背包 %s %d → %d", label, before, quantity),
-			map[string]any{"item_code": itemCode, "quality": quality, "mutation": mutation, "before": before, "after": quantity},
+			withReason(map[string]any{"item_code": itemCode, "quality": quality, "mutation": mutation, "before": before, "after": quantity},
+				reason),
 			rec{ItemCode: itemCode, Quantity: max(delta, -delta), Quality: quality, Mutation: mutation})
 		return InventoryChange{ItemCode: itemCode, Quantity: quantity, Changed: true}, err
 	})
@@ -1299,19 +1358,59 @@ func (a *AdminService) SetInventory(ctx context.Context, actor string, playerID 
 
 // SetFarmValues 直接設定金幣與農場等級（不增減土地；nil = 不修改）。金幣差額記入交易紀錄，維持「gold_delta 加總 = 全服金幣」。
 func (a *AdminService) SetFarmValues(ctx context.Context, actor string, playerID int64, gold, level *int) (FarmValues, error) {
-	if gold == nil && level == nil {
+	return a.AdjustFarmValues(ctx, actor, playerID, FarmValuesAdjust{Gold: gold, Level: level})
+}
+
+// FarmValuesAdjust 管理網站調整金幣與等級（2026-11-16）：Gold（設為）與 GoldDelta（增減）擇一，nil = 不修改。
+// ExpectGold、ExpectLevel 是管理員畫面上看到的目前數值：和資料庫不同時拒絕，避免蓋掉畫面載入後玩家的收支。
+type FarmValuesAdjust struct {
+	Gold, GoldDelta, Level  *int
+	ExpectGold, ExpectLevel *int
+	Reason                  string
+}
+
+// AdjustFarmValues 設定或增減金幣、設定農場等級。
+func (a *AdminService) AdjustFarmValues(ctx context.Context, actor string, playerID int64, in FarmValuesAdjust) (FarmValues, error) {
+	gold, level := in.Gold, in.Level
+	if gold != nil && in.GoldDelta != nil {
+		return FarmValues{}, gameerr.Validationf("金幣請選擇「設為」或「增減」其中一種。")
+	}
+	if gold == nil && in.GoldDelta == nil && level == nil {
 		return FarmValues{}, gameerr.Validationf("請至少修改金幣或農場等級其中一項。")
 	}
 	if gold != nil && (*gold < 0 || *gold > balance.AdminMaxGold) {
 		return FarmValues{}, gameerr.Validationf("金幣必須是 0–%d 之間的整數。", balance.AdminMaxGold)
 	}
+	if in.GoldDelta != nil && *in.GoldDelta == 0 && level == nil {
+		return FarmValues{}, gameerr.Validationf("增減的金幣不可為 0。")
+	}
 	if level != nil && (*level < 1 || *level > balance.AdminMaxLevel) {
 		return FarmValues{}, gameerr.Validationf("農場等級必須是 1–%d 之間的整數。", balance.AdminMaxLevel)
+	}
+	reason, err := adminReason(in.Reason)
+	if err != nil {
+		return FarmValues{}, err
 	}
 	return inTx(ctx, a.GameService, func(t *db.Tx) (FarmValues, error) {
 		farm, err := a.lockedFarm(ctx, t, playerID)
 		if err != nil {
 			return FarmValues{}, err
+		}
+		if in.ExpectGold != nil && *in.ExpectGold != farm.Gold {
+			return FarmValues{}, gameerr.Validationf("玩家目前的金幣是 %s，和畫面上的 %s 不同（畫面載入後有收支），請重新整理後再調整。",
+				numfmt.Comma(farm.Gold), numfmt.Comma(*in.ExpectGold))
+		}
+		if in.ExpectLevel != nil && *in.ExpectLevel != farm.Level {
+			return FarmValues{}, gameerr.Validationf("玩家目前的農場等級是 %d，和畫面上的 %d 不同，請重新整理後再調整。",
+				farm.Level, *in.ExpectLevel)
+		}
+		if in.GoldDelta != nil {
+			after := farm.Gold + *in.GoldDelta
+			if after < 0 || after > balance.AdminMaxGold {
+				return FarmValues{}, gameerr.Validationf("目前金幣 %s，調整後會是 %s；金幣必須是 0–%s 之間的整數。",
+					numfmt.Comma(farm.Gold), numfmt.Comma(after), numfmt.Comma(balance.AdminMaxGold))
+			}
+			gold = &after
 		}
 		before := map[string]any{"gold": farm.Gold, "level": farm.Level}
 		var parts []string
@@ -1336,7 +1435,7 @@ func (a *AdminService) SetFarmValues(ctx context.Context, actor string, playerID
 		}
 		after := map[string]any{"gold": farm.Gold, "level": farm.Level}
 		err = a.adjust(ctx, t, farm, actor, "set_farm_values", strings.Join(parts, "、"),
-			map[string]any{"before": before, "after": after}, rec{GoldDelta: delta})
+			withReason(map[string]any{"before": before, "after": after}, reason), rec{GoldDelta: delta})
 		return FarmValues{Gold: farm.Gold, Level: farm.Level, Changed: true}, err
 	})
 }

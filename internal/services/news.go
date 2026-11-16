@@ -157,7 +157,8 @@ func (n *NewsService) DailyNews(ctx context.Context, groupID int64, day time.Tim
 	}
 	result := newsrules.Build(start, data, strconv.FormatInt(groupID, 10))
 	out := &DailyNews{Day: start, Empty: result.Empty(), Text: newsrules.Render(result)}
-	if start.Before(newsrules.NewsDay(now).AddDate(0, 0, 1)) { // 只快取已經結束的日子
+	// 只快取已經結束的日子；管理網站的 preview 交易最後會回滾，算出來的結果不快取（2026-11-16）
+	if !inPreview(ctx) && start.Before(newsrules.NewsDay(now).AddDate(0, 0, 1)) {
 		newsCacheMu.Lock()
 		if len(newsCache) >= NewsCacheMax {
 			clear(newsCache)

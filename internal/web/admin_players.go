@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"farmgm/internal/game/balance"
+	"farmgm/internal/services"
 )
 
 var (
@@ -29,6 +30,9 @@ func (a *App) adminPlayerRoutes() {
 	ar("DELETE /api/admin/feature-settings/{key}", a.resetFeatureSettings)
 	// 新功能：單一玩家
 	ar("GET /api/admin/players/{player_id}/progress", a.getPlayerProgress)
+	// Go 版新增功能的唯讀檢視（2026-11-16）：讀取時會模擬自動化結算再回滾，所以和其他寫入一樣需要登入
+	ar("GET /api/admin/players/{player_id}/go-features", a.getPlayerGoFeatures)
+	ar("GET /api/admin/groups/{group_id}/extras", a.getGroupExtras)
 	ar("PUT /api/admin/players/{player_id}/greenhouse", a.setGreenhouse)
 	ar("PUT /api/admin/players/{player_id}/pets/{pet_code}", a.setPet)
 	ar("POST /api/admin/players/{player_id}/titles", a.grantTitle)
@@ -97,6 +101,25 @@ func (a *App) getPlayerProgress(w http.ResponseWriter, r *http.Request, _ string
 	}
 	v, err := a.admin.AdminProgress(ctxOf(r), pid)
 	respondValue(w, r, v, err)
+}
+
+func (a *App) getPlayerGoFeatures(w http.ResponseWriter, r *http.Request, _ string) {
+	pid, ok := playerID(w, r)
+	if !ok {
+		return
+	}
+	v, err := a.admin.AdminGoFeatures(ctxOf(r), pid)
+	respond(w, r, v, err, "找不到這位玩家的農場。")
+}
+
+func (a *App) getGroupExtras(w http.ResponseWriter, r *http.Request, _ string) {
+	p := newParams(w, r)
+	id := p.pathID("group_id")
+	if !p.ok() {
+		return
+	}
+	v, err := a.admin.AdminGroupExtras(ctxOf(r), id)
+	respond(w, r, v, err, "找不到這個群組。")
 }
 
 // levelBody Python LevelBody：level 為 0–100 或 null（寵物：null = 移除）。
@@ -275,12 +298,19 @@ func (a *App) setFarmValues(w http.ResponseWriter, r *http.Request, actor string
 	if !ok {
 		return
 	}
+	// 2026-11-16：gold_delta（增減，與 gold 擇一）、expect_gold／expect_level（畫面上的目前數值）、reason（原因，選填）
 	b, ok := parseBody(w, r, integer("gold").opt(nil).null().rng(0, balance.AdminMaxGold),
-		integer("level").opt(nil).null().rng(1, balance.AdminMaxLevel))
+		integer("gold_delta").opt(nil).null().rng(-balance.AdminMaxGold, balance.AdminMaxGold),
+		integer("level").opt(nil).null().rng(1, balance.AdminMaxLevel),
+		integer("expect_gold").opt(nil).null().rng(0, balance.AdminMaxGold),
+		integer("expect_level").opt(nil).null().rng(1, balance.AdminMaxLevel),
+		str("reason").opt("").length(0, services.AdminReasonMaxLen))
 	if !ok {
 		return
 	}
-	v, err := a.admin.SetFarmValues(ctxOf(r), actor, pid, optIntOf(b["gold"]), optIntOf(b["level"]))
+	v, err := a.admin.AdjustFarmValues(ctxOf(r), actor, pid, services.FarmValuesAdjust{Gold: optIntOf(b["gold"]),
+		GoldDelta: optIntOf(b["gold_delta"]), Level: optIntOf(b["level"]), ExpectGold: optIntOf(b["expect_gold"]),
+		ExpectLevel: optIntOf(b["expect_level"]), Reason: b["reason"].(string)})
 	respondValue(w, r, v, err)
 }
 

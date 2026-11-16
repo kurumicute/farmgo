@@ -108,7 +108,7 @@ func TestFishShopHasTwoTabsAndGearAffectsOverview(t *testing.T) {
 	e := setup(t)
 	p := e.fisher(alice, "玩家")
 	p.goPage("shop")
-	p.button("農場商店")
+	p.button("種子") // 商店分類合成一排：種子／道具／工具與倉庫／釣具商店／特賣與升級
 	p.button("釣具商店")
 	contains(t, p.Text, "種子") // 原本的商品仍在
 	p.click("釣具商店")
@@ -118,7 +118,7 @@ func TestFishShopHasTwoTabsAndGearAffectsOverview(t *testing.T) {
 	p.goPage("fishing")
 	contains(t, p.Text, "竹製魚竿", "普通魚線", "**10** 個", "準備釣魚")
 	p.goPage("fish_shop")
-	p.click("農場商店")
+	p.click("種子")
 	contains(t, p.Text, "農場商店", "種子")
 }
 
@@ -126,7 +126,7 @@ func TestMainMenuHasFishingEntry(t *testing.T) {
 	e := setup(t)
 	p := e.fisher(alice, "玩家")
 	p.goPage("main")
-	p.click("釣魚")
+	p.choose("更多功能", "fishing")
 	contains(t, p.Text, "釣魚中心", "尚未裝備")
 }
 
@@ -168,7 +168,7 @@ func TestFullFishingFlowSellAndShare(t *testing.T) {
 	contains(t, p.Text, fmt.Sprintf("剩 **%d** 個", o.BaitQuantity), fmt.Sprintf("**1 / %d** 隻", o.BasketCapacity),
 		fmt.Sprintf("還能放 **%d** 隻", o.BasketCapacity-1))
 	// 分享到頻道：公開訊息，魚不會消失
-	share := p.click("分享到群組")
+	share := p.click("分享到頻道")
 	var card *uiEntryText
 	for _, en := range share.Entries() {
 		if en.Kind == "followup" {
@@ -181,12 +181,23 @@ func TestFullFishingFlowSellAndShare(t *testing.T) {
 	if card == nil {
 		t.Fatal("沒有分享訊息")
 	}
-	contains(t, card.text, "捕獲玩家", result.Fish.Name, "價值")
+	contains(t, card.text, result.Fish.Name, "價值")
+	if strings.Contains(card.text, "捕獲玩家") {
+		t.Fatal("玩家名稱已在標題，內文不該重複")
+	}
 	contains(t, p.Text, "已分享到這個頻道")
+	// 冷卻中再分享：只提示，不會再發公開訊息
+	again := p.click("分享到頻道")
+	for _, en := range again.Entries() {
+		if en.Kind == "followup" && !en.Message.Ephemeral {
+			t.Fatal("冷卻中不應再發公開訊息")
+		}
+	}
+	contains(t, p.Text, "剛剛才分享過")
 	// 魚簍：單獨出售需要確認
 	p.goPage("fish_basket")
 	contains(t, p.Text, result.Fish.Name, "1 / 20")
-	p.choose("選一隻魚", fmt.Sprint(result.Fish.ID))
+	p.choose("選魚", fmt.Sprint(result.Fish.ID))
 	p.click("出售")
 	contains(t, p.Text, "再按一次")
 	p.button("確認出售")
@@ -215,7 +226,7 @@ func TestFishMultiSelectAndSellAllNeedConfirmation(t *testing.T) {
 		t.Fatal(len(basket))
 	}
 	p.goPage("fish_basket")
-	p.chooseMany("勾選", []string{fmt.Sprint(basket[0].ID), fmt.Sprint(basket[1].ID)})
+	p.chooseMany("選魚", []string{fmt.Sprint(basket[0].ID), fmt.Sprint(basket[1].ID)})
 	contains(t, p.Text, "確認出售")
 	if !slices.ContainsFunc(p.labels(), func(l string) bool { return strings.HasPrefix(l, "確認出售 2 隻") }) {
 		t.Fatal(p.labels())
@@ -465,7 +476,7 @@ func TestPanelBossFishMultiSelectDonatesAll(t *testing.T) {
 	}
 	gid := e.groupOf(guildA)
 	eid := e.makeBoss(gid, false)
-	p.click("世界Boss")
+	p.choose("更多功能", "boss")
 	p.click("進入深淵魔龍")
 	p.click("捐獻物資")
 	p.choose("捐獻類別", "fish")

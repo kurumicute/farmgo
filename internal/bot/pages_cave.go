@@ -96,11 +96,8 @@ func (p *Panel) buildCave(_ context.Context, data any) (*ui.Embed, error) {
 	trip := d.ov.Trip
 	e := &ui.Embed{Title: "⛰️ ✦ 山洞冒險 ✦", Color: Gold, Description: sections(
 		fmt.Sprintf("👨‍🌾 **%s**　⭐ 農場 **Lv %d**", d.ov.PlayerName, d.ov.Level),
-		"探索三個區域收集素材、稀有種子與假幣，素材可以製作自動化機器（「🏭 加工」→「🔧 機器」）。\n"+
-			"一次只能去一個區域；出發後要等探險時間結束才會回來，回來後領取獎勵才能再出發。\n"+
-			"素材、假幣與所有種子放進獨立的素材背包，不佔倉庫。\n"+
-			"🏛️ 古代遺跡要所屬群組的成員一起捐素材修復；修好後每天可以**額外**探索一次（不佔上面的一次一趟）。",
-		tripText(trip),
+		"探險帶回素材、稀有種子與假幣（放素材背包），素材可以在「🔧 機器」做自動化機器。\n"+
+			"一次只能去一個區域，回來領取獎勵後才能再出發；🏛️ 古代遺跡由群組一起修復，修好後每天可額外探索一次。",
 	)}
 	for _, a := range d.ov.Areas {
 		when := "探險 " + services.LongDuration(a.DurationSeconds)
@@ -110,23 +107,45 @@ func (p *Panel) buildCave(_ context.Context, data any) (*ui.Embed, error) {
 		e.AddField(fmt.Sprintf("%s %s（Lv.%d）", a.Emoji, a.Name, a.UnlockLevel),
 			fmt.Sprintf("%s　🕒 %s\n🪨 主要素材：%s", areaStatus(a, trip), when, strings.Join(a.Common[:min(3, len(a.Common))], "、")), false)
 	}
+	e.AddField("🧭 目前探險", tripText(trip), false) // 目前狀態放在最後一個欄位，貼近出發／領取按鈕
+	// 2026-11-16 可以出發的區域按一下就出發（原本要先進區域頁再按「出發探險」）；其他狀態（探險中、未解鎖…）打開區域頁。
+	// 區域的詳細資訊改從「ℹ️ 查看區域詳情」選單進入。連點保護與區域頁相同：重繪後舊按鈕失效，後端也限制一次一趟。
+	var details []option
 	for _, a := range d.ov.Areas {
-		style := ui.Secondary
-		if a.Ready || a.Exploring {
-			style = ui.Success
-		}
 		code := a.Code
+		details = append(details, option{a.Name, code, areaStatusShort(a, trip), a.Emoji})
+		if a.Ready {
+			target := "cave"
+			if a.NeedsRuins {
+				target = "cave_result"
+			}
+			p.button("出發："+a.Name, func(ctx context.Context, it ui.Interaction) error {
+				p.caveArea = code
+				p.act(ctx, it, func(ctx context.Context) (string, error) { return p.explore(ctx, code) }, actOpts{page: target})
+				return nil
+			}, btn{emoji: "🧭", row: 0, style: ui.Success})
+			continue
+		}
+		style := ui.Secondary
+		if a.Exploring {
+			style = ui.Primary
+		}
 		p.button(a.Name, func(ctx context.Context, it ui.Interaction) error {
 			p.caveArea = code
 			p.goTo(ctx, it, "cave_area", "")
 			return nil
 		}, btn{emoji: a.Emoji, row: 0, style: style})
 	}
+	p.selectMenu("ℹ️ 查看區域詳情（素材、稀有種子、等級解鎖）…", details, func(ctx context.Context, it ui.Interaction, code string) error {
+		p.caveArea = code
+		p.goTo(ctx, it, "cave_area", "")
+		return nil
+	}, 2, "")
 	p.claimButton(trip, 1)
 	p.nav("探索紀錄", "cave_log", btn{emoji: "📖", row: 1})
 	p.nav("機器", "machines", btn{emoji: "🔧", row: 1})
 	p.nav("修復遺跡", "ruins", btn{emoji: "🏛️", row: 1})
-	p.nav("返回主選單", "main", btn{emoji: "↩️", row: 1})
+	p.navBack(1)
 	p.attachImage(e, d.image)
 	return e, nil
 }
@@ -224,7 +243,7 @@ func (p *Panel) buildCaveArea(_ context.Context, data any) (*ui.Embed, error) {
 			return nil
 		}, btn{emoji: "🧭", row: 0, disabled: !a.Ready, style: style})
 	}
-	p.nav("返回冒險介面", "cave", btn{emoji: "↩️", row: 0})
+	p.nav("回山洞", "cave", btn{emoji: "⛰️", row: 0})
 	p.navBack(0)
 	p.attachImage(e, d.image)
 	return e, nil
@@ -320,8 +339,8 @@ func (p *Panel) buildCaveResult(_ context.Context, data any) (*ui.Embed, error) 
 	}
 	e := &ui.Embed{Title: fmt.Sprintf("%s ✦ %s探索結果 ✦", r.Emoji, r.AreaName), Color: Gold, Description: sections(
 		Section{Title: "🎒 獲得物品", Lines: items}, summary, tail)}
-	p.nav("返回冒險介面", "cave", btn{emoji: "🔄", row: 0, style: ui.Primary})
-	p.nav("返回主選單", "main", btn{emoji: "🏠", row: 0})
+	p.nav("回山洞", "cave", btn{emoji: "⛰️", row: 0})
+	p.navBack(0)
 	p.attachImage(e, d.image)
 	return e, nil
 }
@@ -357,7 +376,7 @@ func (p *Panel) buildCaveLog(_ context.Context, data any) (*ui.Embed, error) {
 		empty = "還沒有探索紀錄。"
 	}
 	e := &ui.Embed{Title: "📖 ✦ 探索紀錄 ✦", Color: Blue, Description: sections(Section{Title: "最近 10 次探索", Lines: lines, Sep: "\n\n"}, empty)}
-	p.nav("返回冒險介面", "cave", btn{emoji: "↩️", row: 0})
+	p.nav("回山洞", "cave", btn{emoji: "⛰️", row: 0})
 	p.navBack(0)
 	return e, nil
 }
@@ -416,7 +435,7 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 		case !m.Unlocked:
 			state = fmt.Sprintf("🔒 農場 Lv.%d 解鎖", m.UnlockLevel)
 		case len(m.Missing) > 0:
-			state = "🧺 材料不足"
+			state = "🧺 材料不足（還缺 " + strings.Join(missingText(m, "×"), "、") + "）"
 		default:
 			state = "🛠️ 可以製作"
 		}
@@ -451,71 +470,76 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 		e.AddField("🛒 已選擇", fmt.Sprintf("**%s**\n👇 選擇數量", p.picker.Label), false)
 	}
 
+	// 2026-11-16 選單整理：
+	//   - 「製作機器」只列現在做得出來的機器（等級不足、缺素材的原因已寫在上方清單，以前選了才進錯誤畫面）
+	//   - 稀有作物培育與自動加工設定分成兩個選單；自動加工標出目前的設定，「不自動開單」放第一項（不會被 25 項上限截掉）
+	//   - 選好培育項目後，第 1 列改顯示培育數量按鈕（製作選單暫時收起，避免超過 5 列）
 	var builds []option
 	for _, m := range st.Machines {
-		if m.Owned {
+		if m.Owned || !m.Unlocked || len(m.Missing) > 0 {
 			continue
 		}
-		hint := "可以製作"
-		if !m.Unlocked {
-			hint = "等級不足"
-		} else if len(m.Missing) > 0 {
-			hint = "缺少 " + strings.Join(missingText(m, "×"), "、")
-		}
-		builds = append(builds, option{m.Name, m.Code, fmt.Sprintf("Lv.%d｜%s", m.UnlockLevel, hint), m.Emoji})
+		builds = append(builds, option{m.Name, m.Code, fmt.Sprintf("Lv.%d｜材料足夠，可以製作", m.UnlockLevel), m.Emoji})
 	}
-	p.selectMenu("🛠️ 製作機器（消耗素材）…", builds, func(ctx context.Context, it ui.Interaction, code string) error {
-		p.act(ctx, it, p.call("build_machine", func(ctx context.Context) (services.ActionResult, error) {
-			return p.svc().BuildMachine(ctx, p.playerID, code)
-		}), actOpts{})
-		return nil
-	}, 0, "")
+	if p.picker != nil {
+		p.quantityButtons(0)
+	} else {
+		p.selectMenu("🛠️ 製作機器（消耗素材）…", builds, func(ctx context.Context, it ui.Interaction, code string) error {
+			p.act(ctx, it, p.call("build_machine", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().BuildMachine(ctx, p.playerID, code)
+			}), actOpts{})
+			return nil
+		}, 0, "")
+	}
 
-	var options []option // 種子製造改到「🌱 種子製造」頁（2026-11-14）
-	if machines["rare_incubator"].Owned {
+	if machines["rare_incubator"].Owned { // 種子製造改到「🌱 種子製造」頁（2026-11-14）
+		var incubate []option
 		for _, r := range d.incubator {
 			inputs := make([]string, len(r.InputOrder))
 			for i, n := range r.InputOrder {
 				inputs[i] = fmt.Sprintf("%s×%d", n, r.Inputs[n])
 			}
-			options = append(options, option{"培育：" + r.Name, "incubate:" + r.Code,
+			incubate = append(incubate, option{"培育：" + r.Name, r.Code,
 				strings.Join(inputs, "、") + fmt.Sprintf("｜%s／份", services.LongDuration(r.Seconds)), "🧬"})
 		}
-	}
-	if machines["auto_processor"].Owned {
-		for _, r := range d.recipes {
-			options = append(options, option{"自動加工設為：" + r.Name, "proc:" + r.Code, r.BuildingName, "🏭"})
+		selected := ""
+		if p.picker != nil {
+			selected = strings.TrimPrefix(p.picker.Key, "incubate:")
 		}
-		options = append(options, option{"自動加工：不自動開單", "proc:", "只自動領取完成的加工品", "🏭"})
-	}
-	use := func(ctx context.Context, it ui.Interaction, value string) error {
-		kind, code, _ := strings.Cut(value, ":")
-		switch kind {
-		case "proc":
-			p.act(ctx, it, p.call("set_processor_recipe", func(ctx context.Context) (services.ActionResult, error) {
-				return p.svc().SetProcessorRecipe(ctx, p.playerID, code)
-			}), actOpts{})
-			return nil
-		default:
+		p.selectMenu("🧬 稀有作物培育…", incubate, func(ctx context.Context, it ui.Interaction, code string) error {
 			i := slices.IndexFunc(d.incubator, func(r services.IncubatorRecipeView) bool { return r.Code == code })
 			if i < 0 {
 				return gameerr.NotFoundf("找不到這個項目。")
 			}
-			p.picker = &Picker{Key: value, Label: "🧬 " + d.incubator[i].Name, Verb: "培育", Max: exploration.IncubatorMaxQuantity,
+			p.picker = &Picker{Key: "incubate:" + code, Label: "🧬 " + d.incubator[i].Name, Verb: "培育", Max: exploration.IncubatorMaxQuantity,
 				Presets: []int{1, 3, 5},
 				Run: p.callQty("start_incubation", func(ctx context.Context, q int) (services.ActionResult, error) {
 					return p.svc().StartIncubation(ctx, p.playerID, code, q)
 				})}
+			p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+			return nil
+		}, 1, selected)
+	}
+	if m := machines["auto_processor"]; m.Owned {
+		current, _ := m.Settings["recipe"].(string)
+		procs := []option{{"不自動開單", "none", "只自動領取完成的加工品", "⏸️"}}
+		for _, r := range d.recipes {
+			procs = append(procs, option{r.Name, r.Code, r.BuildingName, "🏭"})
 		}
-		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
-		return nil
+		selected := current
+		if selected == "" {
+			selected = "none"
+		}
+		p.selectMenu("🏭 自動加工機要做什麼…", procs, func(ctx context.Context, it ui.Interaction, code string) error {
+			if code == "none" {
+				code = ""
+			}
+			p.act(ctx, it, p.call("set_processor_recipe", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().SetProcessorRecipe(ctx, p.playerID, code)
+			}), actOpts{})
+			return nil
+		}, 2, selected)
 	}
-	selected := ""
-	if p.picker != nil {
-		selected = p.picker.Key
-	}
-	p.selectMenu("⚙️ 使用機器…", options, use, 1, selected)
-	p.quantityButtons(2)
 	for _, m := range st.Machines {
 		if !m.Owned || m.Code == "seed_maker" {
 			continue
@@ -587,4 +611,20 @@ func (p *Panel) buildLog(_ context.Context, data any) (*ui.Embed, error) {
 		e.Footer = fmt.Sprintf("第 %d/%d 頁，共 %d 筆（可翻閱最近 %d 筆）", page+1, pages, len(all), logMaxRecords)
 	}
 	return e, nil
+}
+
+// areaStatusShort 選單說明用的區域狀態：選單說明不會轉換 Discord 時間戳，所以不含時間戳。
+func areaStatusShort(a services.AreaView, trip *services.TripView) string {
+	switch {
+	case !a.Unlocked:
+		return strings.TrimPrefix(areaStatus(a, trip), "🔒 ")
+	case a.NeedsRuins && !a.Ready:
+		return "冷卻中，之後可再探索"
+	case a.Exploring && trip != nil && trip.Finished:
+		return "已經回來了，等你領取獎勵"
+	case a.Exploring:
+		return "探險中"
+	default:
+		return strings.TrimPrefix(areaStatus(a, trip), "✅ ")
+	}
 }

@@ -122,7 +122,7 @@ func TestLeaderboardSwitches(t *testing.T) {
 		t.Fatal("本伺服器排行不應有期間選單")
 	}
 	p.click("排名獎勵")
-	contains(t, p.Text, "===== 排名獎勵 =====", "----- 我最近獲得的排名獎勵 -----", "（尚未獲得）")
+	contains(t, p.Text, "🎁 進行中的排名獎勵", "🏅 我最近獲得的排名獎勵", "尚未獲得")
 }
 
 func TestQuestsAndCompetitionPages(t *testing.T) {
@@ -207,17 +207,18 @@ func TestCaveEntryAreasAndExplore(t *testing.T) {
 	e := setup(t)
 	fixedExplore(e)
 	p := e.makePlayer(alice, guildA, "玩家")
-	if !slices.Contains(p.labels(), "山洞") {
-		t.Fatal(p.labels())
+	if !slices.Contains(p.options("更多功能"), "cave") { // 山洞收進總覽的「更多功能」選單
+		t.Fatal(p.options("更多功能"))
 	}
 	for _, area := range []string{"青青草原", "古老森林", "神秘礦坑"} { // 主選單不直接顯示探索區域
 		if slices.Contains(p.labels(), area) {
 			t.Fatal(p.labels())
 		}
 	}
-	p.click("山洞")
+	p.choose("更多功能", "cave")
 	contains(t, p.Text, "山洞冒險", "Lv 1", "一次只能去一個區域", "🔒 農場 Lv.5 解鎖", "🔒 農場 Lv.10 解鎖", "探險 8 小時")
-	for _, l := range []string{"青青草原", "古老森林", "神秘礦坑", "探索紀錄", "返回主選單"} {
+	// 可以出發的區域是一鍵出發的按鈕（2026-11-16），未解鎖的區域按鈕進入詳情
+	for _, l := range []string{"出發：青青草原", "古老森林", "神秘礦坑", "探索紀錄", "回總覽"} {
 		if !slices.Contains(p.labels(), l) {
 			t.Fatal(l, p.labels())
 		}
@@ -227,8 +228,8 @@ func TestCaveEntryAreasAndExplore(t *testing.T) {
 	if !p.button("尚未解鎖").Disabled {
 		t.Fatal("未解鎖應停用")
 	}
-	p.click("返回冒險介面")
-	p.click("青青草原")
+	p.click("回山洞")
+	p.choose("查看區域詳情", "grassland") // 區域詳情改從選單進入
 	contains(t, p.Text, "✅ 可以出發", "琥珀瓜種子")
 	started := p.click("出發探險")
 	contains(t, p.Text, "出發前往青青草原", "🧭 探險中")
@@ -255,7 +256,7 @@ func TestCaveEntryAreasAndExplore(t *testing.T) {
 		t.Fatal(names)
 	}
 	contains(t, p.Text, "從青青草原探險回來了", "探索結果", "木材", "×**6**")
-	p.click("返回冒險介面")
+	p.click("回山洞")
 	contains(t, p.Text, "✅ 可以出發")
 	if slices.Contains(p.labels(), "領取探險獎勵") {
 		t.Fatal(p.labels())
@@ -264,11 +265,11 @@ func TestCaveEntryAreasAndExplore(t *testing.T) {
 	contains(t, p.Text, "木材　×**6**")
 	p.goPage("cave_log")
 	contains(t, p.Text, "青青草原", "木材 ×6")
-	p.click("返回冒險介面")
-	p.click("返回主選單")
+	p.click("回山洞")
+	p.click("回總覽")
 	contains(t, p.Text, "農田")
-	if !slices.Contains(p.labels(), "山洞") {
-		t.Fatal(p.labels())
+	if !slices.Contains(p.options("更多功能"), "cave") { // 山洞收進總覽的「更多功能」選單
+		t.Fatal(p.options("更多功能"))
 	}
 }
 
@@ -278,21 +279,19 @@ func TestCaveOtherAreaBlockedWhileExploring(t *testing.T) {
 	p := e.makePlayer(alice, guildA, "玩家")
 	e.setLevel(p.panel.playerID, 5)
 	p.goPage("cave")
-	p.click("青青草原")
-	p.click("出發探險")
+	p.click("出發：青青草原") // 可以出發的區域按一下就出發
 	p.click("古老森林")
 	contains(t, p.Text, "正在青青草原探險")
 	if !p.button("正在其他區域探險").Disabled {
 		t.Fatal("應停用")
 	}
 	e.clock.Advance(8 * 3600)
-	p.click("返回冒險介面")
+	p.click("回山洞")
 	p.click("青青草原")
 	p.click("領取探險獎勵") // 區域頁也可以直接領取
 	contains(t, p.Text, "探索結果")
-	p.click("返回冒險介面")
-	p.click("古老森林")
-	p.click("出發探險")
+	p.click("回山洞")
+	p.click("出發：古老森林")
 	contains(t, p.Text, "出發前往古老森林", "探險 16 小時")
 }
 
@@ -301,8 +300,7 @@ func TestCaveDoubleClickStartsOnce(t *testing.T) {
 	fixedExplore(e)
 	p := e.makePlayer(alice, guildA, "玩家")
 	p.goPage("cave")
-	p.click("青青草原")
-	b := p.button("出發探險")
+	b := p.button("出發：青青草原")
 	// 同一個按鈕連點兩次：第一次完成後畫面已重繪，舊的 custom_id 失效，第二次不會執行
 	first, second := p.interaction(), p.interaction()
 	if !e.cmds.Registry.DispatchComponent(e.ctx, first, b.CustomID(), nil) {
@@ -320,8 +318,7 @@ func TestCavePlayersAreIndependent(t *testing.T) {
 	a := e.makePlayer(alice, guildA, "玩家")
 	b := e.makePlayer(bob, guildA, "小明")
 	a.goPage("cave")
-	a.click("青青草原")
-	a.click("出發探險")
+	a.click("出發：青青草原")
 	b.goPage("cave")
 	contains(t, b.Text, "✅ 可以出發") // Alice 的探險不影響 Bob
 }
@@ -336,11 +333,12 @@ func TestMachinesPageBuildAndUseSeedMaker(t *testing.T) {
 	}
 	p.goPage("craft")
 	p.click("機器")
-	contains(t, p.Text, "種子製造機", "❌齒輪 2/3")
-	p.choose("製作機器", "seed_maker")
-	contains(t, p.Text, "材料不足，還缺：齒輪 ×1")
+	contains(t, p.Text, "種子製造機", "❌齒輪 2/3", "材料不足（還缺 齒輪×1）")
+	if slices.Contains(p.options("製作機器"), "seed_maker") { // 做不出來的機器不放進選單
+		t.Fatal(p.options("製作機器"))
+	}
 	e.setInventory(pid, "gear", 3)
-	p.click("返回")
+	p.goPage("machines")
 	p.choose("製作機器", "seed_maker")
 	contains(t, p.Text, "種子製造機製作完成", "從「🌱 農田」→「🌱 種子製造」使用")
 	if slices.Contains(p.labels(), "停用種子製造機") { // 種子製造機沒有啟用／停用開關
@@ -381,7 +379,7 @@ func TestSeedMakerPageFromPlotsAcceptsAnyQuality(t *testing.T) {
 		t.Fatal(p.Text)
 	}
 	p.choose("選擇要做成種子的作物", "seed:carrot:good:none")
-	if !slices.Contains(p.labels(), "用 12") { // 超過 10 個時多一個「全部」
+	if !slices.ContainsFunc(p.labels(), func(l string) bool { return strings.HasPrefix(l, "用 12 個") }) { // 超過 10 個時多一個「全部」
 		t.Fatal(p.labels())
 	}
 	p.click("用 5")
@@ -405,12 +403,12 @@ func TestLogPageListsRecentTransactions(t *testing.T) {
 		p.click("買 1")
 	}
 	p.goPage("main")
-	p.click("紀錄")
+	p.choose("更多功能", "log")
 	p.button("上一頁（1/2）") // 翻頁按鈕標示目前頁數
 	p.click("下一頁")
 	p.button("上一頁（2/2）")
 	p.goPage("main")
-	p.click("紀錄") // 從總覽進來時回到第 1 頁
+	p.choose("更多功能", "log") // 從總覽進來時回到第 1 頁
 	p.button("上一頁（1/2）")
 }
 

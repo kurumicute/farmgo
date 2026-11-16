@@ -154,7 +154,7 @@ func TestLabClonePanel(t *testing.T) {
 	p.choose("鑑定一般種子", "wheat")
 	p.goPage("lab_seeds")
 	p.choose("選擇種子", p.options("選擇種子")[0])
-	contains(t, p.Text, "🌱 育苗：每次 300 金幣", "得到 1–3 顆")
+	contains(t, p.Text, "🌱 育苗：300 金", "得到 1–3 顆")
 	p.click("育苗")
 	contains(t, p.Text, "✦ 育苗 ✦", "1 顆 70%、2 顆 20%、3 顆 10%", "1 顆 50%、2 顆 20%、3 顆 30%", "排程 **1** 次：300 金幣")
 	if !p.button("加藥草（需要 1，持有 0）").Disabled {
@@ -235,31 +235,32 @@ func TestLabSeedPages(t *testing.T) {
 	if got := p.options("選擇種子"); len(got) != 5 {
 		t.Fatal(len(got))
 	}
+	// 雜交頁：翻頁放在選單裡（每頁 23 顆，加上第一項「上一頁」、最後一項「下一頁」）
 	p.goPage("lab_cross")
-	if got := p.options("選擇母本"); len(got) != 25 {
-		t.Fatal(len(got))
+	if got := p.options("選擇母本"); len(got) != 25 || got[0] != pagePrev || got[24] != pageNext {
+		t.Fatal(got)
 	}
-	p.click("母本下一頁")
+	p.choose("選擇母本", pageNext)
 	mothers := p.options("選擇母本")
-	if len(mothers) != 5 {
+	if len(mothers) != 9 { // 30 − 23 = 7 顆＋2 個翻頁選項
 		t.Fatal(len(mothers))
 	}
-	p.choose("選擇母本", mothers[0])
-	if got := p.options("選擇父本"); len(got) != 25 { // 其他 29 顆都能配對，第一頁 25 顆
+	p.choose("選擇母本", mothers[1])
+	if got := p.options("選擇父本"); len(got) != 25 { // 其他 29 顆都能配對，第一頁 23 顆＋2 個翻頁選項
 		t.Fatal(len(got))
 	}
-	p.click("父本下一頁")
-	if got := p.options("選擇父本"); len(got) != 4 {
+	p.choose("選擇父本", pageNext)
+	if got := p.options("選擇父本"); len(got) != 8 {
 		t.Fatal(len(got))
 	}
-	// 選好母本後仍可把母本選單翻回第 1 頁改選（以前翻頁按鈕只會翻父本選單）
-	p.click("母本上一頁（2/2）")
+	// 選好母本後仍可把母本選單翻回第 1 頁改選
+	p.choose("選擇母本", pagePrev)
 	mothers = p.options("選擇母本")
 	if len(mothers) != 25 {
 		t.Fatal(len(mothers))
 	}
-	p.choose("選擇母本", mothers[0])
-	contains(t, p.Text, "♀ 母本：")
+	p.choose("選擇母本", mothers[1])
+	contains(t, p.Text, "♀ 母本：", "母本選單共 2 頁（目前第 1 頁）")
 	if got := p.options("選擇母本"); len(got) != 25 {
 		t.Fatal(len(got))
 	}
@@ -316,6 +317,34 @@ func TestPlantLabSeedsFromPlots(t *testing.T) {
 	p.goPage("plots")
 	if p.selectMenu("勾選特殊種子") != nil {
 		t.Fatal("種完後沒有可種的特殊種子時不顯示")
+	}
+	e.checkLedger()
+}
+
+// TestPlantLabSeedsFromPlotsPaged 特殊種子超過 25 顆時，農田頁的選單可以在選單內翻頁，種到後面頁的種子（2026-11-16）。
+func TestPlantLabSeedsFromPlotsPaged(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	pid := p.panel.playerID
+	e.exec(`INSERT INTO lab_seeds (farm_id, breeder_farm_id, crop_code, gene_growth, gene_yield, gene_quality, gene_mutation)
+		SELECT id, id, 'wheat', 1 + g % 5, 1, 1, 1 FROM farms, generate_series(1, 30) g WHERE player_id = $1`, pid)
+	p.goPage("plots")
+	if got := p.options("勾選特殊種子"); len(got) != 25 || got[0] != pagePrev || got[24] != pageNext {
+		t.Fatal(got)
+	}
+	contains(t, p.selectMenu("勾選特殊種子").Placeholder, "第 1/2 頁")
+	p.chooseMany("勾選特殊種子", []string{pageNext})
+	got := p.options("勾選特殊種子")
+	if len(got) != 9 { // 30 − 23 = 7 顆＋2 個翻頁選項
+		t.Fatal(len(got))
+	}
+	contains(t, p.selectMenu("勾選特殊種子").Placeholder, "第 2/2 頁")
+	last := got[7]
+	before := e.scalar(`SELECT status FROM lab_seeds WHERE id = $1`, last)
+	p.chooseMany("勾選特殊種子", []string{last, pageNext}) // 同時勾翻頁選項時只種種子
+	contains(t, p.Text, "已在第 1 格種下特殊小麥種子")
+	if after := e.scalar(`SELECT status FROM lab_seeds WHERE id = $1`, last); after == before {
+		t.Fatal("第 2 頁的種子應該已經種下")
 	}
 	e.checkLedger()
 }

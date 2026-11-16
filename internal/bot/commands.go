@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"slices"
+	"sync"
 	"time"
 
 	"farmgm/internal/bot/latency"
@@ -57,6 +59,28 @@ type Commands struct {
 
 	onPanel func(*Panel)  // 測試用：取得剛開啟的面板
 	images  chan struct{} // 同時產生圖片的上限（CPU 核心數）
+
+	// 總覽「更多功能」最近用過的入口（Discord 使用者 ID → 頁面，最新的在前）：重新輸入 /farm 也保留；
+	// 只存在記憶體，Bot 重新啟動後清空（只是方便用的捷徑，不需要寫進資料庫）
+	recentMu sync.Mutex
+	recent   map[string][]string
+}
+
+// recentPages 使用者最近用過的入口（複本）。
+func (c *Commands) recentPages(userID string) []string {
+	c.recentMu.Lock()
+	defer c.recentMu.Unlock()
+	return slices.Clone(c.recent[userID])
+}
+
+// setRecentPages 記下使用者最近用過的入口。
+func (c *Commands) setRecentPages(userID string, pages []string) {
+	c.recentMu.Lock()
+	defer c.recentMu.Unlock()
+	if c.recent == nil {
+		c.recent = map[string][]string{}
+	}
+	c.recent[userID] = slices.Clone(pages)
 }
 
 // NewCommands 建立指令（AutoCheckin 預設開啟）。

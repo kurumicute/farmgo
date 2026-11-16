@@ -123,7 +123,7 @@
               <p class="pop-title"><span class="badge good">管理員</span><span id="admin-name" class="small"></span></p>
               <button id="admin-logout" type="button"><svg class="icon" aria-hidden="true"><use href="#i-logout"/></svg>登出</button>
             </div>
-            <p id="admin-note" class="muted small"></p>
+            <p id="admin-note" class="muted small" aria-live="polite"></p>
           </div>
         </details>
       </header>
@@ -295,6 +295,7 @@
                 <tbody id="group-member-rows" data-page-size="20" data-filter="篩選成員名稱"></tbody>
               </table>
             </div>
+            <div id="group-extras"></div>
           </section>
         </div>
 
@@ -788,30 +789,56 @@
             <details id="wb-settings-box" class="admin-only form-box" hidden>
               <summary>補給設定（目標、效果、捐獻限制與可捐獻物品）</summary>
               <p class="form-hint">修改前會先以舊設定把傷害結算到現在。作物與漁獲依「售價 ÷ 每積分金幣」換算積分；其他物品只有列在「指定物品」才可捐獻（積分 0 = 不可捐）。</p>
-              <div class="form-grid">
-                <label class="req">每小時基礎傷害 <input id="wbs-dph" type="number" min="0" max="100000000" step="1" required></label>
-                <label class="req">每積分立即傷害 <input id="wbs-instant" type="number" min="0" max="100000" step="1" required></label>
-                <label class="req">每積分金幣價值 <input id="wbs-gpp" type="number" min="1" max="100000" step="1" required></label>
-                <label>作物補給
-                  <select id="wbs-crop"><option value="food">糧食</option><option value="medical">醫療</option><option value="combat">戰鬥</option><option value="equipment">裝備</option></select>
-                </label>
-                <label>漁獲補給
-                  <select id="wbs-fish"><option value="food">糧食</option><option value="medical">醫療</option><option value="combat">戰鬥</option><option value="equipment">裝備</option></select>
-                </label>
-                <label class="req">糧食目標 <input id="wbs-t-food" type="number" min="1" max="100000000" step="1" required></label>
-                <label class="req">醫療目標 <input id="wbs-t-medical" type="number" min="1" max="100000000" step="1" required></label>
-                <label class="req">戰鬥目標 <input id="wbs-t-combat" type="number" min="1" max="100000000" step="1" required></label>
-                <label class="req">裝備目標 <input id="wbs-t-equipment" type="number" min="1" max="100000000" step="1" required></label>
-                <label class="req">補給加成上限 % <input id="wbs-cap" type="number" min="100" max="500" step="1" required></label>
-                <label class="req">無糧食出勤率 % <input id="wbs-uptime" type="number" min="0" max="100" step="1" required></label>
-                <label class="req">醫療恢復 % <input id="wbs-medical" type="number" min="0" max="100" step="1" required></label>
-                <label class="req">戰鬥傷害加成 % <input id="wbs-combat" type="number" min="0" max="1000" step="1" required></label>
-                <label class="req">裝備傷害加成 % <input id="wbs-equipment" type="number" min="0" max="1000" step="1" required></label>
-                <label class="req">每人每種物品上限 <input id="wbs-per-item" type="number" min="1" max="100000" step="1" required></label>
-                <label class="req">單次捐獻上限 <input id="wbs-per-action" type="number" min="1" max="999" step="1" required></label>
-                <label class="wide">指定物品（每行「代碼 補給 積分」，補給為 food／medical／combat／equipment）
-                  <textarea id="wbs-items" rows="8" spellcheck="false"></textarea></label>
-              </div>
+              <fieldset class="form-section">
+                <legend>傷害</legend>
+                <div class="form-grid">
+                  <label class="req">每小時基礎傷害（HP／小時） <input id="wbs-dph" type="number" min="0" max="100000000" step="1" required><small class="field-hint">前線每小時自動造成的傷害，再乘上攻擊倍率與出勤率。</small></label>
+                  <label class="req">每積分立即傷害（HP／分） <input id="wbs-instant" type="number" min="0" max="100000" step="1" required><small class="field-hint">每捐 1 積分當下立刻造成的傷害（再乘攻擊倍率）。</small></label>
+                  <label class="req">每積分金幣價值（金幣／分） <input id="wbs-gpp" type="number" min="1" max="100000" step="1" required><small class="field-hint">作物與漁獲以「售價 ÷ 此值」換算積分（無條件進位，至少 1 分）。</small></label>
+                </div>
+              </fieldset>
+              <fieldset class="form-section">
+                <legend>補給目標</legend>
+                <div class="form-grid">
+                  <label>作物算作哪種補給
+                    <select id="wbs-crop"><option value="food">糧食</option><option value="medical">醫療</option><option value="combat">戰鬥</option><option value="equipment">裝備</option></select><small class="field-hint">所有作物（未列在指定物品者）捐獻後計入的補給。</small>
+                  </label>
+                  <label>漁獲算作哪種補給
+                    <select id="wbs-fish"><option value="food">糧食</option><option value="medical">醫療</option><option value="combat">戰鬥</option><option value="equipment">裝備</option></select><small class="field-hint">所有漁獲（未列在指定物品者）捐獻後計入的補給。</small>
+                  </label>
+                  <label class="req">糧食目標（積分） <input id="wbs-t-food" type="number" min="1" max="100000000" step="1" required><small class="field-hint">糧食累積到此積分算滿額，前線維持出勤。</small></label>
+                  <label class="req">醫療目標（積分） <input id="wbs-t-medical" type="number" min="1" max="100000000" step="1" required><small class="field-hint">醫療累積到此積分算滿額，救回最多缺勤時間。</small></label>
+                  <label class="req">戰鬥目標（積分） <input id="wbs-t-combat" type="number" min="1" max="100000000" step="1" required><small class="field-hint">戰鬥累積到此積分算滿額，傷害加成全數生效。</small></label>
+                  <label class="req">裝備目標（積分） <input id="wbs-t-equipment" type="number" min="1" max="100000000" step="1" required><small class="field-hint">裝備累積到此積分算滿額，傷害加成全數生效。</small></label>
+                </div>
+              </fieldset>
+              <fieldset class="form-section">
+                <legend>加成效果</legend>
+                <div class="form-grid">
+                  <label class="req">補給加成上限（%，100–500） <input id="wbs-cap" type="number" min="100" max="500" step="1" required><small class="field-hint">補給最多算到目標的幾 %，超過不再加成（例如 150 = 目標的 1.5 倍）。</small></label>
+                  <label class="req">無糧食出勤率（%） <input id="wbs-uptime" type="number" min="0" max="100" step="1" required><small class="field-hint">完全沒有糧食時，前線仍在作戰的時間比例。</small></label>
+                  <label class="req">醫療恢復（%） <input id="wbs-medical" type="number" min="0" max="100" step="1" required><small class="field-hint">醫療滿額時，缺勤時間被救回的比例。</small></label>
+                  <label class="req">戰鬥傷害加成（%） <input id="wbs-combat" type="number" min="0" max="1000" step="1" required><small class="field-hint">戰鬥補給滿額時的傷害加成（100 = 傷害 +100%）。</small></label>
+                  <label class="req">裝備傷害加成（%） <input id="wbs-equipment" type="number" min="0" max="1000" step="1" required><small class="field-hint">裝備補給滿額時的傷害加成（50 = 傷害 +50%）。</small></label>
+                </div>
+              </fieldset>
+              <fieldset class="form-section">
+                <legend>捐獻限制</legend>
+                <div class="form-grid">
+                  <label class="req">每人每種物品上限（個） <input id="wbs-per-item" type="number" min="1" max="100000" step="1" required><small class="field-hint">同一位玩家在這一場對同一種物品最多能捐幾個。</small></label>
+                  <label class="req">單次捐獻上限（個） <input id="wbs-per-action" type="number" min="1" max="999" step="1" required><small class="field-hint">每次捐獻最多幾個。</small></label>
+                </div>
+              </fieldset>
+              <fieldset class="form-section">
+                <legend>指定物品</legend>
+                <div class="form-grid">
+                  <div class="wide">
+                    <p class="form-hint">列在這裡的物品改用固定積分與指定補給（積分 0 = 不可捐）；作物與漁獲寫在這裡時也改用固定積分。最多 60 項。</p>
+                    <div id="wbs-items"></div>
+                    <div class="controls"><button id="wbs-item-add" type="button">新增物品</button></div>
+                  </div>
+                </div>
+              </fieldset>
               <p class="muted small" id="wbs-codes"></p>
               <div class="form-actions"><button id="wbs-submit" type="button" class="primary">儲存補給設定</button></div>
             </details>
@@ -1058,10 +1085,10 @@
               <div class="form-grid">
                 <label class="req">代碼（英文小寫） <input id="crf-code" type="text" maxlength="32" placeholder="pumpkin" required pattern="[a-z][a-z0-9_]{1,31}" data-pattern-hint="小寫英文字母開頭，只能包含小寫字母、數字與底線，2–32 字"></label>
                 <label class="req">名稱 <input id="crf-name" type="text" maxlength="32" required></label>
-                <label class="req">種子價格 <input id="crf-seed" type="number" min="1" step="1" value="10" required></label>
-                <label class="req">生長秒數 <input id="crf-grow" type="number" min="60" step="1" value="7200" required></label>
+                <label class="req">種子價格（金幣） <input id="crf-seed" type="number" min="1" step="1" value="10" required></label>
+                <label class="req">生長秒數（秒） <input id="crf-grow" type="number" min="60" step="1" value="7200" required><small id="crf-grow-text" class="field-hint live" aria-live="polite">= 2 小時</small></label>
                 <label class="req">收成數量 <input id="crf-qty" type="number" min="1" max="100" step="1" value="2" required></label>
-                <label class="req">售價 <input id="crf-sell" type="number" min="0" step="1" value="15" required></label>
+                <label class="req">售價（金幣） <input id="crf-sell" type="number" min="0" step="1" value="15" required></label>
                 <label class="req">珍稀變種代碼 <input id="crf-vcode" type="text" maxlength="32" placeholder="golden_pumpkin" required pattern="[a-z][a-z0-9_]{1,31}" data-pattern-hint="小寫英文字母開頭，只能包含小寫字母、數字與底線，2–32 字"></label>
                 <label class="req">珍稀變種名稱 <input id="crf-vname" type="text" maxlength="32" required></label>
                 <fieldset class="checks wide"><legend>季節限定（每 14 天輪替：冬→春→夏→秋；都不勾 = 四季都可以）</legend><label><input id="crf-s-spring" type="checkbox"> 🌸 春</label><label><input id="crf-s-summer" type="checkbox"> ☀️ 夏</label><label><input id="crf-s-autumn" type="checkbox"> 🍂 秋</label><label><input id="crf-s-winter" type="checkbox"> ❄️ 冬</label></fieldset>

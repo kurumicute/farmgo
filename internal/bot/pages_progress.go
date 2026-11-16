@@ -78,6 +78,59 @@ func (p *Panel) buildShopSpecial(_ context.Context, data any) (*ui.Embed, error)
 	e := &ui.Embed{Title: "🎁 ✦ 特賣與升級 ✦", Color: Gold, Description: runes(fmt.Sprintf(
 		"💰 你的金幣：**%s**\n%s\n**🏡 溫室**\n%s\n\n**🎁 本週特賣**（%s換新商品，每人每週限購）\n%s\n\n**🎖️ 稱號商店**（買到後到「🏅 成就圖鑑 → 🎖️ 稱號」選用）\n%s",
 		money(d.Gold), Line, greenhouse, tsv(w.EndsAt), dealText, strings.Join(titles, "\n")), 4000)}
+	// makePicker 依目前資料建立選取的商品（2026-11-16：保留選取的商品每次重繪都重建，金幣不足、可買數量才會跟著購買後的金幣更新）
+	makePicker := func(key string) (*Picker, error) {
+		var pk *Picker
+		kind, code, _ := strings.Cut(key, ":")
+		pid := p.playerID
+		switch kind {
+		case "greenhouse":
+			price := 0
+			if g.NextPrice != nil {
+				price = *g.NextPrice
+			}
+			pk = &Picker{Key: key, Label: fmt.Sprintf("🏡 溫室升到 %d 級", g.Level+1), PriceText: money(price) + " 金", Confirm: true, Max: 1, Short: shortOf(d.Gold, price),
+				Run: p.callQty("upgrade_greenhouse", func(ctx context.Context, _ int) (services.ActionResult, error) {
+					return p.svc().UpgradeGreenhouse(ctx, pid)
+				})}
+		case "title":
+			i := slices.IndexFunc(d.Titles, func(t services.TitleShopItem) bool { return t.Title == code })
+			if i < 0 {
+				return nil, gameerr.NotFoundf("找不到這個商品。")
+			}
+			pk = &Picker{Key: key, Label: fmt.Sprintf("🎖️ 稱號「%s」", code), PriceText: money(d.Titles[i].Price) + " 金", Confirm: true, Max: 1, Short: shortOf(d.Gold, d.Titles[i].Price),
+				Run: p.callQty("buy_title", func(ctx context.Context, _ int) (services.ActionResult, error) {
+					return p.svc().BuyTitle(ctx, pid, code)
+				})}
+		default:
+			i := slices.IndexFunc(w.Offers, func(o services.WeeklyOfferView) bool { return o.CropCode == code })
+			if i < 0 {
+				return nil, gameerr.NotFoundf("找不到這個商品。")
+			}
+			o := w.Offers[i]
+			pk = &Picker{Key: key, Label: fmt.Sprintf("🌰 %s（本週特賣）", o.Name), PriceText: fmt.Sprintf("每顆 %s 金", money(o.Price)), Verb: "買",
+				Max: max(1, min(o.Limit-o.Bought, d.Gold/max(1, o.Price))), Short: shortOf(d.Gold, o.Price), Presets: []int{1, 3, 10}, Keep: true,
+				Run: p.callQty("buy_weekly_deal", func(ctx context.Context, q int) (services.ActionResult, error) {
+					return p.svc().BuyWeeklyDeal(ctx, pid, code, q)
+				})}
+			if o.Limit <= o.Bought {
+				pk.Short = "本週已達限購數量"
+			}
+		}
+		return pk, nil
+	}
+	pick := func(ctx context.Context, it ui.Interaction, key string) error {
+		pk, err := makePicker(key)
+		if err != nil {
+			return err
+		}
+		p.picker = pk
+		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+		return nil
+	}
+	if p.picker != nil && p.picker.Keep {
+		p.picker, _ = makePicker(p.picker.Key) // 商品已經下架時取消選取
+	}
 	if p.picker != nil {
 		hint := "👇 按下方的數量按鈕購買"
 		if p.picker.Confirm {
@@ -87,44 +140,6 @@ func (p *Panel) buildShopSpecial(_ context.Context, data any) (*ui.Embed, error)
 	} else {
 		e.Footer = "👇 先從選單挑一樣商品"
 	}
-
-	pick := func(ctx context.Context, it ui.Interaction, key string) error {
-		kind, code, _ := strings.Cut(key, ":")
-		pid := p.playerID
-		switch kind {
-		case "greenhouse":
-			price := 0
-			if g.NextPrice != nil {
-				price = *g.NextPrice
-			}
-			p.picker = &Picker{Key: key, Label: fmt.Sprintf("🏡 溫室升到 %d 級", g.Level+1), PriceText: money(price) + " 金", Confirm: true, Max: 1,
-				Run: p.callQty("upgrade_greenhouse", func(ctx context.Context, _ int) (services.ActionResult, error) {
-					return p.svc().UpgradeGreenhouse(ctx, pid)
-				})}
-		case "title":
-			i := slices.IndexFunc(d.Titles, func(t services.TitleShopItem) bool { return t.Title == code })
-			if i < 0 {
-				return gameerr.NotFoundf("找不到這個商品。")
-			}
-			p.picker = &Picker{Key: key, Label: fmt.Sprintf("🎖️ 稱號「%s」", code), PriceText: money(d.Titles[i].Price) + " 金", Confirm: true, Max: 1,
-				Run: p.callQty("buy_title", func(ctx context.Context, _ int) (services.ActionResult, error) {
-					return p.svc().BuyTitle(ctx, pid, code)
-				})}
-		default:
-			i := slices.IndexFunc(w.Offers, func(o services.WeeklyOfferView) bool { return o.CropCode == code })
-			if i < 0 {
-				return gameerr.NotFoundf("找不到這個商品。")
-			}
-			o := w.Offers[i]
-			p.picker = &Picker{Key: key, Label: fmt.Sprintf("🌰 %s（本週特賣）", o.Name), PriceText: fmt.Sprintf("每顆 %d 金", o.Price), Verb: "買",
-				Max: max(1, min(o.Limit-o.Bought, d.Gold/max(1, o.Price))), Presets: []int{1, 3, 10}, Keep: true,
-				Run: p.callQty("buy_weekly_deal", func(ctx context.Context, q int) (services.ActionResult, error) {
-					return p.svc().BuyWeeklyDeal(ctx, pid, code, q)
-				})}
-		}
-		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
-		return nil
-	}
 	var options []option
 	if g.NextPrice != nil {
 		options = append(options, option{fmt.Sprintf("溫室升到 %d 級", g.Level+1), "greenhouse",
@@ -133,7 +148,7 @@ func (p *Panel) buildShopSpecial(_ context.Context, data any) (*ui.Embed, error)
 	for _, o := range w.Offers {
 		if o.Limit > o.Bought {
 			options = append(options, option{o.Name + "（本週特賣）", "weekly:" + o.CropCode,
-				fmt.Sprintf("🎁 剩 %d 顆｜💰 %d 金", o.Limit-o.Bought, o.Price), "🌰"})
+				fmt.Sprintf("🎁 剩 %d 顆｜💰 %s 金", o.Limit-o.Bought, money(o.Price)), "🌰"})
 		}
 	}
 	for _, t := range d.Titles {
@@ -143,9 +158,7 @@ func (p *Panel) buildShopSpecial(_ context.Context, data any) (*ui.Embed, error)
 	}
 	p.selectMenu("🛒 選擇要買的商品…", options, pick, 0, selected)
 	p.quantityButtons(1)
-	p.nav("農場商店", "shop", btn{emoji: "🌾", row: 4})
-	p.nav("釣具商店", "fish_shop", btn{emoji: "🎣", row: 4})
-	p.button("特賣與升級", p.noop, btn{emoji: "🎁", row: 4, style: ui.Primary, disabled: true})
+	p.shopTabs(3, shopTabSpecial)
 	p.nav("回總覽", "main", btn{emoji: "🏠", row: 4})
 	return e, nil
 }
@@ -194,9 +207,15 @@ func (p *Panel) buildProgress(_ context.Context, data any) (*ui.Embed, error) {
 		bar(a.Claimed, a.Total, 8), a.Claimed, a.Total, ready, title, len(t.Owned), Line, sign, k.NextRewardText, Line,
 		c.Discovered, c.Total, pctOf(c.Discovered, c.Total), strings.Join(cats, "\n")), 4000),
 		Footer: "成就進度包含過去的紀錄；達成後到「成就」頁領取獎勵。取得物品會自動登記到圖鑑。"}
-	p.nav("成就", "achievements", btn{emoji: "🏅", row: 0, style: ui.Primary})
+	// 2026-11-16 有成就獎勵可領時：按鈕寫出數量並改成綠色，footer（緊貼按鈕）也提示；沒有時入口一律灰色
+	achLabel, achStyle := "成就", ui.Secondary
+	if a.Ready != 0 {
+		achLabel, achStyle = fmt.Sprintf("成就（🎁%d）", a.Ready), ui.Success
+		e.Footer = fmt.Sprintf("🎁 有 %d 個成就獎勵可以領，按下方「成就」領取", a.Ready)
+	}
+	p.nav(achLabel, "achievements", btn{emoji: "🏅", row: 0, style: achStyle})
 	p.nav("稱號", "titles", btn{emoji: "🎖️", row: 0})
-	p.nav("圖鑑", "codex", btn{emoji: "📖", row: 0, style: ui.Primary})
+	p.nav("圖鑑", "codex", btn{emoji: "📖", row: 0})
 	p.nav("回總覽", "main", btn{emoji: "🏠", row: 0})
 	return e, nil
 }
@@ -265,7 +284,7 @@ func (p *Panel) buildAchievements(_ context.Context, data any) (*ui.Embed, error
 		return nil
 	}, btn{emoji: "🎁", row: 1, style: ui.Success, disabled: d.Ready == 0})
 	p.nav("稱號", "titles", btn{emoji: "🎖️", row: 1})
-	p.nav("成就與圖鑑", "progress", btn{emoji: "🏅", row: 1})
+	p.nav("回成就與圖鑑", "progress", btn{emoji: "📚", row: 1})
 	p.nav("回總覽", "main", btn{emoji: "🏠", row: 1})
 	return e, nil
 }
@@ -314,7 +333,7 @@ func (p *Panel) buildTitles(_ context.Context, data any) (*ui.Embed, error) {
 		}, 0, selected)
 	}
 	p.nav("成就", "achievements", btn{emoji: "🏅", row: 1})
-	p.nav("成就與圖鑑", "progress", btn{emoji: "🏅", row: 1})
+	p.nav("回成就與圖鑑", "progress", btn{emoji: "📚", row: 1})
 	p.nav("回總覽", "main", btn{emoji: "🏠", row: 1})
 	return e, nil
 }
@@ -360,7 +379,7 @@ func (p *Panel) buildCodex(_ context.Context, data any) (*ui.Embed, error) {
 		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
 		return nil
 	}, 0, cat.Key)
-	p.nav("成就與圖鑑", "progress", btn{emoji: "🏅", row: 1})
+	p.nav("回成就與圖鑑", "progress", btn{emoji: "📚", row: 1})
 	if cat.Key == "lab" || cat.Key == "mushroom" { // 從種子實驗室進來的圖鑑分類
 		p.labNav(1)
 	}
@@ -423,7 +442,7 @@ func quantityPresets(most int) []int {
 func (p *Panel) buildRuins(_ context.Context, data any) (*ui.Embed, error) {
 	d := data.(services.RuinsStatus)
 	if d.GroupID == nil {
-		p.nav("返回冒險介面", "cave", btn{emoji: "↩️", row: 0})
+		p.nav("回山洞", "cave", btn{emoji: "⛰️", row: 0})
 		return &ui.Embed{Title: "🏛️ ✦ 古代遺跡 ✦", Color: Blue, Description: "你的農場還沒有所屬群組，到 Discord 伺服器中開啟面板就會設定。"}, nil
 	}
 	stages := make([]string, len(d.StageNames))
@@ -538,7 +557,7 @@ func (p *Panel) buildRuins(_ context.Context, data any) (*ui.Embed, error) {
 		}, 0, selected)
 		p.quantityButtons(1)
 	}
-	p.nav("返回冒險介面", "cave", btn{emoji: "↩️", row: 2})
+	p.nav("回山洞", "cave", btn{emoji: "⛰️", row: 2})
 	p.navBack(2)
 	return e, nil
 }

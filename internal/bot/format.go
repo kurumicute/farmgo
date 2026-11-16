@@ -10,6 +10,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"farmgm/internal/bot/ui"
+	"farmgm/internal/game/news"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/services"
@@ -193,7 +195,7 @@ func progressDiff(old, now services.ProgressMarks) string {
 	return b.String()
 }
 
-// quote 操作結果放在頁面頂端的引用區塊（Discord 顯示為左側有直線的區塊），和頁面內容分開。
+// quote 操作結果的引用區塊（Discord 顯示為左側有直線的區塊），和頁面內容分開。
 func quote(text string) string {
 	lines := strings.Split(strings.TrimSpace(text), "\n")
 	for i, l := range lines {
@@ -204,6 +206,62 @@ func quote(text string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// placeNotice 操作結果與提示放在畫面最下方（最後一個欄位），貼近玩家剛按的按鈕；
+// 太長或欄位已滿時改接在說明的最後。
+//
+// 2026-11-16 修正：太長時不再改接到說明（會跑到畫面上方、整頁太長時又最先被截掉），一律放欄位並截到欄位上限；
+// 確認問題（⚠️ 開頭）標成「⚠️ 請確認」，不和已完成的結果混在一起；
+// 有大圖的頁面（Discord 把大圖排在所有欄位之後），另外把第一行寫進 footer，footer 一定緊貼按鈕。
+func placeNotice(e *ui.Embed, notice string) {
+	notice = strings.TrimSpace(notice)
+	name := "🔔 結果"
+	if strings.HasPrefix(notice, "⚠️") {
+		name = "⚠️ 請確認"
+	}
+	if len(e.Fields) >= 25 { // 欄位已滿（目前沒有頁面會到）：換掉最後一個欄位，結果仍在最下面
+		e.Fields = e.Fields[:24]
+	}
+	e.AddField(name, cut(quote(notice), 1024), false)
+	if e.Image != "" {
+		// 結果第一行接在頁面原本的 footer 下面（不覆蓋原本的說明或待辦摘要），最下面一行就是剛才的結果
+		first, _, _ := strings.Cut(notice, "\n")
+		line := cut(plainText(first), 200)
+		if discordTS.MatchString(first) { // footer 不會轉換時間戳，硬刪掉會讓句子斷掉（「…，回來」）：這種結果只放欄位
+			line = ""
+		}
+		if e.Footer != "" && line != "" {
+			e.Footer = cut(e.Footer, 1800) + "\n" + line
+		} else if line != "" {
+			e.Footer = line
+		}
+	}
+}
+
+// escapeMD 玩家可以自訂的文字（農場名稱、玩家名稱、Discord 伺服器名稱）放進 markdown 前先跳脫：
+// 避免名稱裡的 ** 打亂排版，或用 [文字](網址) 偽裝成可點的連結（以前這些清單包在程式碼區塊裡，2026-11-16 改成一般排版後需要跳脫）。
+// 和日報共用 news.SafeName 的跳脫表（@ 後面加零寬空白，不會變成提及），另外跳脫 <（避免 <@id>、<#id> 提及語法）。
+func escapeMD(s string) string { return strings.ReplaceAll(news.SafeName(s), "<", `\<`) }
+
+// plainReplacer 去掉 markdown 符號。escapeMD 加上的跳脫序列（例如 \_、\`）排在前面、優先比對：
+// 還原成原本的字元，不會被當成 markdown 符號拿掉（footer 不支援 markdown，反斜線會原樣顯示，2026-11-16）。
+var plainReplacer = func() *strings.Replacer {
+	var pairs []string
+	for _, c := range "\\*_~`|>[]()#<" {
+		pairs = append(pairs, `\`+string(c), string(c))
+	}
+	return strings.NewReplacer(append(pairs, "**", "", "__", "", "`", "", "> ", "")...)
+}()
+
+// discordTS Discord 動態時間戳 <t:秒數:樣式>（footer 不會轉換，會顯示原始文字）。
+var discordTS = regexp.MustCompile(`<t:\d+(?::[a-zA-Z])?>`)
+
+// plainText 去掉 Discord markdown 符號與時間戳（footer 不支援）。
+func plainText(s string) string {
+	s = discordTS.ReplaceAllString(s, "")
+	s = plainReplacer.Replace(s)
+	return strings.TrimSpace(strings.TrimPrefix(s, "### "))
 }
 
 func deref(s *string) string {
@@ -281,5 +339,5 @@ func fishLine(f services.BasketFish, n int) string {
 	if f.Record {
 		record = "　🏆"
 	}
-	return fmt.Sprintf("%s%s %s **%s**　⚖️ %s　💰 %d 金%s", num, f.RarityEmoji, f.Emoji, f.Name, f.WeightText, f.Price, record)
+	return fmt.Sprintf("%s%s %s **%s**　⚖️ %s　💰 %s 金%s", num, f.RarityEmoji, f.Emoji, f.Name, f.WeightText, money(f.Price), record)
 }

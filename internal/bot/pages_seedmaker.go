@@ -52,8 +52,8 @@ func (p *Panel) buildSeedMaker(_ context.Context, data any) (*ui.Embed, error) {
 	stacks := seedMakerStacks(bp)
 	lines := make([]string, len(stacks))
 	for i, x := range stacks {
-		lines[i] = fmt.Sprintf("%s %s%s　×**%d**　（%d 金／個）", cropEmoji(x.Code), x.Name,
-			services.GeneticsLabel(x.Quality, x.Mutation), x.Quantity, x.Price)
+		lines[i] = fmt.Sprintf("%s %s%s　×**%d**　（%s 金／個）", cropEmoji(x.Code), x.Name,
+			services.GeneticsLabel(x.Quality, x.Mutation), x.Quantity, money(x.Price))
 	}
 	rule := fmt.Sprintf("1 個作物 = **%d 顆**對應的種子，**普通、優良**品質的作物都可以（突變不限），做出來的一律是普通種子。"+
 		"\n稀有、傳說品質的作物不能做成種子。", exploration.SeedMakerRatio)
@@ -74,7 +74,7 @@ func (p *Panel) buildSeedMaker(_ context.Context, data any) (*ui.Embed, error) {
 	options := make([]option, len(page))
 	for i, x := range page {
 		options[i] = option{fmt.Sprintf("%s%s（持有 %d）", x.Name, services.GeneticsLabel(x.Quality, x.Mutation), x.Quantity),
-			seedMakerValue(x), fmt.Sprintf("1 個 → %d 顆種子｜售價 %d 金／個", exploration.SeedMakerRatio, x.Price), cropEmoji(x.Code)}
+			seedMakerValue(x), fmt.Sprintf("1 個 → %d 顆種子｜售價 %s 金／個", exploration.SeedMakerRatio, money(x.Price)), cropEmoji(x.Code)}
 	}
 	selected := ""
 	if p.picker != nil {
@@ -92,6 +92,7 @@ func (p *Panel) buildSeedMaker(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		p.picker = &Picker{Key: value, Label: fmt.Sprintf("🌱 %s%s（1 個 → %d 顆種子）", x.Name, services.GeneticsLabel(x.Quality, x.Mutation),
 			exploration.SeedMakerRatio), Verb: "用", Max: max(1, min(x.Quantity, exploration.SeedMakerMax)), Presets: presets,
+			LabelFor: func(q int) string { return fmt.Sprintf("用 %d 個 → %d 顆", q, q*exploration.SeedMakerRatio) }, // 直接寫出會得到幾顆
 			Run: p.callQty("make_seeds", func(ctx context.Context, q int) (services.ActionResult, error) {
 				return p.svc().MakeSeeds(ctx, p.playerID, x.Code, q, x.Quality, x.Mutation)
 			})}

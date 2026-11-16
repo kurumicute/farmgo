@@ -53,13 +53,9 @@ type bossPending struct {
 	batch  []bossDonation
 }
 
-// pyFloat Python str(float)：整數值也帶「.0」（例如 round(x, 1) 的 100.0）。
+// pyFloat 小數顯示：整數不帶小數點（100.0 → 100；Python str(float) 會顯示 100.0，玩家看起來像程式輸出）。
 func pyFloat(x float64) string {
-	s := strconv.FormatFloat(x, 'f', -1, 64)
-	if !strings.ContainsAny(s, ".eEnN") {
-		s += ".0"
-	}
-	return s
+	return strconv.FormatFloat(x, 'f', -1, 64)
 }
 
 func newRequestID() string {
@@ -202,7 +198,7 @@ func (p *Panel) setBossEvent(v *services.BossView) {
 func (p *Panel) buildBoss(_ context.Context, data any) (*ui.Embed, error) {
 	v := data.(bossData).v
 	if v == nil {
-		e := &ui.Embed{Title: "🐉 世界 Boss", Color: BossGrey, Description: "目前沒有世界 Boss 活動。\n活動由管理員在監控網站建立或排定，出現後這裡會顯示 Boss 與補給進度。"}
+		e := &ui.Embed{Title: "🐉 世界 Boss", Color: BossGrey, Description: "目前沒有世界 Boss 活動，敬請期待！\n活動開始後，這裡會顯示 Boss 與補給進度。"}
 		p.attachImage(e, p.bossImage())
 		p.button("活動說明", p.bossGoto("boss_help", false), btn{emoji: "📖", row: 0})
 		p.button("更新狀態", p.bossGoto("boss", true), btn{emoji: "🔄", row: 0})
@@ -222,10 +218,13 @@ func (p *Panel) buildBoss(_ context.Context, data any) (*ui.Embed, error) {
 	e.Footer = "你是農場後勤：捐獻農作物、漁獲與素材支援前線，Boss 戰鬥由系統自動進行。"
 
 	p.button("進入"+v.Name, p.bossGoto("boss_battle", true), btn{emoji: "⚔️", style: ui.Success, row: 0})
+	if v.State == "active" { // 最常做的捐獻直接放在介紹區，不用先進戰鬥區
+		p.button("捐獻物資", p.bossOpenDonate, btn{emoji: "📦", style: ui.Success, row: 0})
+	}
 	p.button("上一場排行榜", p.bossGoto("boss_board", false), btn{emoji: "🏆", row: 0})
 	p.button("活動說明", p.bossGoto("boss_help", false), btn{emoji: "📖", row: 0})
 	p.bossClaimButton(v, 0)
-	p.button("更新狀態", p.bossGoto("boss", true), btn{emoji: "🔄", row: 0})
+	p.button("更新狀態", p.bossGoto("boss", true), btn{emoji: "🔄", row: 4})
 
 	var claimable []option
 	for _, c := range v.Claimable {
@@ -305,10 +304,10 @@ func (p *Panel) buildBossBattle(_ context.Context, data any) (*ui.Embed, error) 
 	e.AddField("🙋 個人貢獻", mine+bossMineExtra(v), false)
 	e.Footer = "捐獻會立即造成傷害並推進補給；前線依補給自動作戰。"
 
-	p.button("捐獻物資", p.bossGoto("boss_donate", true), btn{emoji: "📦", style: ui.Success, row: 0, disabled: v.State != "active"})
+	p.button("捐獻物資", p.bossOpenDonate, btn{emoji: "📦", style: ui.Success, row: 0, disabled: v.State != "active"})
 	p.bossClaimButton(v, 0)
 	p.button("更新狀態", p.bossGoto("boss_battle", true), btn{emoji: "🔄", row: 0})
-	p.button("回介紹區", p.bossGoto("boss", true), btn{emoji: "🐉", row: 0})
+	p.button("回介紹區", p.bossGoto("boss", true), btn{emoji: "🐉", row: 0, back: true})
 	p.button("目前排行", p.bossGoto("boss_live_board", false), btn{emoji: "🏆", row: 1, style: ui.Primary})
 	p.navBack(1)
 	return e, nil
@@ -399,7 +398,7 @@ func (p *Panel) buildBossDonate(_ context.Context, data any) (*ui.Embed, error) 
 		}
 		p.selectMenu("① 捐獻類別…", cats, func(ctx context.Context, it ui.Interaction, value string) error {
 			p.bossReset()
-			p.bossCategory = value
+			p.bossCategory, p.bossLastCategory = value, value
 			p.goTo(ctx, it, "boss_donate", "")
 			return nil
 		}, 0, p.bossCategory)
@@ -437,7 +436,7 @@ func (p *Panel) buildBossDonate(_ context.Context, data any) (*ui.Embed, error) 
 			}, btn{emoji: "❌", style: ui.Danger, row: 3})
 		}
 	}
-	p.button("回戰鬥區", p.bossGoto("boss_battle", true), btn{emoji: "⚔️", row: 4})
+	p.button("回戰鬥區", p.bossGoto("boss_battle", true), btn{emoji: "⚔️", row: 4, back: true})
 	p.navBack(4)
 	return e, nil
 }
@@ -488,7 +487,7 @@ func (p *Panel) bossFishMulti(options []services.BossDonationOption, perAction i
 		multi.Options = append(multi.Options, ui.SelectOption{Label: runes(o.Name, 100), Value: fmt.Sprint(s.i), Default: chosen[o.Code],
 			Description: runes(fmt.Sprintf("持有 %d｜捐 %d 隻｜每隻 %s｜→ %s", o.Held, min(o.Held, o.Remaining, perAction), pointsText(o), supplyNames[o.Supply]), 100)})
 	}
-	p.View.Add(multi)
+	p.add(multi)
 }
 
 func (p *Panel) bossQuantityButtons(item services.BossDonationOption, perAction int) {
@@ -500,10 +499,26 @@ func (p *Panel) bossQuantityButtons(item services.BossDonationOption, perAction 
 		p.bossPending = &bossPending{single: &bossDonation{item, q, newRequestID()}}
 		p.goTo(ctx, it, "boss_donate", "")
 	}
+	// 2026-11-16 固定數量（× 1／5／10）按下就直接捐出，標籤寫出預計積分；「最多」與「自訂」數量較大，仍要再按一次確認。
+	// request_id 在畫面建立時就決定：同一顆按鈕連點兩次會送出相同的 request_id，服務層只處理一次。
 	for _, q := range bossQuantityPresets {
 		if q < maximum {
-			p.button(fmt.Sprintf("× %d", q), func(ctx context.Context, it ui.Interaction) error {
-				choose(ctx, it, q)
+			x := bossDonation{item, q, newRequestID()}
+			p.button(fmt.Sprintf("× %d（%s 分）", q, bossEstimate(item, q)), func(ctx context.Context, it ui.Interaction) error {
+				eventID := p.bossEventID
+				if eventID == nil {
+					p.refresh(ctx, it, "⚠️ 找不到這場活動，請重新整理。", nil, "重繪", time.Time{})
+					return nil
+				}
+				id := *eventID
+				p.bossPending = nil
+				p.act(ctx, it, func(ctx context.Context) (string, error) {
+					text, err := p.bossDonate(ctx, id, x)
+					if err == nil {
+						p.bossItem = nil // 成功才取消選取；失敗時「返回」仍保留剛才選的物品（act 的約定）
+					}
+					return text, err
+				}, actOpts{page: "boss_donate"})
 				return nil
 			}, btn{style: ui.Primary, row: 2})
 		}
@@ -515,6 +530,22 @@ func (p *Panel) bossQuantityButtons(item services.BossDonationOption, perAction 
 	p.button("自訂數量…", func(ctx context.Context, it ui.Interaction) error {
 		return it.SendModal(ctx, quantityModal("捐獻數量", "數量", maximum, choose))
 	}, btn{emoji: "✏️", row: 2})
+}
+
+// bossEstimate 捐 q 個預計獲得的積分（積分有範圍時顯示「約 低–高」）。
+func bossEstimate(o services.BossDonationOption, q int) string {
+	if o.PointsMin == o.PointsMax {
+		return money(o.PointsMin * q)
+	}
+	return fmt.Sprintf("約 %s–%s", money(o.PointsMin*q), money(o.PointsMax*q))
+}
+
+// bossOpenDonate 開啟捐獻頁，沿用上次選的類別（少選一次類別）。
+func (p *Panel) bossOpenDonate(ctx context.Context, it ui.Interaction) error {
+	p.bossReset()
+	p.bossCategory = p.bossLastCategory
+	p.goTo(ctx, it, "boss_donate", "")
+	return nil
 }
 
 func (p *Panel) bossDonate(ctx context.Context, eventID int64, x bossDonation) (string, error) {
@@ -606,7 +637,7 @@ func (p *Panel) buildBossBoard(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		e = p.boardEmbed(d.board, d.titles, "🏆 上一場貢獻排行｜"+d.board.Name, fmt.Sprintf("%s　結束於 %s", result, ts(d.board.EndedAt, "f")), true)
 	}
-	p.button("回介紹區", p.bossGoto("boss", true), btn{emoji: "🐉", row: 0})
+	p.button("回介紹區", p.bossGoto("boss", true), btn{emoji: "🐉", row: 0, back: true})
 	p.navBack(0)
 	return e, nil
 }
@@ -628,7 +659,7 @@ func (p *Panel) buildBossLiveBoard(_ context.Context, data any) (*ui.Embed, erro
 	d := data.(bossBoardData)
 	e := p.boardEmbed(d.board, d.titles, "🏆 目前貢獻排行｜"+d.board.Name, "這一場的即時排行（每次開啟或重新整理時更新）", false)
 	p.button("重新整理", p.bossGoto("boss_live_board", false), btn{emoji: "🔄", row: 0})
-	p.button("回戰鬥區", p.bossGoto("boss_battle", true), btn{emoji: "⚔️", row: 0})
+	p.button("回戰鬥區", p.bossGoto("boss_battle", true), btn{emoji: "⚔️", row: 0, back: true})
 	p.navBack(0)
 	return e, nil
 }
@@ -679,12 +710,12 @@ func (p *Panel) buildBossHelp(_ context.Context, data any) (*ui.Embed, error) {
 		"2️⃣ 在介紹區按「⚔️ 進入（Boss 名稱）」到戰鬥區，再按「📦 捐獻物資」，從背包選農作物、漁獲、素材或加工品捐給前線（確認後才扣除）。\n" +
 		"3️⃣ 前線依四種補給的達成率**自動作戰**，每小時扣 Boss HP；每次捐獻也會立即造成一次傷害。\n" +
 		"4️⃣ 活動結束（擊敗 Boss 或時間到）後，按「🎁 領取獎勵」。每人每場只能領一次。"
-	rules := fmt.Sprintf("🌾 作物與 🐟 魚：每 %d 金幣售價換 1 積分（無條件進位）\n"+
+	rules := fmt.Sprintf("🌾 作物與 🐟 魚：每 %s 金幣售價換 1 積分（無條件進位）\n"+
 		"⚙️ 素材、🍲 加工品與 🧪 特殊材料：依活動指定的固定積分\n"+
 		"📦 單次最多 %d 個；每種物品每場最多 %d 個\n"+
 		"📈 補給最多算到目標的 %d%%；沒有糧食時出勤率只有 %d%%\n"+
 		"⚔️ 戰鬥補給滿額傷害 +%d%%、🛡️ 裝備補給滿額 +%d%%、🩹 醫療補給滿額救回 %d%% 缺勤時間",
-		s.GoldPerPoint, lim.PerActionMax, lim.PerItemMax, eff.RatioCapPct, eff.BaseUptimePct, eff.CombatAttackPct, eff.EquipmentAttackPct, eff.MedicalRecoveryPct)
+		money(s.GoldPerPoint), lim.PerActionMax, lim.PerItemMax, eff.RatioCapPct, eff.BaseUptimePct, eff.CombatAttackPct, eff.EquipmentAttackPct, eff.MedicalRecoveryPct)
 	e := &ui.Embed{Title: "📖 世界 Boss 活動說明", Color: BossPurple, Description: how,
 		Footer: "只有捐獻過的玩家可以領獎；所有紀錄存在資料庫，Bot 重啟也不會遺失。"}
 	p.attachImage(e, p.bossImage())
@@ -707,7 +738,7 @@ func (p *Panel) buildBossHelp(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		e.AddField("🎁 獎勵制度", runes(reward, 1024), false)
 	}
-	p.button("回介紹區", p.bossGoto("boss", true), btn{emoji: "🐉", row: 0})
+	p.button("回介紹區", p.bossGoto("boss", true), btn{emoji: "🐉", row: 0, back: true})
 	p.navBack(0)
 	return e, nil
 }

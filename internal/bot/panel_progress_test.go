@@ -60,7 +60,7 @@ func TestPanelClaimAndChooseTitle(t *testing.T) {
 	e.clock.Advance(600)
 	p.goPage("main")
 	p.click("全部收成")
-	p.click("成就圖鑑")
+	p.choose("更多功能", "progress")
 	contains(t, p.Text, "成就與圖鑑", "可領取")
 	p.click("成就")
 	p.choose("選擇成就分類", "farm")
@@ -84,13 +84,14 @@ func TestPanelAutoCheckinOnce(t *testing.T) {
 	e := setup(t)
 	e.cmds.AutoCheckin = true
 	p := e.makePlayer(alice, guildA, "玩家")
-	contains(t, p.Text, "每日簽到成功", "連續第 **1** 天")
-	_, after, _ := strings.Cut(p.Text, "每日簽到成功")
-	notContains(t, after, "每日簽到") // 總覽不再有簽到欄位（移到成就圖鑑）
+	contains(t, p.created, "每日簽到成功", "連續第 **1** 天") // 建立農場後的第一個畫面
+	_, after, _ := strings.Cut(p.created, "每日簽到成功")
+	notContains(t, after, "每日簽到")
+	notContains(t, p.Text, "每日簽到成功") // 回到總覽時不再重複簽到
 	p.goPage("plots")
 	p.goPage("main")
 	notContains(t, p.Text, "每日簽到成功")
-	p.click("成就圖鑑")
+	p.choose("更多功能", "progress")
 	contains(t, p.Text, "今天已簽到", "連續 **1** 天")
 	if n := e.scalar("SELECT count(*) FROM daily_checkins"); n != int64(1) {
 		t.Fatal(n)
@@ -153,7 +154,7 @@ func TestRuinsPageDonateWithButtons(t *testing.T) {
 	fastRuins(t, map[string]int{"stone": 20})
 	p := e.makePlayer(alice, guildA, "玩家")
 	e.setInventory(p.panel.playerID, "stone", 30)
-	p.click("山洞")
+	p.choose("更多功能", "cave")
 	contains(t, p.Text, "古代遺跡", "所屬群組修復遺跡後開放")
 	p.click("修復遺跡")
 	contains(t, p.Text, "古代遺跡", "清除碎石", "0/20", "（背包 30）")
@@ -191,8 +192,7 @@ func TestRuinsGuardianAttackFromPanel(t *testing.T) {
 	e.setLevel(pid, 4)
 	p.goPage("cave") // 遺跡修好後可以額外探索，立即顯示結果
 	contains(t, p.Text, "可以探索（不佔一般探險")
-	p.click("古代遺跡")
-	p.click("探索遺跡")
+	p.click("出發：古代遺跡") // 遺跡可以探索時按一下就出發
 	contains(t, p.Text, "探索結果", "遺跡裡多找到", "可再探索遺跡")
 	e.checkLedger()
 }

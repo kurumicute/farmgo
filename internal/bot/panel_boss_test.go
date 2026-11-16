@@ -54,20 +54,20 @@ func TestPanelBossDonateFlowAndDoubleClick(t *testing.T) {
 	p := e.makePlayer(alice, guildA, "阿明")
 	pid := p.panel.playerID
 	gid := e.groupOf(guildA)
-	p.click("世界Boss")
+	p.choose("更多功能", "boss")
 	contains(t, p.Text, "目前沒有世界 Boss 活動")
 	eid := e.makeBoss(gid, true)
 	e.setInventory(pid, "carrot", 10)
 	p.click("更新狀態")
 	// 介紹區：Boss 簡介、我的參與與入口；補給細節在戰鬥區
-	contains(t, p.Text, "深淵魔龍", "HP", "前往戰場", "我的參與", "（100.0%）")
+	contains(t, p.Text, "深淵魔龍", "HP", "前往戰場", "我的參與", "（100%）")
 	notContains(t, p.Text, "後勤補給進度")
 	for _, l := range []string{"進入深淵魔龍", "上一場排行榜", "領取獎勵", "活動說明", "更新狀態"} {
 		p.button(l)
 	}
 	p.click("進入深淵魔龍")
 	contains(t, p.Text, "戰鬥區", "群組後勤補給進度", "糧食補給", "醫療補給", "戰鬥補給", "裝備補給", "前線戰況", "個人貢獻", "HP",
-		"（0.0%）")
+		"（0%）")
 	for _, l := range []string{"捐獻物資", "領取獎勵", "更新狀態", "回介紹區", "目前排行"} {
 		p.button(l)
 	}
@@ -75,7 +75,7 @@ func TestPanelBossDonateFlowAndDoubleClick(t *testing.T) {
 	p.choose("捐獻類別", "crop")
 	p.choose("選擇物品", "0")
 	contains(t, p.Text, "胡蘿蔔", "持有 10")
-	p.click("× 5")
+	p.click("最多") // 「最多」數量較大，要再按一次確認
 	contains(t, p.Text, "確認捐獻")
 	p.click("取消")
 	contains(t, p.Text, "沒有扣除任何物品")
@@ -83,13 +83,13 @@ func TestPanelBossDonateFlowAndDoubleClick(t *testing.T) {
 		t.Fatal(q)
 	}
 	p.choose("選擇物品", "0")
-	p.click("× 5")
-	confirm := p.button("確認捐獻")
+	preset := p.button("× 5") // 固定數量按下就捐出，標籤寫出預計積分
+	contains(t, preset.Label, "15 分")
 	first, second := p.interaction(), p.interaction()
-	if !e.cmds.Registry.DispatchComponent(e.ctx, first, confirm.CustomID(), nil) {
-		t.Fatal("確認沒有執行")
+	if !e.cmds.Registry.DispatchComponent(e.ctx, first, preset.CustomID(), nil) {
+		t.Fatal("捐獻沒有執行")
 	}
-	e.cmds.Registry.DispatchComponent(e.ctx, second, confirm.CustomID(), nil) // 舊畫面上的同一個按鈕再按一次
+	e.cmds.Registry.DispatchComponent(e.ctx, second, preset.CustomID(), nil) // 舊畫面上的同一個按鈕再按一次（相同 request_id）
 	p.update(first)
 	contains(t, p.Text, "獲得 15 積分")
 	if q := e.produceQty(pid); q != 5 {
@@ -127,9 +127,9 @@ func TestPanelBossOtherGuildCannotSeeEvent(t *testing.T) {
 	a := e.makePlayer(alice, guildA, "玩家")
 	e.makeBoss(e.groupOf(guildA), false)
 	b := e.makePlayer(bob, guildB, "玩家")
-	b.click("世界Boss")
+	b.choose("更多功能", "boss")
 	contains(t, b.Text, "沒有世界 Boss 活動")
-	a.click("世界Boss")
+	a.choose("更多功能", "boss")
 	contains(t, a.Text, "深淵魔龍")
 }
 
@@ -172,16 +172,15 @@ func TestPanelBossConcurrentDoubleClickNoError(t *testing.T) {
 	p := e.makePlayer(alice, guildA, "玩家")
 	e.makeBoss(e.groupOf(guildA), false)
 	e.setInventory(p.panel.playerID, "carrot", 10)
-	p.click("世界Boss")
+	p.choose("更多功能", "boss")
 	p.click("進入深淵魔龍")
 	p.click("捐獻物資")
 	p.choose("捐獻類別", "crop")
 	p.choose("選擇物品", "0")
-	p.click("× 5")
-	confirm := p.button("確認捐獻")
+	preset := p.button("× 5")
 	a, b := p.interaction(), p.interaction()
-	e.cmds.Registry.DispatchComponent(e.ctx, a, confirm.CustomID(), nil)
-	e.cmds.Registry.DispatchComponent(e.ctx, b, confirm.CustomID(), nil)
+	e.cmds.Registry.DispatchComponent(e.ctx, a, preset.CustomID(), nil)
+	e.cmds.Registry.DispatchComponent(e.ctx, b, preset.CustomID(), nil)
 	for _, it := range []*uitest.Interaction{a, b} {
 		for _, en := range it.Entries() {
 			if en.Kind == "edit" && en.Message.Embed != nil && strings.HasPrefix(en.Message.Embed.Title, "⚠️") {
@@ -211,7 +210,7 @@ func TestPanelBossConcurrentDoubleClickNoError(t *testing.T) {
 }
 
 func TestPyFloat(t *testing.T) {
-	for x, want := range map[float64]string{100: "100.0", 87.5: "87.5", 0: "0.0", 1.25: "1.25", 0.3: "0.3"} {
+	for x, want := range map[float64]string{100: "100", 87.5: "87.5", 0: "0", 1.25: "1.25", 0.3: "0.3"} {
 		if got := pyFloat(x); got != want {
 			t.Fatal(x, got)
 		}

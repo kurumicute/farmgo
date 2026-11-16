@@ -21,6 +21,7 @@ import (
 	"farmgm/internal/game/achievements"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/checkin"
+	"farmgm/internal/game/decor"
 	"farmgm/internal/game/fishing"
 	"farmgm/internal/game/news"
 	"farmgm/internal/game/pets"
@@ -347,7 +348,7 @@ func TestGuideHasFishingRulesAndFollowsAdminChanges(t *testing.T) {
 	e := setup(t)
 	a := e.app(Options{})
 	page := get(t, a, "/").Body.String()
-	for _, want := range []string{`id="fishing"`, "基礎釣魚成功率", "分享到群組"} {
+	for _, want := range []string{`id="fishing"`, "基礎釣魚成功率", "分享到頻道"} {
 		if !strings.Contains(page, want) {
 			t.Fatal(want)
 		}
@@ -825,5 +826,25 @@ func TestPageWiringForLazyGuide(t *testing.T) {
 	groups := m(getJSON(t, a, "/api/guide/activities")["groups"])
 	if len(list(groups["quests"])) != len(balance.QuestTypeOrder) || len(list(groups["competitions"])) != len(balance.CompetitionTypeOrder) {
 		t.Fatal(groups)
+	}
+}
+
+func TestGuideHasDecorTiers(t *testing.T) {
+	// 庭院擺設的等級、價格與名稱由 /api/guide/shop 提供（2026-11-16），頁面有對應欄位。
+	e := setup(t)
+	a := e.app(Options{})
+	if !strings.Contains(get(t, a, "/").Body.String(), `id="g-decor-tiers"`) {
+		t.Fatal("缺少庭院擺設欄位")
+	}
+	tiers := list(getJSON(t, a, "/api/guide/shop")["decor"])
+	if len(tiers) != 4 {
+		t.Fatal(tiers)
+	}
+	n := 0
+	for _, x := range tiers {
+		n += len(list(m(x)["items"]))
+	}
+	if n != len(decor.Catalog) || m(tiers[0])["name"] != decor.Common.Name || num(m(tiers[0])["price"]) != float64(decor.Catalog[0].Price) {
+		t.Fatal(tiers)
 	}
 }

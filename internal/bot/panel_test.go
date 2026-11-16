@@ -69,6 +69,8 @@ type player struct {
 	panel  *Panel
 	Text   string
 	opened *uitest.Interaction
+	// created 建立農場後第一個畫面（農田頁）的文字；makePlayer 之後會回到總覽，方便其他測試從總覽開始
+	created string
 }
 
 func (e *botEnv) open(user, guild, name string) *player {
@@ -98,10 +100,15 @@ func (e *botEnv) makePlayer(user, guild, name string) *player {
 		e.t.Fatal(p.Text)
 	}
 	p.click("建立農場")
-	for _, want := range []string{"農場建立完成", "Lv 1", "農田（4 格）"} {
+	for _, want := range []string{"農場建立完成", "農田（4 格）", "從下方選單選一種作物"} { // 新玩家先到農田頁
 		if !strings.Contains(p.Text, want) {
 			e.t.Fatalf("缺少 %q：%s", want, p.Text)
 		}
+	}
+	p.created = p.Text
+	p.goPage("main")
+	if !strings.Contains(p.Text, "Lv 1") {
+		e.t.Fatal(p.Text)
 	}
 	return p
 }

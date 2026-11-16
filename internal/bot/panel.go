@@ -52,6 +52,8 @@ type Picker struct {
 	Confirm    bool // 高價物品：只有一個確認按鈕
 	Most       int  // 加工：現有原料最多能做幾份（每次重繪重算）
 	PriceText  string
+	LabelFor   func(q int) string // 數量按鈕的標籤（預設「動詞 數量」），例如種子製造「用 5 個 → 10 顆」
+	Short      string             // 買不起時的說明（例如「金幣不足（需 50，你有 20）」）：數量按鈕改成一顆停用的說明按鈕
 }
 
 // prepared 操作後預先讀好的頁面（Python act 傳給 _render 的 (頁面, _prepare 的結果)）。
@@ -85,6 +87,7 @@ type Panel struct {
 	// 頁面狀態
 	picker   *Picker
 	sellKeys []string // 販售頁勾選的項目
+	sellPage int      // 販售頁選單的頁碼（超過 25 項時分頁）
 	bet      *casinoBet
 	board    boardState // 排行榜條件
 	// 偷菜：作物與玩家選單的頁數、正在查看農田的玩家
@@ -99,12 +102,13 @@ type Panel struct {
 	achCategory   string
 	codexCategory string
 	// 世界 Boss：目前活動、玩家切換查看的活動、捐獻流程（類別、選項、已選物品、待確認）
-	bossEventID  *int64
-	bossSelected *int64
-	bossCategory string
-	bossOptions  []services.BossDonationOption
-	bossItem     *services.BossDonationOption
-	bossPending  *bossPending
+	bossEventID      *int64
+	bossSelected     *int64
+	bossCategory     string
+	bossOptions      []services.BossDonationOption
+	bossItem         *services.BossDonationOption
+	bossPending      *bossPending
+	bossLastCategory string // 上次選的捐獻類別（再次開啟捐獻頁時沿用）
 	// 釣魚：操作結果（直接顯示，不再查詢）、自動更新計時器與期限、選取的魚、勾選出售、魚簍頁數、排行範圍
 	fishCache         *services.FishingView
 	fishTimer         *time.Timer
@@ -116,9 +120,14 @@ type Panel struct {
 	fishPage          int
 	fishRankGlobal    bool
 	confirm           string
-	lab               labState // 種子實驗室：選取的種子與雜交設定
+	helpTopic         string       // 說明頁選取的主題（HelpEmbed 欄位索引；"" = 主題清單）
+	recentPages       []string     // 總覽「更多功能」最近用過的頁面（最新的在前，最多 3 個）
+	lastEmbed         *ui.Embed    // 最近一次送出的畫面（逾時時改 footer 用）
+	lab               labState     // 種子實驗室：選取的種子與雜交設定
+	backButtons       []*ui.Button // 這次建頁面時標記為返回類的按鈕（placeBackButtons 使用）
 	// 文字清單的頁碼：作物價格、操作紀錄、培育紀錄（2026-11-14 改成分頁，避免資料一多就被截掉或洗掉）
 	pricePage, logPage, labRecordPage, seedMakerPage int
+	plotSeedPage                                     int // 農田頁特殊種子選單的頁碼（超過 25 顆時選單內翻頁）
 	// 農場商店的分類與種子頁碼（2026-11-15）
 	shopTab  string
 	shopPage int
@@ -126,6 +135,7 @@ type Panel struct {
 	decorBuy      string
 	decorSlot     int
 	checkinNextAt time.Time
+	lastShareAt   time.Time // 最近一次公開分享（農場、魚卡）的時間，用來限制洗版
 	welcomed      bool
 	marks         *services.ProgressMarks
 
@@ -146,6 +156,7 @@ func NewPanel(c *Commands, w Who, ctx services.ExternalContext) *Panel {
 	if ctx.HasFarm {
 		p.Page = "main"
 	}
+	p.recentPages = c.recentPages(w.UserID)
 	p.View = ui.NewView(PanelTimeout)
 	p.View.Check = p.interactionCheck
 	p.View.OnTimeout = p.onTimeout
@@ -171,7 +182,14 @@ func (p *Panel) onTimeout(ctx context.Context) {
 	p.cancelFishTimer()
 	p.View.DisableAll()
 	if p.message != nil {
-		_ = p.message.Edit(ctx, ui.Message{Content: ptr("面板已逾時，請重新輸入 /farm。"), View: p.View})
+		msg := ui.Message{Content: ptr("面板已逾時，請重新輸入 /farm。"), View: p.View}
+		// 2026-11-16 按鈕停用後，按鈕正上方的 footer 也寫逾時說明（Content 在畫面最上方，玩家看按鈕時看不到）；附件不變
+		if p.lastEmbed != nil {
+			e := *p.lastEmbed
+			e.Footer = "⏰ 面板已逾時，請重新輸入 /farm"
+			msg.Embed = &e
+		}
+		_ = p.message.Edit(ctx, msg)
 	}
 }
 
@@ -224,7 +242,11 @@ func (p *Panel) render(ctx context.Context, notice string, pre *prepared) *ui.Em
 		if !ok {
 			return nil, gameerr.Validationf("這個頁面還沒有完成。")
 		}
-		return def.build(ctx, res.data)
+		built, berr := def.build(ctx, res.data)
+		if berr == nil {
+			p.placeBackButtons()
+		}
+		return built, berr
 	}()
 	if err != nil {
 		logUnexpected(err, "面板讀取失敗", "page", p.Page)
@@ -234,7 +256,7 @@ func (p *Panel) render(ctx context.Context, notice string, pre *prepared) *ui.Em
 		p.navBack(0)
 	}
 	if notice != "" {
-		embed.Description = cut(strings.TrimSpace(quote(notice)+"\n\n"+embed.Description), 4096)
+		placeNotice(embed, notice)
 		for _, mark := range HighlightMarks {
 			if strings.Contains(notice, mark) {
 				embed.Color = Gold // 稀有收穫、新紀錄、成就達成等：整個面板換成金色
@@ -243,8 +265,13 @@ func (p *Panel) render(ctx context.Context, notice string, pre *prepared) *ui.Em
 		}
 	}
 	// Discord 限制單一 Embed 總長度 6000 字：超過時縮短主要內容（例如農田非常多時）
+	// 2026-11-16：說明最後一段是「貼近按鈕」的關鍵資訊（狀態、金幣、菇床…），保留最後一段、從前面的內容截短
 	if overflow := embed.Len() - 5900; overflow > 0 && embed.Description != "" {
-		embed.Description = cut(embed.Description, max(200, utf8.RuneCountInString(embed.Description)-overflow))
+		head, tail := embed.Description, ""
+		if i := strings.LastIndex(head, "\n\n"); i > 0 && utf8.RuneCountInString(head[i:]) < 1000 {
+			head, tail = head[:i], head[i:]
+		}
+		embed.Description = cut(head, max(200, utf8.RuneCountInString(head)-overflow)) + tail
 	}
 	return embed
 }
@@ -371,9 +398,10 @@ func (p *Panel) checkinNote(ctx context.Context) string {
 	if !r.New {
 		return ""
 	}
-	note := fmt.Sprintf("📅 每日簽到成功！連續第 **%d** 天，獲得 %s。（簽到紀錄在「🏅 成就圖鑑」）", r.Streak, r.RewardText)
+	// 2026-11-16 縮短成一行：每次換頁都可能出現在畫面上，原本附帶的說明（簽到紀錄在哪裡）移到說明頁
+	note := fmt.Sprintf("📅 每日簽到成功！連續第 **%d** 天 +%s", r.Streak, r.RewardText)
 	if r.Converted {
-		note += "（倉庫已滿，道具改發等值金幣）"
+		note += "（倉庫滿，改發金幣）"
 	}
 	return note
 }
@@ -395,6 +423,7 @@ func (p *Panel) refresh(ctx context.Context, it ui.Interaction, notice string, p
 		return
 	}
 	p.sentDigest = p.imageDigest
+	p.lastEmbed = embed
 	if !att.Keep && len(att.Files) > 0 { // 真的上傳了新圖片（沿用既有附件時不記錄）
 		slog.Info("面板上傳圖片", "player", p.playerID, "page", p.Page, "kb", p.imageSize/1024,
 			"ms", fmt.Sprintf("%.0f", msSince(uploadStarted)))
@@ -433,7 +462,7 @@ type actOpts struct {
 	plain      bool                             // Python prefix=""：結果前面不加「✅ 」（賭場）
 }
 
-// act 執行一個操作。成功時結果以 ✅ 顯示在頁面頂端並重新整理；失敗時改顯示獨立的錯誤畫面，只有錯誤原因與「返回」按鈕，
+// act 執行一個操作。成功時結果以 ✅ 顯示在畫面最下方（貼近按鈕）並重新整理；失敗時改顯示獨立的錯誤畫面，只有錯誤原因與「返回」按鈕，
 // 返回後保留剛才的選擇。操作與讀取新畫面在同一次排隊中完成。
 func (p *Panel) act(ctx context.Context, it ui.Interaction, work func(ctx context.Context) (string, error), o actOpts) {
 	p.confirm = ""
@@ -524,6 +553,8 @@ func (p *Panel) showError(ctx context.Context, it ui.Interaction, message string
 	}, btn{emoji: "↩️", style: ui.Primary})
 	if err := it.Show(ctx, ui.Message{Embed: embed, View: p.View, Attachments: &ui.Attachments{}}); err != nil {
 		slog.Warn("更新面板失敗", "type", fmt.Sprintf("%T", err))
+	} else {
+		p.lastEmbed = embed // 停在錯誤畫面逾時時，改的是這個畫面（不會蓋回上一頁、引用已刪除的圖片）
 	}
 	p.sentDigest = nil
 }
@@ -573,6 +604,7 @@ type btn struct {
 	style    ui.Style
 	row      int
 	disabled bool
+	back     bool // 返回類按鈕（回總覽、回上一層）：建好頁面後由 placeBackButtons 移到最後一列右邊
 }
 
 // button 加入按鈕（標籤最多 80 字）。
@@ -582,12 +614,64 @@ func (p *Panel) button(label string, handler ui.Handler, o btn) *ui.Button {
 		style = ui.Secondary
 	}
 	b := &ui.Button{Label: cut(label, 80), Emoji: o.emoji, Style: style, Row: o.row, Disabled: o.disabled, OnClick: handler}
-	p.View.Add(b)
+	p.add(b)
+	if o.back {
+		p.backButtons = append(p.backButtons, b)
+	}
 	return b
+}
+
+// add 加入元件。指定的列放不下時（例如之後在已有 5 顆按鈕的列再加一顆），改放到後面第一個放得下的列，
+// 再不行就往前找；都放不下時略過這個元件並記錄警告，不讓整頁變成「⚠️ 無法顯示」（ui.View.Add 放不下會 panic）。
+func (p *Panel) add(it ui.Item) {
+	weight := 1
+	if _, ok := it.(*ui.Select); ok {
+		weight = ui.MaxRowItems // 下拉選單獨佔一列
+	}
+	fits := func(row int) bool {
+		used := 0
+		for _, x := range p.View.Items() {
+			if x.ItemRow() == row {
+				if _, ok := x.(*ui.Select); ok {
+					used += ui.MaxRowItems
+				} else {
+					used++
+				}
+			}
+		}
+		return used+weight <= ui.MaxRowItems
+	}
+	want := max(0, min(it.ItemRow(), ui.MaxRows-1))
+	row := -1
+	for r := want; r < ui.MaxRows && row < 0; r++ {
+		if fits(r) {
+			row = r
+		}
+	}
+	for r := want - 1; r >= 0 && row < 0; r-- {
+		if fits(r) {
+			row = r
+		}
+	}
+	if row < 0 {
+		slog.Warn("面板元件放不下，已略過", "page", p.Page, "row", it.ItemRow())
+		return
+	}
+	if row != it.ItemRow() {
+		slog.Warn("面板元件的列已滿，改放其他列", "page", p.Page, "row", it.ItemRow(), "to", row)
+		switch x := it.(type) {
+		case *ui.Button:
+			x.Row = row
+		case *ui.Select:
+			x.Row = row
+		}
+	}
+	p.View.Add(it)
 }
 
 // nav 換頁按鈕。
 func (p *Panel) nav(label, page string, o btn) *ui.Button {
+	o.back = o.back || isBackLabel(label) // 只有換頁按鈕會依標籤判斷；動作按鈕（例如「回收」）不受影響
 	return p.button(label, func(ctx context.Context, it ui.Interaction) error {
 		p.goTo(ctx, it, page, "")
 		return nil
@@ -595,6 +679,71 @@ func (p *Panel) nav(label, page string, o btn) *ui.Button {
 }
 
 func (p *Panel) navBack(row int) { p.nav("回總覽", "main", btn{emoji: "🏠", row: row}) }
+
+// isBackLabel 換頁按鈕的標籤以「回」或「返回」開頭時視為返回類按鈕（2026-11-16 只套用在 nav 建立的換頁按鈕）。
+func isBackLabel(label string) bool {
+	return strings.HasPrefix(label, "回") || strings.HasPrefix(label, "返回")
+}
+
+// placeBackButtons 2026-11-16 統一返回按鈕的位置：各頁建好元件後，把返回類按鈕移到最後一列的最右邊
+// （「回上一層」在前、「🏠 回總覽」在最右）。最後一列是選單或放不下時改放下一列；已經是第 5 列放不下時維持原位。
+func (p *Panel) placeBackButtons() {
+	marked := p.backButtons
+	p.backButtons = nil
+	var back []*ui.Button
+	for _, b := range p.View.Buttons() {
+		if slices.Contains(marked, b) {
+			back = append(back, b)
+		}
+	}
+	if len(back) == 0 {
+		return
+	}
+	slices.SortStableFunc(back, func(a, b *ui.Button) int { // 回總覽放最右邊
+		ah, bh := a.Label == "回總覽", b.Label == "回總覽"
+		switch {
+		case ah == bh:
+			return 0
+		case ah:
+			return 1
+		default:
+			return -1
+		}
+	})
+	// 其他元件佔用的列與數量
+	// action：該列有操作按鈕（綠色主要操作、紅色確認、藍色數量／選取），返回鍵不和它們擠在同一列，避免按錯
+	last, used, hasSelect, action := -1, map[int]int{}, map[int]bool{}, map[int]bool{}
+	for _, it := range p.View.Items() {
+		if b, ok := it.(*ui.Button); ok && slices.Contains(back, b) {
+			continue
+		}
+		r := it.ItemRow()
+		last = max(last, r)
+		switch x := it.(type) {
+		case *ui.Select:
+			hasSelect[r] = true
+			used[r] += ui.MaxRowItems
+		case *ui.Button:
+			used[r]++
+			if x.Style == ui.Success || x.Style == ui.Danger || x.Style == ui.Primary {
+				action[r] = true
+			}
+		}
+	}
+	target := -1
+	switch {
+	case last >= 0 && !hasSelect[last] && !action[last] && used[last]+len(back) <= ui.MaxRowItems:
+		target = last
+	case last+1 < ui.MaxRows && len(back) <= ui.MaxRowItems:
+		target = last + 1
+	}
+	if target < 0 {
+		return
+	}
+	for _, b := range back {
+		p.View.MoveLast(b, target)
+	}
+}
 
 // option 下拉選單選項：(標籤, 值, 說明, emoji)。
 type option struct{ label, value, desc, emoji string }
@@ -614,7 +763,7 @@ func (p *Panel) selectMenu(placeholder string, options []option, handler func(ct
 		s.Options = append(s.Options, ui.SelectOption{Label: cut(o.label, 100), Value: o.value, Description: desc,
 			Emoji: o.emoji, Default: o.value == selected})
 	}
-	p.View.Add(s)
+	p.add(s)
 	return s
 }
 
@@ -622,6 +771,10 @@ func (p *Panel) selectMenu(placeholder string, options []option, handler func(ct
 func (p *Panel) quantityButtons(row int) {
 	pk := p.picker
 	if pk == nil {
+		return
+	}
+	if pk.Short != "" { // 買不起：不顯示「買 1」讓玩家點了才看到錯誤，直接寫出差多少
+		p.button(pk.Short, p.noop, btn{emoji: "💸", row: row, disabled: true})
 		return
 	}
 	if pk.Confirm { // 高價物品：只有一個確認按鈕
@@ -639,7 +792,11 @@ func (p *Panel) quantityButtons(row int) {
 		if q > pk.Max {
 			continue
 		}
-		p.button(fmt.Sprintf("%s %d", verb, q), func(ctx context.Context, it ui.Interaction) error {
+		label := fmt.Sprintf("%s %d", verb, q)
+		if pk.LabelFor != nil {
+			label = pk.LabelFor(q)
+		}
+		p.button(label, func(ctx context.Context, it ui.Interaction) error {
 			p.act(ctx, it, func(ctx context.Context) (string, error) { return pk.Run(ctx, q) }, actOpts{keep: pk.Keep, noProgress: pk.NoProgress, after: pk.After})
 			return nil
 		}, btn{row: row, style: ui.Primary})

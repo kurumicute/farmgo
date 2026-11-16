@@ -130,6 +130,47 @@ func (p *Panel) buyRun(name string, buy func(ctx context.Context, q int) (servic
 	}
 }
 
+// 商店分類（農場商店的三個分類以外，另外兩個是其他頁面）。
+const (
+	shopTabFish    = "fish"
+	shopTabSpecial = "special"
+)
+
+// shopTabs 2026-11-16 商店分類放在同一排（原本「種子／道具／工具」與「農場商店／釣具商店／特賣」上下兩排，分不出大小分類）：
+// 目前所在的分類亮藍色並停用。農場商店、釣具商店、特賣與升級三個頁面共用。
+func (p *Panel) shopTabs(row int, current string) {
+	for _, x := range []struct{ key, label, emoji string }{
+		{shopTabSeeds, "種子", "🌰"}, {shopTabItems, "道具", "🧪"}, {shopTabTools, "工具與倉庫", "💎"},
+		{shopTabFish, "釣具商店", "🎣"}, {shopTabSpecial, "特賣與升級", "🎁"},
+	} {
+		style := ui.Secondary
+		if current == x.key {
+			style = ui.Primary
+		}
+		p.button(x.label, func(ctx context.Context, it ui.Interaction) error {
+			p.picker = nil // 換分類時取消選取的商品
+			switch x.key {
+			case shopTabFish:
+				p.goTo(ctx, it, "fish_shop", "")
+			case shopTabSpecial:
+				p.goTo(ctx, it, "shop_special", "")
+			default:
+				p.shopTab, p.shopPage = x.key, 0
+				p.goTo(ctx, it, "shop", "")
+			}
+			return nil
+		}, btn{emoji: x.emoji, row: row, style: style, disabled: current == x.key})
+	}
+}
+
+// shortOf 金幣不夠買 1 個時的說明（夠買時回傳 ""）。
+func shortOf(gold, price int) string {
+	if gold >= price {
+		return ""
+	}
+	return fmt.Sprintf("金幣不足（需 %s，你有 %s）", money(price), money(gold))
+}
+
 // tradeMax 金幣可以買的數量（至少 1，最多 MaxTradeQuantity）。
 func tradeMax(gold, price int) int {
 	return max(1, min(balance.MaxTradeQuantity, numfmt.FloorDiv(gold, price)))
@@ -150,9 +191,9 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	var seeds []string
 	for _, c := range d.crops {
-		line := fmt.Sprintf("%s%s **%s種子**　💰 **%d** 金　🎒 持有 **%d**\n　⏱️ %s　🧺 收成 ×%d %s%s　🏷️ 售價 %d 金／個",
-			mark("seed:"+c.Code), cropEmoji(c.Code), c.Name, c.SeedPrice, held["seed:"+c.Code],
-			services.LongDuration(c.GrowSeconds), c.HarvestQuantity, cropEmoji(c.Code), c.Name, c.SellPrice)
+		line := fmt.Sprintf("%s%s **%s種子**　💰 **%s** 金　🎒 持有 **%d**\n　⏱️ %s　🧺 收成 ×%d %s%s　🏷️ 售價 %s 金／個",
+			mark("seed:"+c.Code), cropEmoji(c.Code), c.Name, money(c.SeedPrice), held["seed:"+c.Code],
+			services.LongDuration(c.GrowSeconds), c.HarvestQuantity, cropEmoji(c.Code), c.Name, money(c.SellPrice))
 		if c.SeasonText != "" {
 			when := "現在不能種，種子可以先買"
 			if c.InSeason {
@@ -179,8 +220,8 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 			tools = append(tools, fmt.Sprintf("%s%s **%s**　💰 **%s** 金　%s　%s\n　📝 %s", mark("item:"+code), emoji, it.Name,
 				money(it.Price), tag, own, it.Desc))
 		} else {
-			consumables = append(consumables, fmt.Sprintf("%s%s **%s**　💰 **%d** 金　🎒 持有 **%d**\n　📝 %s", mark("item:"+code), emoji,
-				it.Name, it.Price, have, it.Desc))
+			consumables = append(consumables, fmt.Sprintf("%s%s **%s**　💰 **%s** 金　🎒 持有 **%d**\n　📝 %s", mark("item:"+code), emoji,
+				it.Name, money(it.Price), have, it.Desc))
 		}
 	}
 	expandPrice, canExpand := balance.WarehouseExpansionPrice(d.capacity)
@@ -210,7 +251,7 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 	if tab != shopTabItems && tab != shopTabTools {
 		tab = shopTabSeeds
 	}
-	head := fmt.Sprintf("💰 你的金幣：**%s**　｜　🎣 釣具在「釣具商店」分頁　｜　🎁 溫室、每週特賣、稱號在「特賣與升級」", money(d.gold))
+	head := fmt.Sprintf("💰 你的金幣：**%s**", money(d.gold)) // 分頁按鈕本身就說明了釣具、特賣在哪裡，不再每頁重複
 	var parts []any
 	seedPages := 1
 	switch tab {
@@ -221,15 +262,77 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 		if seedPages > 1 {
 			title = fmt.Sprintf("🌰 種子（第 %d/%d 頁）", p.shopPage+1, seedPages)
 		}
-		parts = []any{head, seasons.NowText(time.Now()) + "：🌰 商店只賣當季可以種的種子，換季後會換一批。",
-			Section{Title: title, Lines: shown, Sep: "\n\n"}, Section{Title: "🎉 今天的活動", Lines: events, Sep: "\n\n"}}
+		parts = []any{seasons.NowText(time.Now()) + "：🌰 商店只賣當季可以種的種子，換季後會換一批。",
+			Section{Title: title, Lines: shown, Sep: "\n\n"}, Section{Title: "🎉 今天的活動", Lines: events, Sep: "\n\n"}, head}
 	case shopTabItems:
-		parts = []any{head, Section{Title: "🧪 道具", Lines: consumables, Sep: "\n\n"}}
+		parts = []any{Section{Title: "🧪 道具", Lines: consumables, Sep: "\n\n"}, head}
 	default:
-		parts = []any{head, Section{Title: "📦 倉庫", Lines: []string{warehouse}},
-			Section{Title: "💎 工具與奢侈品", Lines: tools, Sep: "\n\n"}}
+		parts = []any{Section{Title: "📦 倉庫", Lines: []string{warehouse}},
+			Section{Title: "💎 工具與奢侈品", Lines: tools, Sep: "\n\n"}, head}
 	}
+	// 金幣放在最後，貼近購買按鈕
 	e := &ui.Embed{Title: "🏪 ✦ 農場商店 ✦", Color: Gold, Description: sections(parts...)}
+	// makePicker 依目前資料建立選取的商品（2026-11-16：保留選取的商品每次重繪都重建，金幣不足、可買數量才會跟著購買後的金幣更新）
+	makePicker := func(key string) (*Picker, error) {
+		var pk *Picker
+		kind, code, _ := strings.Cut(key, ":")
+		switch kind {
+		case "special":
+			price := 0
+			if canExpand {
+				price = expandPrice
+			}
+			pk = &Picker{Key: key, Label: "📦 倉庫擴大卷", PriceText: money(price) + " 金", Confirm: true, Max: 1, Short: shortOf(d.gold, price),
+				Run: p.callQty("expand_warehouse", func(ctx context.Context, _ int) (services.ActionResult, error) {
+					return p.svc().ExpandWarehouse(ctx, p.playerID)
+				})}
+		case "seed":
+			i := slices.IndexFunc(d.crops, func(c services.CropInfo) bool { return c.Code == code })
+			if i < 0 {
+				return nil, gameerr.NotFoundf("找不到這個商品。")
+			}
+			crop := d.crops[i]
+			pk = &Picker{Key: key, Label: fmt.Sprintf("%s %s種子", cropEmoji(code), crop.Name),
+				PriceText: fmt.Sprintf("每顆 %s 金", money(crop.SeedPrice)), Verb: "買", Max: tradeMax(d.gold, crop.SeedPrice), Short: shortOf(d.gold, crop.SeedPrice),
+				Presets: []int{1, 5, 10}, Keep: true, NoProgress: true,
+				After: p.heldAfter(key),
+				Run: p.buyRun("buy_seeds", func(ctx context.Context, q int) (services.ActionResult, error) {
+					return p.svc().BuySeeds(ctx, p.playerID, code, q)
+				})}
+		default:
+			if _, ok := balance.Items[code]; !ok {
+				return nil, gameerr.NotFoundf("找不到這個商品。")
+			}
+			item := balance.ItemOf(code)
+			label := lookupOr(ItemEmoji, code, "🎁") + " " + item.Name
+			if item.Kind == "tool" { // 永久工具與奢侈品價格高：需要再按一次確認才購買
+				pk = &Picker{Key: key, Label: label, PriceText: money(item.Price) + " 金", Confirm: true, Max: 1, Short: shortOf(d.gold, item.Price),
+					Run: p.callQty("buy_item", func(ctx context.Context, _ int) (services.ActionResult, error) {
+						return p.svc().BuyItem(ctx, p.playerID, code, 1)
+					})}
+			} else {
+				pk = &Picker{Key: key, Label: label, PriceText: fmt.Sprintf("每個 %s 金", money(item.Price)), Verb: "買",
+					Max: tradeMax(d.gold, item.Price), Short: shortOf(d.gold, item.Price), Presets: []int{1, 5, 10}, Keep: true, NoProgress: true,
+					After: p.heldAfter(key),
+					Run: p.buyRun("buy_item", func(ctx context.Context, q int) (services.ActionResult, error) {
+						return p.svc().BuyItem(ctx, p.playerID, code, q)
+					})}
+			}
+		}
+		return pk, nil
+	}
+	pick := func(ctx context.Context, it ui.Interaction, key string) error {
+		pk, err := makePicker(key)
+		if err != nil {
+			return err
+		}
+		p.picker = pk
+		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+		return nil
+	}
+	if p.picker != nil && p.picker.Keep {
+		p.picker, _ = makePicker(p.picker.Key) // 商品已經下架時取消選取
+	}
 	if p.picker != nil {
 		hint := "👇 按下方的數量按鈕購買"
 		if p.picker.Confirm {
@@ -240,66 +343,17 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 		e.Footer = "👇 先從選單挑一樣商品，再選數量"
 	}
 
-	pick := func(ctx context.Context, it ui.Interaction, key string) error {
-		kind, code, _ := strings.Cut(key, ":")
-		switch kind {
-		case "special":
-			price := 0
-			if canExpand {
-				price = expandPrice
-			}
-			p.picker = &Picker{Key: key, Label: "📦 倉庫擴大卷", PriceText: money(price) + " 金", Confirm: true, Max: 1,
-				Run: p.callQty("expand_warehouse", func(ctx context.Context, _ int) (services.ActionResult, error) {
-					return p.svc().ExpandWarehouse(ctx, p.playerID)
-				})}
-		case "seed":
-			i := slices.IndexFunc(d.crops, func(c services.CropInfo) bool { return c.Code == code })
-			if i < 0 {
-				return gameerr.NotFoundf("找不到這個商品。")
-			}
-			crop := d.crops[i]
-			p.picker = &Picker{Key: key, Label: fmt.Sprintf("%s %s種子", cropEmoji(code), crop.Name),
-				PriceText: fmt.Sprintf("每顆 %d 金", crop.SeedPrice), Verb: "買", Max: tradeMax(d.gold, crop.SeedPrice),
-				Presets: []int{1, 5, 10}, Keep: true, NoProgress: true,
-				After: p.heldAfter(key),
-				Run: p.buyRun("buy_seeds", func(ctx context.Context, q int) (services.ActionResult, error) {
-					return p.svc().BuySeeds(ctx, p.playerID, code, q)
-				})}
-		default:
-			if _, ok := balance.Items[code]; !ok {
-				return gameerr.NotFoundf("找不到這個商品。")
-			}
-			item := balance.ItemOf(code)
-			label := lookupOr(ItemEmoji, code, "🎁") + " " + item.Name
-			if item.Kind == "tool" { // 永久工具與奢侈品價格高：需要再按一次確認才購買
-				p.picker = &Picker{Key: key, Label: label, PriceText: money(item.Price) + " 金", Confirm: true, Max: 1,
-					Run: p.callQty("buy_item", func(ctx context.Context, _ int) (services.ActionResult, error) {
-						return p.svc().BuyItem(ctx, p.playerID, code, 1)
-					})}
-			} else {
-				p.picker = &Picker{Key: key, Label: label, PriceText: fmt.Sprintf("每個 %d 金", item.Price), Verb: "買",
-					Max: tradeMax(d.gold, item.Price), Presets: []int{1, 5, 10}, Keep: true, NoProgress: true,
-					After: p.heldAfter(key),
-					Run: p.buyRun("buy_item", func(ctx context.Context, q int) (services.ActionResult, error) {
-						return p.svc().BuyItem(ctx, p.playerID, code, q)
-					})}
-			}
-		}
-		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
-		return nil
-	}
-
 	var options []option
 	switch tab {
 	case shopTabSeeds: // 選單只列這一頁的種子
 		crops, _, _ := pageSlice(d.crops, p.shopPage, shopSeedsPerPage)
 		for _, c := range crops {
-			options = append(options, option{c.Name + "種子", "seed:" + c.Code, fmt.Sprintf("🌰 種子｜💰 %d 金", c.SeedPrice), cropEmoji(c.Code)})
+			options = append(options, option{c.Name + "種子", "seed:" + c.Code, fmt.Sprintf("🌰 種子｜💰 %s 金", money(c.SeedPrice)), cropEmoji(c.Code)})
 		}
 	case shopTabItems:
 		for _, code := range balance.ItemOrder {
 			if it := balance.ItemOf(code); it.Kind != "tool" {
-				options = append(options, option{it.Name, "item:" + code, fmt.Sprintf("🧪 道具｜💰 %d 金", it.Price), ItemEmoji[code]})
+				options = append(options, option{it.Name, "item:" + code, fmt.Sprintf("🧪 道具｜💰 %s 金", money(it.Price)), ItemEmoji[code]})
 			}
 		}
 	default:
@@ -318,23 +372,7 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 	if tab == shopTabSeeds {
 		p.pageButtons("種子", &p.shopPage, seedPages, 2, "shop")
 	}
-	for _, x := range []struct{ key, label, emoji string }{
-		{shopTabSeeds, "種子", "🌰"}, {shopTabItems, "道具", "🧪"}, {shopTabTools, "工具與倉庫", "💎"},
-	} {
-		style := ui.Secondary
-		if tab == x.key {
-			style = ui.Primary
-		}
-		p.button(x.label, func(ctx context.Context, it ui.Interaction) error {
-			p.shopTab, p.shopPage, p.picker = x.key, 0, nil // 換分類時取消選取的商品
-			p.goTo(ctx, it, "shop", "")
-			return nil
-		}, btn{emoji: x.emoji, row: 3, style: style, disabled: tab == x.key})
-	}
-	// 商店分成兩個分頁：農場商店（種子、道具、工具）與釣具商店
-	p.button("農場商店", p.noop, btn{emoji: "🌾", row: 4, style: ui.Primary, disabled: true})
-	p.nav("釣具商店", "fish_shop", btn{emoji: "🎣", row: 4})
-	p.nav("特賣與升級", "shop_special", btn{emoji: "🎁", row: 4, style: ui.Success})
+	p.shopTabs(3, tab)
 	p.navBack(4)
 	p.attachImage(e, d.image)
 	return e, nil
@@ -408,7 +446,7 @@ const pricesPerPage = 8
 func seedPriceText(c services.CropInfo) string {
 	switch {
 	case c.ShopBuyable:
-		return fmt.Sprintf("種子 %d 金", c.SeedPrice)
+		return fmt.Sprintf("種子 %s 金", money(c.SeedPrice))
 	case seedlab.IsHybrid(c.Code):
 		return "🧬 雜交作物（種子只能在種子實驗室培育）"
 	default:
@@ -449,7 +487,7 @@ func (p *Panel) buildGenetics(_ context.Context, data any) (*ui.Embed, error) {
 	for i, m := range d.mutations {
 		mutations[i] = fmt.Sprintf("**%s**　機率 %s%%\n　%s", m.Name, pct(m.BP), m.Effect)
 	}
-	level := "None"
+	level := "—"
 	if t.Level != nil {
 		level = fmt.Sprint(*t.Level)
 	}
@@ -603,7 +641,7 @@ func (p *Panel) buildSell(_ context.Context, data any) (*ui.Embed, error) {
 		if r.key == selected {
 			mark = "▶ "
 		}
-		return fmt.Sprintf("%s%s **%s**　×**%d**\n　🏷️ 單價 %d　💰 小計 **%s**", mark, r.emoji, r.name, r.quantity, r.price, money(r.subtotal()))
+		return fmt.Sprintf("%s%s **%s**　×**%d**\n　🏷️ 單價 %s　💰 小計 **%s**", mark, r.emoji, r.name, r.quantity, money(r.price), money(r.subtotal()))
 	}
 	var lines []string
 	for _, r := range rows {
@@ -629,12 +667,9 @@ func (p *Panel) buildSell(_ context.Context, data any) (*ui.Embed, error) {
 	}
 
 	all := append(slices.Clone(rows), prizes...)
-	pick := func(ctx context.Context, it ui.Interaction, key string) error {
-		i := slices.IndexFunc(all, func(r sellRow) bool { return r.key == key })
-		if i < 0 {
-			return gameerr.NotFoundf("找不到這個項目。")
-		}
-		row := all[i]
+	// 2026-11-16 單選與複選合併成一個選單（原本兩個選單內容相同，選了一個會清掉另一個）：
+	// 只選 1 項 → 顯示數量按鈕，可以只賣一部分；選多項 → 每項賣全部，按「確認賣出」才賣。超過 25 項時分頁。
+	pickOne := func(row sellRow) {
 		half := max(1, row.quantity/2)
 		presets := []int{1}
 		for _, q := range []int{half, row.quantity} {
@@ -650,41 +685,47 @@ func (p *Panel) buildSell(_ context.Context, data any) (*ui.Embed, error) {
 				return r.Message, err
 			}
 		}
-		p.picker = &Picker{Key: key, Label: fmt.Sprintf("%s %s（持有 %d，單價 %d）", row.emoji, row.name, row.quantity, row.price),
+		p.picker = &Picker{Key: row.key, Label: fmt.Sprintf("%s %s（持有 %d，單價 %s）", row.emoji, row.name, row.quantity, money(row.price)),
 			Verb: "賣", Max: row.quantity, Presets: presets, Run: run}
-		p.sellKeys = nil
-		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
-		return nil
 	}
-	var options []option
-	for _, r := range all {
-		options = append(options, option{fmt.Sprintf("%s ×%d", r.name, r.quantity), r.key, fmt.Sprintf("🏷️ 單價 %d", r.price), r.emoji})
-	}
-	p.selectMenu("💰 選擇要賣的東西…", options, pick, 0, selected)
-	p.quantityButtons(1)
-
-	// 勾選多項一起賣出：每項賣全部，確認後才賣；賣的是畫面上顯示的數量，不會多賣之後才進背包的東西
-	choices := all[:min(len(all), ui.MaxOptions)] // Discord 選單最多 25 項
+	choices, page, pages := pageOf(all, p.sellPage)
+	p.sellPage = page
+	// 賣的是畫面上顯示的數量，不會多賣之後才進背包的東西
 	var chosen []sellRow
-	for _, r := range choices {
+	for _, r := range all {
 		if slices.Contains(p.sellKeys, r.key) {
 			chosen = append(chosen, r)
 		}
 	}
 	if len(choices) > 0 {
-		multi := &ui.Select{Placeholder: "☑️ 勾選多項一起賣出（每項賣全部）…", Row: 2, MinValues: 1, MaxValues: len(choices),
+		placeholder := "💰 選擇要賣的東西（可複選）…"
+		if pages > 1 {
+			placeholder = fmt.Sprintf("💰 選擇要賣的東西（可複選，第 %d/%d 頁）…", page+1, pages)
+		}
+		multi := &ui.Select{Placeholder: placeholder, Row: 0, MinValues: 1, MaxValues: len(choices),
 			OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
 				p.sellKeys, p.picker, p.confirm = slices.Clone(values), nil, ""
-				p.refresh(ctx, it, "👇 確認勾選的項目，再按「確認賣出」。", nil, "重繪", time.Time{})
+				notice := "👇 確認勾選的項目，再按「確認賣出」。"
+				if len(values) == 1 {
+					i := slices.IndexFunc(all, func(r sellRow) bool { return r.key == values[0] })
+					if i < 0 {
+						return gameerr.NotFoundf("找不到這個項目。")
+					}
+					pickOne(all[i])
+					p.sellKeys, notice = nil, ""
+				}
+				p.refresh(ctx, it, notice, nil, "重繪", time.Time{})
 				return nil
 			}}
 		for _, r := range choices {
 			multi.Options = append(multi.Options, ui.SelectOption{Label: cut(fmt.Sprintf("%s ×%d", r.name, r.quantity), 100), Value: r.key,
-				Emoji: r.emoji, Description: cut(fmt.Sprintf("💰 全賣 %s 金", money(r.subtotal())), 100),
-				Default: slices.Contains(p.sellKeys, r.key)})
+				Emoji: r.emoji, Description: cut(fmt.Sprintf("🏷️ 單價 %s｜💰 全賣 %s 金", money(r.price), money(r.subtotal())), 100),
+				Default: slices.Contains(p.sellKeys, r.key)}) // 單選（數量按鈕）時不預設勾選：改選另一項會直接換成那一項
 		}
-		p.View.Add(multi)
+		p.add(multi)
 	}
+	p.quantityButtons(1)
+	p.pageButtons("", &p.sellPage, pages, 2, "sell")
 	if len(chosen) > 0 {
 		chosenTotal := 0
 		names := make([]string, len(chosen))

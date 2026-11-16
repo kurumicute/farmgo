@@ -268,9 +268,9 @@ func TestCasinoBetFromPanel(t *testing.T) {
 	p.click("賣 1")
 	contains(t, p.Text, "已出售 1 個小麥【稀有】（賭場 ×2")
 	// 獎品要明確勾選才會賣（「全部賣出」不賣獎品）
-	p.chooseMany("勾選多項", []string{key})
-	p.click("確認賣出 1 項")
-	contains(t, p.Text, "賣出 3 個商品")
+	p.chooseMany("選擇要賣的東西", []string{key}) // 只選 1 項：顯示數量按鈕
+	p.click("賣 3")
+	contains(t, p.Text, "已出售 3 個小麥【稀有】")
 	for _, v := range p.options("選擇要賣的東西") {
 		if strings.HasPrefix(v, "z|") {
 			t.Fatal(v)

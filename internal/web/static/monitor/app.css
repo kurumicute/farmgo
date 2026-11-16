@@ -13,7 +13,7 @@
   --grid: #ebe6d9;
   --text-primary: #1f2a20;
   --text-secondary: #4f5a4c;
-  --text-muted: #747b6d;
+  --text-muted: #646b5e; /* 加深以符合 WCAG AA（淺色底對比 ≥ 4.5:1） */
   /* 主色：柔和農場綠；輔助色：土壤棕 */
   --primary: #3b7a4b;
   --primary-strong: #2e6339;
@@ -206,7 +206,7 @@ a { color: var(--primary); }
 
 .tabs { flex: 1; overflow-y: auto; padding: 8px 10px 16px; display: flex; flex-direction: column; gap: 2px; scrollbar-width: thin; }
 .nav-group {
-  margin: 14px 10px 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
+  margin: 14px 10px 4px; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em;
   color: var(--text-muted); text-transform: uppercase; white-space: nowrap;
 }
 .nav-group:first-child { margin-top: 6px; }
@@ -426,6 +426,11 @@ main {
 .subpanel h3 { margin-top: 0; }
 .feature-card > summary { cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 1rem; }
 .feature-card[open] > summary { margin-bottom: 8px; }
+.feature-card.dirty > summary::after {
+  content: "未儲存"; margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: 0.74rem;
+  background: var(--warn-soft); color: var(--warn-text);
+}
+.fs-card-note:empty { display: none; }
 .feature-card h4, .subpanel h4 { margin: 14px 0 6px; font-size: 0.92rem; }
 .feature-card td .controls { flex-wrap: nowrap; }
 .feature-card input.qty, .subpanel td input.qty { width: 76px; }
@@ -437,7 +442,7 @@ figcaption { font-weight: 700; margin-bottom: 6px; }
 .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
 .chart { width: 100%; min-height: 180px; position: relative; }
 .chart svg { width: 100%; height: 200px; display: block; overflow: visible; }
-.chart .axis { fill: var(--text-muted); font-size: 11px; }
+.chart .axis { fill: var(--text-secondary); font-size: 12px; }
 .chart .gridline { stroke: var(--grid); stroke-width: 1; }
 .chart .bar1 { fill: var(--series-1); }
 .chart .bar2 { fill: var(--series-2); }
@@ -529,6 +534,12 @@ button.primary.is-busy::after { border-color: var(--primary-ink); border-right-c
 .form-section { border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 14px 6px; margin: 12px 0 0; background: var(--surface-1); }
 .form-section legend { padding: 0 6px; font-weight: 700; font-size: 0.86rem; color: var(--primary-strong); }
 .form-hint { margin: 10px 0 0; font-size: 0.84rem; color: var(--text-muted); }
+/* 欄位下方的一行說明 */
+.form-grid > label > .field-hint { grid-column: 1 / -1; font-size: 0.8rem; font-weight: 400; color: var(--text-secondary); }
+.form-grid > label > .field-hint.live { font-weight: 600; color: var(--primary-strong); }
+#wbs-items { display: grid; gap: 6px; margin: 8px 0; }
+#wbs-items:empty::before { content: "沒有指定物品"; font-size: 0.84rem; color: var(--text-muted); }
+.wbs-item-row select.wbs-item-code { min-width: 0; max-width: 260px; flex: 1 1 180px; }
 .form-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
 .form-note { margin: 10px 0 0; font-size: 0.86rem; color: var(--text-secondary); min-height: 0; }
 .form-note:empty { display: none; }
@@ -547,6 +558,11 @@ td .controls button { min-height: 30px; padding: 3px 10px; font-size: 0.84rem; }
 .pa-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-top: 16px; }
 .pa-grid > div { min-width: 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-1); }
 .pa-grid h3 { margin: 0 0 10px; }
+/* Go 版新增功能、群組遺跡與日報（2026-11-16） */
+.info-line { margin: 0 0 8px; line-height: 1.8; }
+.pa-grid h4 { margin: 12px 0 6px; font-size: 0.92rem; }
+.news-text { margin: 0; padding: 12px; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 0.88rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); max-height: 60vh; overflow: auto; }
 .pa-grid .controls { margin-top: 10px; }
 .pa-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
 .pa-summary span { padding: 5px 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 0.86rem; }
@@ -716,7 +732,7 @@ tr.withered td { color: var(--text-muted); }
   .app-shell.collapsed .brand-text, .app-shell.collapsed .tabs button span { display: revert; }
   .app-shell.collapsed .sidebar-brand { justify-content: flex-start; padding-inline: 16px; }
   .app-shell.collapsed .tabs button { justify-content: flex-start; padding: 9px 12px; }
-  .app-shell.collapsed .nav-group { margin: 14px 10px 4px; height: auto; background: none; font-size: 0.72rem; }
+  .app-shell.collapsed .nav-group { margin: 14px 10px 4px; height: auto; background: none; font-size: 0.8rem; }
   .drawer-only { display: inline-grid !important; }
   .sidebar-brand .drawer-only { margin-left: auto; }
   .sidebar-foot { display: none; }
@@ -725,7 +741,11 @@ tr.withered td { color: var(--text-muted); }
   body { font-size: 14.5px; }
   .topbar { padding: 10px 12px; gap: 8px 10px; position: sticky; }
   .page-heading { flex: 1 1 0; }
-  .page-heading p { display: none; }
+  /* 手機仍顯示頁面說明：縮小字級、最多兩行 */
+  .page-heading p {
+    font-size: 0.8rem; line-height: 1.35; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-clamp: 2;
+  }
   h1 { font-size: 1.08rem; }
   .top-search { order: 10; flex: 1 1 100%; min-width: 0; }
   .conn { align-items: flex-end; }

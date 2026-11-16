@@ -423,7 +423,17 @@ func TestFarmCommandAndButtonClickEndToEnd(t *testing.T) {
 	if strings.HasSuffix(shown.Path, "/callback") {
 		payload = data(*shown)
 	}
-	text := payload["embeds"].([]any)[0].(map[string]any)["description"].(string)
+	// 農田頁有大圖：操作結果放在最後一個欄位並接到 footer（版面規則），所以說明、欄位與 footer 一起比對
+	shownEmbed := payload["embeds"].([]any)[0].(map[string]any)
+	text, _ := shownEmbed["description"].(string)
+	if fields, ok := shownEmbed["fields"].([]any); ok {
+		for _, f := range fields {
+			text += " " + f.(map[string]any)["value"].(string)
+		}
+	}
+	if footer, ok := shownEmbed["footer"].(map[string]any); ok {
+		text += " " + footer["text"].(string)
+	}
 	if !strings.Contains(text, "農場建立完成") || len(shown.Files) != 1 || shown.Files[0] != "farm.png" {
 		t.Fatalf("%s %v", text, shown.Files)
 	}

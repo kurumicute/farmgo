@@ -13,7 +13,6 @@ import (
 
 	"farmgm/internal/bot/farmimage"
 	"farmgm/internal/bot/ui"
-	"farmgm/internal/clock"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/pets"
@@ -125,7 +124,7 @@ func (p *Panel) buildAnimals(_ context.Context, data any) (*ui.Embed, error) {
 		case "ready":
 			tail = fmt.Sprintf("✅ 可收集 ×%d %s", a.ProductQuantity, a.ProductName)
 		default:
-			tail = fmt.Sprintf("🍽️ 待餵食（%d 金）", a.FeedCost)
+			tail = fmt.Sprintf("🍽️ 待餵食（%s 金）", money(a.FeedCost))
 		}
 		lines = append(lines, fmt.Sprintf("%s `#%2d` **%s**　%s", animalEmoji(a.Code), a.AnimalNo, a.Name, tail))
 	}
@@ -133,9 +132,9 @@ func (p *Panel) buildAnimals(_ context.Context, data any) (*ui.Embed, error) {
 	barn := balance.Buildings["barn"]
 	var shop []string
 	for _, t := range d.types {
-		shop = append(shop, fmt.Sprintf("%s **%s**　💰 **%d** 金\n　🍽️ 餵食 %d 金　⏱️ %s　🥚 產 ×%d %s（%d 金／個）",
-			animalEmoji(t.Code), t.Name, t.Price, t.FeedCost, services.LongDuration(t.CycleSeconds), t.ProductQuantity,
-			t.ProductName, t.ProductPrice))
+		shop = append(shop, fmt.Sprintf("%s **%s**　💰 **%s** 金\n　🍽️ 餵食 %s 金　⏱️ %s　🥚 產 ×%d %s（%s 金／個）",
+			animalEmoji(t.Code), t.Name, money(t.Price), money(t.FeedCost), services.LongDuration(t.CycleSeconds), t.ProductQuantity,
+			t.ProductName, money(t.ProductPrice)))
 	}
 	var mine any = "還沒有動物，從下方選單購買。"
 	if barns == 0 {
@@ -149,7 +148,7 @@ func (p *Panel) buildAnimals(_ context.Context, data any) (*ui.Embed, error) {
 		petLines[i] = petLine(x)
 	}
 	e := &ui.Embed{Title: fmt.Sprintf("🐔 ✦ 動物（%d/%d）✦", st.Used, st.Capacity), Color: Green, Description: sections(
-		fmt.Sprintf("🏚️ %s **%d/%d** 座（每座 %d 個欄位，%d 金）", barn.Name, barns, barn.MaxPerFarm, balance.BarnSlots, barn.Price),
+		fmt.Sprintf("🏚️ %s **%d/%d** 座（每座 %d 個欄位，%s 金）", barn.Name, barns, barn.MaxPerFarm, balance.BarnSlots, money(barn.Price)),
 		mine,
 		Section{Title: "🐾 寵物（顯示在農場上，不佔畜舍）", Lines: petLines},
 		Section{Title: "🛒 動物商店", Lines: shop, Sep: "\n\n"},
@@ -159,7 +158,7 @@ func (p *Panel) buildAnimals(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	c := st.Counts
 
-	p.button(fmt.Sprintf("全部餵食（%d 金）", st.FeedCostAll), func(ctx context.Context, it ui.Interaction) error {
+	p.button(fmt.Sprintf("全部餵食（%s 金）", money(st.FeedCostAll)), func(ctx context.Context, it ui.Interaction) error {
 		p.act(ctx, it, p.call("feed_all", func(ctx context.Context) (services.ActionResult, error) {
 			return p.svc().FeedAll(ctx, p.playerID)
 		}), actOpts{})
@@ -169,7 +168,7 @@ func (p *Panel) buildAnimals(_ context.Context, data any) (*ui.Embed, error) {
 		p.act(ctx, it, p.collectAll, actOpts{})
 		return nil
 	}, btn{emoji: "🧺", row: 0, disabled: c["ready"] == 0, style: ui.Success})
-	p.button(fmt.Sprintf("建造%s（%d 金）", barn.Name, barn.Price), func(ctx context.Context, it ui.Interaction) error {
+	p.button(fmt.Sprintf("建造%s（%s 金）", barn.Name, money(barn.Price)), func(ctx context.Context, it ui.Interaction) error {
 		p.act(ctx, it, p.call("build", func(ctx context.Context) (services.ActionResult, error) {
 			return p.svc().Build(ctx, p.playerID, "barn")
 		}), actOpts{})
@@ -184,8 +183,16 @@ func (p *Panel) buildAnimals(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		t := d.types[i]
 		free := max(1, st.Capacity-st.Used)
-		p.picker = &Picker{Key: code, Label: fmt.Sprintf("%s %s（每隻 %d 金，剩餘欄位 %d）", animalEmoji(code), t.Name, t.Price, st.Capacity-st.Used),
-			Verb: "買", Max: min(balance.AnimalMaxBuy, free), Presets: []int{1, 2, 4},
+		// 沒有空欄位時不顯示「買 1」（按了才看到錯誤），直接說明要先做什麼
+		short := ""
+		switch {
+		case barns == 0:
+			short = "還沒有畜舍，先按「建造" + barn.Name + "」"
+		case st.Capacity-st.Used <= 0:
+			short = "欄位已滿，先建造" + barn.Name + "或放生動物"
+		}
+		p.picker = &Picker{Key: code, Label: fmt.Sprintf("%s %s（每隻 %s 金，剩餘欄位 %d）", animalEmoji(code), t.Name, money(t.Price), st.Capacity-st.Used),
+			Verb: "買", Max: min(balance.AnimalMaxBuy, free), Presets: []int{1, 2, 4}, Short: short,
 			Run: p.callQty("buy_animals", func(ctx context.Context, q int) (services.ActionResult, error) {
 				return p.svc().BuyAnimals(ctx, p.playerID, code, q)
 			})}
@@ -194,7 +201,7 @@ func (p *Panel) buildAnimals(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	options := make([]option, len(d.types))
 	for i, t := range d.types {
-		options[i] = option{t.Name, t.Code, fmt.Sprintf("💰 %d 金｜產%s", t.Price, t.ProductName), animalEmoji(t.Code)}
+		options[i] = option{t.Name, t.Code, fmt.Sprintf("💰 %s 金｜產%s", money(t.Price), t.ProductName), animalEmoji(t.Code)}
 	}
 	selected := ""
 	if p.picker != nil {
@@ -292,26 +299,25 @@ func (p *Panel) buildPets(_ context.Context, data any) (*ui.Embed, error) {
 			if o.Current {
 				when = fmt.Sprintf("目前 +%d%%", o.Pct)
 			}
-			crops := make([]string, len(o.Crops))
-			for i, c := range o.Crops {
+			// 2026-11-16 加成明細只列前 3 種作物（原本每種作物一行，字太多）
+			shown := o.Crops[:min(3, len(o.Crops))]
+			crops := make([]string, len(shown))
+			for i, c := range shown {
 				crops[i] = fmt.Sprintf("　　%s %s（每格 %d 個）：%s", cropEmoji(c.Code), c.Name, c.Quantity, c.Text)
 			}
-			block += fmt.Sprintf("\n　🎲 **每格實際多收**（%s）：\n", when) + strings.Join(crops, "\n")
+			more := ""
+			if len(o.Crops) > len(shown) {
+				more = fmt.Sprintf("\n　　…另外 %d 種作物", len(o.Crops)-len(shown))
+			}
+			block += fmt.Sprintf("\n　🎲 **每格實際多收**（%s）：\n", when) + strings.Join(crops, "\n") + more
 		}
 		blocks = append(blocks, block)
 	}
-	prices := pets.UpgradePrices()
-	ladder := make([]string, len(prices))
-	for i, v := range prices {
-		ladder[i] = money(v)
-	}
-	maxLevel := pets.MaxLevel()
+	// 價格階梯與加成規則已寫在每隻寵物與說明頁，不再整段重複；金幣放最後，貼近領養／升級按鈕
 	e := &ui.Embed{Title: "🐾 ✦ 寵物 ✦", Color: Green, Description: sections(
-		fmt.Sprintf("💰 你的金幣：**%s**", money(d.gold)),
 		Section{Lines: blocks, Sep: "\n\n"},
-		fmt.Sprintf("領養 %s 金（Lv0 +%d%%）；升級 %s 金，每級再 +%d%%，最高 Lv%d（%d%%）。"+
-			"寵物會出現在農場圖的左上（狗）與右上（貓），不佔畜舍欄位。",
-			money(pets.BuyPrice()), pets.BasePct(), strings.Join(ladder, " → "), pets.PctPerLevel(), maxLevel, pets.BonusPct(&maxLevel)),
+		"🐶 狗在農場圖左上、🐱 貓在右上，不佔畜舍欄位。",
+		fmt.Sprintf("💰 你的金幣：**%s**", money(d.gold)),
 	)}
 	pending, hasPending := strings.CutPrefix(p.confirm, "pet:")
 	for _, x := range d.pets {
@@ -434,7 +440,7 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 		var state string
 		switch {
 		case ws.Counts[code] == 0:
-			state = fmt.Sprintf("🔒 未建造（%d 金）", b.Price)
+			state = fmt.Sprintf("🔒 未建造（%s 金）", money(b.Price))
 		case busy != nil && busy.State == "in_progress":
 			ready := busy.ReadyAt
 			state = fmt.Sprintf("⚙️ 加工中：%s ×%d，%s完成", busy.RecipeName, busy.OutputQuantity, ts(&ready))
@@ -589,9 +595,9 @@ func (p *Panel) buildBuild(_ context.Context, data any) (*ui.Embed, error) {
 		if owned >= b.MaxPerFarm {
 			state = "✅ 已達上限"
 		} else {
-			options = append(options, option{fmt.Sprintf("%s（%d 金）", b.Name, b.Price), code, fmt.Sprintf("已有 %d/%d", owned, b.MaxPerFarm), "🏗️"})
+			options = append(options, option{fmt.Sprintf("%s（%s 金）", b.Name, money(b.Price)), code, fmt.Sprintf("已有 %d/%d", owned, b.MaxPerFarm), "🏗️"})
 		}
-		lines = append(lines, fmt.Sprintf("🏭 **%s**　💰 **%d** 金　%s\n　📝 %s", b.Name, b.Price, state, use))
+		lines = append(lines, fmt.Sprintf("🏭 **%s**　💰 **%s** 金　%s\n　📝 %s", b.Name, money(b.Price), state, use))
 	}
 	e := &ui.Embed{Title: "🏗️ ✦ 建造設施 ✦", Color: Blue, Description: sections(
 		fmt.Sprintf("💰 你的金幣：**%s**", money(ws.Gold)),
@@ -662,7 +668,7 @@ func (p *Panel) buildDefense(_ context.Context, data any) (*ui.Embed, error) {
 		if x.Range != nil {
 			where = fmt.Sprintf("守護連續 %d 格（可調整）", *x.Range)
 		}
-		shop = append(shop, fmt.Sprintf("🛡️ **%s**　💰 **%d** 金　上限 %d\n　🚫 阻止機率 %s　📍 %s", x.Name, x.Price, x.MaxPerFarm, percent(x.BlockChance), where))
+		shop = append(shop, fmt.Sprintf("🛡️ **%s**　💰 **%s** 金　上限 %d\n　🚫 阻止機率 %s　📍 %s", x.Name, money(x.Price), x.MaxPerFarm, percent(x.BlockChance), where))
 	}
 	var installed any = "還沒有防守設施。"
 	if len(devices) > 0 {
@@ -684,9 +690,9 @@ func (p *Panel) buildDefense(_ context.Context, data any) (*ui.Embed, error) {
 	var options []option
 	for _, code := range balance.DefenseOrder {
 		x := balance.Defenses[code]
-		options = append(options, option{fmt.Sprintf("%s（%d 金）", x.Name, x.Price), code, fmt.Sprintf("持有 %d/%d", st.Owned[code], x.MaxPerFarm), "🛡️"})
+		options = append(options, option{fmt.Sprintf("%s（%s 金）", x.Name, money(x.Price)), code, fmt.Sprintf("持有 %d/%d", st.Owned[code], x.MaxPerFarm), "🛡️"})
 	}
-	options = append(options, option{fmt.Sprintf("%s（%d 金）", ticket.Name, ticket.Price), balance.ItemPatrolTicket, "買 1 張", "🔦"})
+	options = append(options, option{fmt.Sprintf("%s（%s 金）", ticket.Name, money(ticket.Price)), balance.ItemPatrolTicket, "買 1 張", "🔦"})
 	p.selectMenu("🛒 購買防守設施或巡查券…", options, func(ctx context.Context, it ui.Interaction, code string) error {
 		if code == balance.ItemPatrolTicket {
 			p.act(ctx, it, p.call("buy_item", func(ctx context.Context) (services.ActionResult, error) {
@@ -713,7 +719,7 @@ func (p *Panel) buildDefense(_ context.Context, data any) (*ui.Embed, error) {
 		if _, err := fmt.Sscan(rawSlot, &slot); err != nil {
 			return gameerr.Validationf("找不到這個項目。")
 		}
-		return it.SendModal(ctx, quantityModal("調整守護範圍", "起始農田編號", 999, func(ctx context.Context, mit ui.Interaction, start int) {
+		return it.SendModal(ctx, quantityModal("調整守護範圍", "起始農田編號", max(1, len(st.Plots)), func(ctx context.Context, mit ui.Interaction, start int) {
 			p.act(ctx, mit, p.call("place_defense", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().PlaceDefense(ctx, p.playerID, code, start, slot)
 			}), actOpts{})
@@ -749,7 +755,7 @@ func (p *Panel) report(ctx context.Context, it ui.Interaction, title string, pat
 	if err != nil {
 		msg.Content = ptr("❌ " + cleanMessage(PlayerMessage(err)))
 	} else {
-		msg.Embed = &ui.Embed{Title: title, Color: Blue, Description: cut("```\n"+text+"\n```", 4096)}
+		msg.Embed = &ui.Embed{Title: title, Color: Blue, Description: cut(text, 4096)}
 	}
 	if _, ferr := it.Followup(ctx, msg); ferr != nil {
 		logUnexpected(ferr, "送出報告失敗", "player", p.playerID)
@@ -758,9 +764,6 @@ func (p *Panel) report(ctx context.Context, it ui.Interaction, title string, pat
 		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
 	}
 }
-
-// localTime Python CMD _local：台灣時間「月-日 時:分:秒」。
-func localTime(t time.Time) string { return t.In(clock.TaipeiTZ).Format("01-02 15:04:05") }
 
 func blockerName(code *string) string {
 	if code == nil {
@@ -780,10 +783,10 @@ func (p *Panel) defenseLogText(ctx context.Context) (string, error) {
 	if len(rows) == 0 {
 		return "目前沒有被阻止的偷菜紀錄。", nil
 	}
-	lines := []string{"===== 防守紀錄（被阻止的偷菜；偷菜者需使用巡查券查看）====="}
+	lines := []string{"**🛡️ 被阻止的偷菜**（想知道是誰，請使用巡查券）"}
 	for _, r := range rows {
-		lines = append(lines, fmt.Sprintf("%s  第 %d 格 %s  有人想偷 %d 個，被%s阻止",
-			localTime(r.CreatedAt), r.PlotNumber, r.CropName, r.Quantity, blockerName(r.BlockedBy)))
+		lines = append(lines, fmt.Sprintf("• %s　第 %d 格 %s：有人想偷 %d 個，被**%s**阻止",
+			ts(&r.CreatedAt), r.PlotNumber, r.CropName, r.Quantity, blockerName(r.BlockedBy)))
 	}
 	return strings.Join(lines, "\n"), nil
 }
@@ -796,17 +799,17 @@ func (p *Panel) patrolText(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	lines := []string{fmt.Sprintf("===== 巡查報告（近 %d 天，已消耗 1 張巡查券）=====", balance.PatrolDays)}
+	lines := []string{fmt.Sprintf("**近 %d 天的偷菜紀錄**（已消耗 1 張巡查券）", balance.PatrolDays)}
 	if len(rows) == 0 {
 		lines = append(lines, "近期沒有任何偷菜嘗試。")
 	}
 	for _, r := range rows {
-		result := fmt.Sprintf("偷走 %d 個", r.Quantity)
+		result := fmt.Sprintf("🥷 偷走 %d 個", r.Quantity)
 		if r.Outcome != "success" {
-			result = fmt.Sprintf("想偷 %d 個，被%s阻止", r.Quantity, blockerName(r.BlockedBy))
+			result = fmt.Sprintf("🛡️ 想偷 %d 個，被%s阻止", r.Quantity, blockerName(r.BlockedBy))
 		}
-		lines = append(lines, fmt.Sprintf("%s  %s（ID %d）［%s］第 %d 格 %s：%s",
-			localTime(r.CreatedAt), r.ThiefName, r.ThiefPlayerID, r.GroupName, r.PlotNumber, r.CropName, result))
+		lines = append(lines, fmt.Sprintf("• %s　**%s**（%s）第 %d 格 %s：%s",
+			ts(&r.CreatedAt), escapeMD(r.ThiefName), escapeMD(r.GroupName), r.PlotNumber, r.CropName, result))
 	}
 	return strings.Join(lines, "\n"), nil
 }
@@ -866,13 +869,13 @@ func (p *Panel) buildCasino(_ context.Context, data any) (*ui.Embed, error) {
 		if bet != nil && bet.key == k {
 			mark = "▶ "
 		}
-		lines = append(lines, fmt.Sprintf("%s%s **%s**　×**%d**\n　🏷️ 價目表 %d 金／個　🎲 比大小贏了 %d　🎯 猜中 %d",
-			mark, cropEmoji(o.CropCode), o.Name, o.Quantity, o.UnitPrice, o.UnitPrice*balance.GambleHiloMultiplier,
+		lines = append(lines, fmt.Sprintf("%s%s **%s**　×**%d**\n　🏷️ 價目表 %s 金／個　🎲 比大小贏了 %d　🎯 猜中 %d",
+			mark, cropEmoji(o.CropCode), o.Name, o.Quantity, money(o.UnitPrice), o.UnitPrice*balance.GambleHiloMultiplier,
 			o.UnitPrice*balance.GambleExactMultiplier))
 	}
 	prizes := make([]string, len(d.prizes))
 	for i, x := range d.prizes {
-		prizes[i] = fmt.Sprintf("🏆 %s %s　×**%d**　（×%d，%d 金／個）", cropEmoji(x.CropCode), x.Name, x.Quantity, x.Multiplier, x.UnitPrice)
+		prizes[i] = fmt.Sprintf("🏆 %s %s　×**%d**　（×%d，%s 金／個）", cropEmoji(x.CropCode), x.Name, x.Quantity, x.Multiplier, money(x.UnitPrice))
 	}
 	rulesText := fmt.Sprintf("🎲 系統從 **%d–%d** 擲一個數字\n"+
 		"⬆️ **比大**（%d–%d）／⬇️ **比小**（%d–%d）：贏了價值 **×%d**（機率 50%%）\n"+
@@ -904,7 +907,7 @@ func (p *Panel) buildCasino(_ context.Context, data any) (*ui.Embed, error) {
 	options := make([]option, len(keys))
 	for i, k := range keys {
 		o := rows[k]
-		options[i] = option{fmt.Sprintf("%s ×%d", o.Name, o.Quantity), k, fmt.Sprintf("🏷️ %d 金／個", o.UnitPrice), cropEmoji(o.CropCode)}
+		options[i] = option{fmt.Sprintf("%s ×%d", o.Name, o.Quantity), k, fmt.Sprintf("🏷️ %s 金／個", money(o.UnitPrice)), cropEmoji(o.CropCode)}
 	}
 	p.selectMenu("🎰 選擇要下注的作物…", options, func(ctx context.Context, it ui.Interaction, key string) error {
 		p.bet = &casinoBet{key: key, qty: 1}
@@ -978,7 +981,7 @@ func (p *Panel) cancelCraftControls(orders []services.OrderView) {
 		if o.State != "in_progress" {
 			continue
 		}
-		options = append(options, option{fmt.Sprintf("#%d %s ×%d", o.OrderID, o.RecipeName, o.OutputQuantity), fmt.Sprint(o.OrderID),
+		options = append(options, option{fmt.Sprintf("%s ×%d", o.RecipeName, o.OutputQuantity), fmt.Sprint(o.OrderID),
 			fmt.Sprintf("%s｜還要 %s｜取消後退回原料", o.BuildingName, services.LongDuration(o.RemainingSeconds)), "❌"})
 	}
 	p.selectMenu("❌ 取消加工訂單（退回原料）…", options, func(ctx context.Context, it ui.Interaction, value string) error {
@@ -988,8 +991,8 @@ func (p *Panel) cancelCraftControls(orders []services.OrderView) {
 		}
 		o := orders[i]
 		p.picker, p.confirm = nil, "cancel_craft:"+value
-		p.refresh(ctx, it, fmt.Sprintf("⚠️ 確定要取消加工訂單 #%d（%d 份%s）嗎？原料會全部退回，後面排隊的訂單會往前遞補。再按一次「確認取消」。",
-			o.OrderID, o.OutputQuantity, o.RecipeName), nil, "重繪", time.Time{})
+		p.refresh(ctx, it, fmt.Sprintf("⚠️ 確定要取消加工訂單（%d 份%s）嗎？原料會全部退回，後面排隊的訂單會往前遞補。再按一次「確認取消」。",
+			o.OutputQuantity, o.RecipeName), nil, "重繪", time.Time{})
 		return nil
 	}, 3, pending)
 	if hasPending {
@@ -997,7 +1000,7 @@ func (p *Panel) cancelCraftControls(orders []services.OrderView) {
 		if err != nil {
 			return
 		}
-		p.button("確認取消 #"+pending, func(ctx context.Context, it ui.Interaction) error {
+		p.button("確認取消", func(ctx context.Context, it ui.Interaction) error {
 			p.act(ctx, it, p.call("cancel_craft", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().CancelCraft(ctx, p.playerID, id)
 			}), actOpts{})

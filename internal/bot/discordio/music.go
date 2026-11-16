@@ -163,7 +163,7 @@ func wireOptionOf(o music.Option) wireCmdOption {
 	}
 	w := wireCmdOption{Type: t, Name: o.Name, Description: o.Description, Required: o.Required}
 	for _, c := range o.Choices {
-		w.Choices = append(w.Choices, wireChoice{c, c})
+		w.Choices = append(w.Choices, wireChoice{c.Name, c.Value})
 	}
 	return w
 }

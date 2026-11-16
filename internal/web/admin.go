@@ -16,6 +16,7 @@ import (
 	"regexp"
 
 	"farmgm/internal/game/balance"
+	"farmgm/internal/services"
 )
 
 var (
@@ -103,6 +104,18 @@ type inventoryBody struct {
 	Quality  *string     `json:"quality"`
 	Mutation *string     `json:"mutation"`
 	Quantity json.Number `json:"quantity"`
+	// 2026-11-16：delta（增減，與 quantity 擇一）、expect_quantity（畫面上的目前數量）、reason（原因，選填）
+	Delta          json.Number `json:"delta"`
+	ExpectQuantity json.Number `json:"expect_quantity"`
+	Reason         *string     `json:"reason"`
+}
+
+func intPtr(n *int64) *int {
+	if n == nil {
+		return nil
+	}
+	x := int(*n)
+	return &x
 }
 
 func (a *App) setInventory(w http.ResponseWriter, r *http.Request, actor string) {
@@ -119,10 +132,17 @@ func (a *App) setInventory(w http.ResponseWriter, r *http.Request, actor string)
 	code := v.str("item_code", body.ItemCode, 1, 64, itemCodeRe)
 	quality := v.enum("quality", body.Quality, "normal", qualities)
 	mutation := v.enum("mutation", body.Mutation, "none", mutations)
-	qty := v.int("quantity", body.Quantity, true, 0, balance.AdminMaxItemQuantity) // 0 = 刪除這筆庫存
+	qty := v.optInt("quantity", body.Quantity, 0, balance.AdminMaxItemQuantity) // 0 = 刪除這筆庫存
+	delta := v.optInt("delta", body.Delta, -balance.AdminMaxItemQuantity, balance.AdminMaxItemQuantity)
+	expect := v.optInt("expect_quantity", body.ExpectQuantity, 0, balance.AdminMaxItemQuantity)
+	reason := v.optStr("reason", body.Reason, "", 0, services.AdminReasonMaxLen, nil)
+	if (qty == nil) == (delta == nil) {
+		v.fail("quantity 與 delta 必須擇一。")
+	}
 	if !v.ok(w) {
 		return
 	}
-	res, err := a.admin.SetInventory(ctxOf(r), actor, pid, code, quality, mutation, int(qty))
+	res, err := a.admin.AdjustInventory(ctxOf(r), actor, pid, code, quality, mutation,
+		services.InventoryAdjust{Quantity: intPtr(qty), Delta: intPtr(delta), Expect: intPtr(expect), Reason: reason})
 	respondValue(w, r, res, err)
 }

@@ -258,7 +258,7 @@ func TestPlayJoinsVoiceAndQueues(t *testing.T) {
 		t.Fatal(e.node.calls)
 	}
 	np := e.dc.lastSent(t) // 「正在播放」訊息附控制按鈕
-	if np.Embed.AuthorName != "🎵 正在播放" || len(np.View.Buttons()) != 9 || np.Embed.Footer != "測試伺服器" {
+	if np.Embed.AuthorName != "🎵 正在播放" || len(np.View.Buttons()) != 9 || !strings.HasSuffix(np.Embed.Footer, "測試伺服器") || !strings.HasPrefix(np.Embed.Footer, "🎵 正在播放") {
 		t.Fatalf("%+v", np.Embed)
 	}
 	it2 := e.cmd(alice, "play", map[string]any{"query": "第二首"})
@@ -296,7 +296,7 @@ func TestLoopSkipAndStop(t *testing.T) {
 		t.Fatal(g.current.Title, len(g.queue))
 	}
 	it := e.cmd(alice, "skip", nil) // 跳過：單曲循環也不重播
-	if !strings.Contains(lastText(it), "THE 跳") || !e.node.has("stop") {
+	if !strings.Contains(lastText(it), "已跳過這首歌") || !e.node.has("stop") {
 		t.Fatal(lastText(it))
 	}
 	e.end(track("A", "A", 1), "stopped")
@@ -343,7 +343,7 @@ func TestSameChannelRequiredAndPermissions(t *testing.T) {
 	}
 	e.cmd(alice, "prefix", map[string]any{"new_prefix": "?"})
 	it = e.cmd(bob, "music", nil)
-	if !strings.Contains(lastText(it), "`?p`") {
+	if !it.Last().Message.Ephemeral || !strings.Contains(lastText(it), "/play") || strings.Contains(lastText(it), "`?p`") {
 		t.Fatal(lastText(it))
 	}
 	dm := uitest.New(t, e.reg, alice, "")
@@ -354,6 +354,10 @@ func TestSameChannelRequiredAndPermissions(t *testing.T) {
 	it = e.cmd(bob, "play", map[string]any{"query": "x"})
 	if !strings.Contains(lastText(it), "你需要先加入一個語音頻道") {
 		t.Fatal(lastText(it))
+	}
+	// 錯誤不公開：先刪掉公開 defer 的「思考中」，再私密回覆
+	if k := it.Kinds(); len(k) < 3 || k[len(k)-2] != "delete" || !it.Last().Message.Ephemeral {
+		t.Fatal(k)
 	}
 	e.dc.users[bob] = vc2
 	it = e.cmd(bob, "play", map[string]any{"query": "x"}) // 機器人正在別的頻道播放
@@ -369,8 +373,8 @@ func TestVolumeIsSavedPerGuild(t *testing.T) {
 	if !strings.Contains(lastText(it), "50%") || !e.node.has("volume 50") {
 		t.Fatal(lastText(it), e.node.calls)
 	}
-	e.cmd(alice, "volume", map[string]any{"percent": 0.3}) // 0 ~ 2 視為倍率
-	if e.state().volume != 0.3 {
+	e.cmd(alice, "volume", map[string]any{"percent": float64(2)}) // 小數字也是百分比：2 = 2%
+	if e.state().volume != 0.02 {
 		t.Fatal(e.state().volume)
 	}
 	e.cmd(alice, "volume", map[string]any{"percent": float64(900)}) // 上限 200%
@@ -474,6 +478,19 @@ func TestControlButtons(t *testing.T) {
 	it = click(alice, 8) // 清單（私密）
 	if !it.Last().Message.Ephemeral || !strings.Contains(allText(it), "待播清單") {
 		t.Fatal(allText(it))
+	}
+	// 停止：第一次只要求確認，按其他按鈕會取消；連按兩次才停止
+	click(alice, 2)
+	if view.Buttons()[2].Label != "再按一次：停止並清空清單" || len(e.state().queue) != 1 {
+		t.Fatal(view.Buttons()[2].Label)
+	}
+	click(alice, 7) // 重新整理：取消確認
+	if view.Buttons()[2].Label != "停止" {
+		t.Fatal(view.Buttons()[2].Label)
+	}
+	click(alice, 2)
+	if len(e.state().queue) != 1 {
+		t.Fatal("第一次按停止不應清空")
 	}
 	it = click(alice, 1) // 跳過：公開訊息，之後自動刪除
 	if !strings.Contains(allText(it), "跳過了這首歌") || !e.node.has("stop") {

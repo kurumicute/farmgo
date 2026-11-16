@@ -123,6 +123,7 @@ if (typeof document !== "undefined") {
     boss_donate: "世界 Boss 捐獻", boss_reward: "世界 Boss 獎勵", rename_farm: "農場改名",
     checkin_reward: "每日簽到", achievement_reward: "成就獎勵", ruins_donate: "修復遺跡",
     ruins_guardian: "攻擊遺跡守護者", rumor_treasure: "傳聞寶藏",
+    seed_lab: "種子實驗室", seed_share: "分享種子",
   };
 
   const state = {
@@ -295,7 +296,10 @@ if (typeof document !== "undefined") {
   }
 
   function initTabs() {
-    document.querySelectorAll("#tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll("#tabs [data-tab]").forEach((b) => b.addEventListener("click", async () => {
+      // 目前分頁有未儲存的修改時先確認（2026-11-16）
+      const current = document.querySelector(`[data-tab-panel="${state.tab}"]`);
+      if (b.dataset.tab !== state.tab && current && !await confirmDiscard(current, "切換分頁")) return;
       showTab(b.dataset.tab);
       window.scrollTo({ top: 0 });
     }));
@@ -363,14 +367,18 @@ if (typeof document !== "undefined") {
   }
 
   // ---------- 玩家搜尋（輸入名稱或 ID，從建議清單選擇） ----------
-  // 建議清單的值為「#ID 名稱」；也接受直接輸入數字 ID 或完整名稱
+  // 建議清單的值為「#ID 名稱」；也接受完整名稱、「#ID」或純數字 ID。
+  // 先比對建議清單與完整名稱，避免名稱以數字開頭（例如「8888」或「8888號農夫」）被誤當成別人的 ID。
   function pickedPlayerId(input, players) {
     const v = input.value.trim();
     if (!v) return null;
-    const m = v.match(/^#?(\d+)/);
-    if (m) return Number(m[1]);
+    const label = players.find((p) => playerLabel(p) === v);
+    if (label) return label.player_id;
     const exact = players.filter((p) => p.player_name === v);
-    return exact.length === 1 ? exact[0].player_id : undefined; // undefined = 無法辨識
+    if (exact.length === 1) return exact[0].player_id;
+    if (exact.length > 1) return undefined; // 同名玩家：請從建議清單選擇
+    const m = v.match(/^#?(\d+)$/);
+    return m ? Number(m[1]) : undefined; // undefined = 無法辨識
   }
 
   function fillDatalist(id, players) {
@@ -560,7 +568,7 @@ if (typeof document !== "undefined") {
       if (e.target.closest(".form-grid") && e.target.value !== "") checkField(e.target);
     });
     window.addEventListener("beforeunload", (e) => {
-      if (document.querySelector("details.form-box.dirty")) {
+      if (document.querySelector(DIRTY_SELECTOR)) {
         e.preventDefault();
         e.returnValue = ""; // 瀏覽器顯示「尚有未儲存的變更」提示
       }
@@ -568,9 +576,31 @@ if (typeof document !== "undefined") {
   }
 
   // ---------- 未儲存變更 ----------
+  // 表單、新功能設定卡片、調整玩家區（2026-11-16 加入）有還沒儲存的修改
+  const DIRTY_SELECTOR = "details.form-box.dirty, details.feature-card.dirty, #pa-body.dirty";
+
+  // 離開有未儲存修改的畫面前先確認；scope 為 null 時檢查整頁。回傳 true = 可以離開
+  async function confirmDiscard(scope, what) {
+    const root = scope || document;
+    const dirty = root.matches && root.matches(DIRTY_SELECTOR) ? [root] : [...root.querySelectorAll(DIRTY_SELECTOR)];
+    if (!dirty.length) return true;
+    const answer = await confirmDialog({
+      title: "放棄未儲存的修改？",
+      message: `這個畫面有還沒儲存的修改，${what}後這些修改會消失。`,
+      confirmText: "放棄修改", danger: true,
+    });
+    return answer.ok;
+  }
+
   function markDirty(target) {
+    // 調整玩家區：任何輸入欄位變更都算（儲存或重新載入玩家後重建，自動清除）
+    const pa = target.closest && target.closest("#pa-body");
+    if (pa && target.matches("input, select, textarea") && !target.closest("#confirm-dialog")) pa.classList.add("dirty");
     const box = target.closest && target.closest("details.form-box");
     if (box && target.closest(".form-grid, #rr-rewards")) box.classList.add("dirty");
+    // 新功能設定的每個區塊各自標示；儲存後重建該區塊即清除
+    const card = target.closest && target.closest("details.feature-card");
+    if (card && target.matches("input, select, textarea")) card.classList.add("dirty");
   }
 
   function clearDirty(boxId) {
@@ -863,13 +893,17 @@ if (typeof document !== "undefined") {
     const plotH = H - PAD.t - PAD.b;
     const groupW = (W - PAD.l - PAD.r) / crops.length;
     const barW = Math.min(22, groupW / 3);
+    const labelW = Math.max(...crops.map((c) => [...c.name].length)) * 12 + 4; // 軸文字 12px，每字約 12 單位
+    const labelEvery = Math.max(1, Math.ceil(labelW / groupW));
     crops.forEach((c, i) => {
       const gx = PAD.l + groupW * i + groupW / 2;
       [[c.growing, "bar1", -barW - 1], [c.ready, "bar2", 1]].forEach(([v, cls, dx]) => {
         const h = (v / max) * plotH;
         svg.appendChild(svgEl("path", { class: cls, d: barPath(gx + dx, PAD.t + plotH - h, barW, h) }));
       });
-      svg.appendChild(svgEl("text", { class: "axis", x: gx, y: H - 8, "text-anchor": "middle" }, c.name));
+      if (i % labelEvery === 0) { // 作物多時隔幾個才顯示名稱，避免文字互相重疊（完整名稱在提示框）
+        svg.appendChild(svgEl("text", { class: "axis", x: gx, y: H - 8, "text-anchor": "middle" }, c.name));
+      }
       const hit = svgEl("rect", { class: "hit", x: gx - groupW / 2, y: PAD.t, width: groupW, height: plotH });
       bindTooltip(hit, `${c.name}\n生長中：${c.growing}\n可收成：${c.ready}`);
       svg.appendChild(hit);
@@ -1192,7 +1226,51 @@ if (typeof document !== "undefined") {
     create_fish_type: "新增魚類", update_fish_type: "修改魚類", enable_fish_type: "啟用魚類", disable_fish_type: "停用魚類",
     create_fishing_gear: "新增釣具", update_fishing_gear: "修改釣具", enable_fishing_gear: "啟用釣具",
     disable_fishing_gear: "停用釣具", update_fishing_settings: "調整釣魚設定",
+    transfer_farm_group: "轉移農場群組", update_feature_settings: "修改新功能設定", reset_feature_settings: "新功能設定還原預設",
+    world_boss_schedule_create: "新增 Boss 排程", world_boss_schedule_update: "修改 Boss 排程",
+    world_boss_schedule_delete: "刪除 Boss 排程", world_boss_schedule_enable: "啟用 Boss 排程",
+    world_boss_schedule_disable: "停用 Boss 排程",
+    set_greenhouse_level: "調整溫室等級", set_pet_level: "調整寵物等級", grant_title: "給予稱號", revoke_title: "移除稱號",
+    set_active_title: "設定使用中稱號", set_checkin_streak: "調整連續簽到", set_achievement_claimed: "調整成就領取",
+    set_codex_entry: "調整圖鑑", reset_weekly_purchases: "重設每週特賣購買量",
   };
+  // 管理操作紀錄的對象類型
+  const TARGET_LABELS = {
+    quest: "任務", competition: "競賽", crop: "作物", crop_genetics: "作物品質", animal_type: "動物", fish_type: "魚類",
+    fishing_gear: "釣具", fishing_settings: "釣魚設定", event: "活動", player: "玩家", ranking_rule: "排名獎勵",
+    ranking_settlement: "排名結算", world_boss: "世界 Boss", world_boss_schedule: "Boss 排程", feature_settings: "新功能設定",
+  };
+  // 紀錄內容的常見欄位名稱
+  const DETAIL_LABELS = {
+    name: "名稱", key: "設定", farm_id: "農場", group_id: "群組", crop: "作物", animal: "動物", fish: "魚類", gear: "釣具",
+    before: "調整前", after: "調整後", time: "時間", interval_days: "間隔天數", anchor_date: "起算日",
+    duration_minutes: "持續分鐘", max_hp: "最大 HP", enabled: "啟用", skip_cooldown: "略過冷卻",
+  };
+  const actionTarget = (a) => {
+    const type = TARGET_LABELS[a.target_type] || a.target_type || "—";
+    return a.target_id === null || a.target_id === undefined ? type : `${type} #${a.target_id}`;
+  };
+  // 將紀錄內容轉為「欄位: 值」的簡短摘要（過長以 … 截斷）
+  function actionSummary(details) {
+    const d = details || {};
+    if (d.reason) return `原因：${d.reason}`;
+    const short = (v) => {
+      if (v === null || v === undefined) return "—";
+      if (typeof v === "boolean") return v ? "是" : "否";
+      if (typeof v === "object") return Array.isArray(v) ? `${v.length} 項` : "（多項）";
+      return String(v);
+    };
+    const first = (k) => (k === "name" || k === "key" ? 0 : 1); // 名稱與設定項目排在最前面
+    const parts = Object.entries(d).sort((x, y) => first(x[0]) - first(y[0])).map(([k, v]) => {
+      if (k === "key" && features.data) {
+        const found = features.data.keys.find((x) => x.key === v);
+        if (found) v = found.label;
+      }
+      return `${DETAIL_LABELS[k] || k}: ${short(v)}`;
+    });
+    const text = parts.join("、") || "—";
+    return text.length > 80 ? `${text.slice(0, 79)}…` : text;
+  }
 
   // datetime-local 預設值：現在與 7 天後（本機時間）
   function localInput(date) {
@@ -1314,8 +1392,8 @@ if (typeof document !== "undefined") {
       replaceRows($("comp-rows"), compRows, "目前沒有競賽", 7);
       const actionRows = actions.map((a) => el("tr", {}, [
         td(fmtTime(a.created_at)), td(a.actor), td(ACTION_LABELS[a.action] || a.action),
-        td(`${a.target_type} #${a.target_id ?? "-"}`),
-        td(a.details.reason ? `原因：${a.details.reason}` : a.details.name || JSON.stringify(a.details).slice(0, 80), "wrap"),
+        td(actionTarget(a)),
+        td(actionSummary(a.details), "wrap"),
       ]));
       replaceRows($("admin-action-rows"), actionRows, "目前沒有管理操作紀錄", 5);
     } catch (err) {
@@ -1411,9 +1489,18 @@ if (typeof document !== "undefined") {
     $("admin-menu").classList.toggle("logged-in", a.loggedIn);
     $("admin-trigger-text").textContent = a.loggedIn ? a.username || "管理員" : a.enabled ? "管理員登入" : "檢視模式";
     $("admin-name").textContent = a.username || "";
-    $("admin-note").textContent = !a.enabled
+    setAdminNote(!a.enabled
       ? "未設定管理員帳號，管理功能停用（僅能檢視）。"
-      : a.loggedIn ? "" : "登入後可管理任務、競賽、作物、動物、活動與玩家資料。";
+      : a.loggedIn ? "" : "登入後可管理任務、競賽、作物、動物、活動與玩家資料。");
+  }
+
+  // 登入區的說明文字；錯誤時改用醒目的錯誤樣式並以 role="alert" 通知輔助科技
+  function setAdminNote(text, isError = false) {
+    const note = $("admin-note");
+    note.textContent = text;
+    note.className = isError ? "form-note bad" : "muted small";
+    if (isError) note.setAttribute("role", "alert");
+    else note.removeAttribute("role");
   }
 
   async function loadAuth() {
@@ -1433,7 +1520,7 @@ if (typeof document !== "undefined") {
     const password = $("admin-pass").value;
     $("admin-pass").value = ""; // 不論成功與否都清除密碼欄位
     // 登入結果顯示在登入區塊下方（全域錯誤橫幅會被每次快照清除）
-    if (!username || !password) { $("admin-note").textContent = "請輸入管理員帳號與密碼。"; return; }
+    if (!username || !password) { setAdminNote("請輸入管理員帳號與密碼。", true); return; }
     try {
       await adminRequest("POST", "/api/auth/login", { username, password });
       await loadAuth();
@@ -1442,7 +1529,7 @@ if (typeof document !== "undefined") {
       await Promise.all([loadCommunity(), loadGenetics(), loadCatalog(), loadPlayerAdmin(), loadRankingRewards(),
         loadWorldBoss(), loadFeatureSettings(true)]);
     } catch (err) {
-      $("admin-note").textContent = `登入失敗：${err.message}`;
+      setAdminNote(`登入失敗：${err.message}`, true);
     }
   }
 
@@ -1552,6 +1639,7 @@ if (typeof document !== "undefined") {
         return el("tr", {}, [td(playerLabel(m)), ...cells, td(fmtTime(m.joined_at))]);
       });
       replaceRows($("group-member-rows"), rows, "這個群組目前沒有成員", 12);
+      loadGroupExtras(id);
     } catch (err) {
       if (err.status === 404) extra.selectedGroupId = null;
       $("group-detail").hidden = true;
@@ -1878,6 +1966,7 @@ if (typeof document !== "undefined") {
   }
 
   function fillEventForm(e) {
+    manage.editEventBase = null;
     manage.editEventId = e.id;
     $("event-form-box").open = true;
     $("ef-title").textContent = `編輯活動 #${e.id}`;
@@ -1903,6 +1992,7 @@ if (typeof document !== "undefined") {
     $("ef-enabled").checked = e.enabled;
     $("ef-note").textContent = "";
     updateEventScheduleFields();
+    manage.editEventBase = readEventForm(); // 儲存前比對修改了哪些欄位（2026-11-16）
     $("event-form-box").scrollIntoView({ block: "nearest" });
   }
 
@@ -1931,6 +2021,27 @@ if (typeof document !== "undefined") {
     };
   }
 
+  // 活動表單欄位 → [名稱, 格式化]；用於編輯時顯示修改前後
+  const EVENT_FIELDS = [
+    ["name", "名稱"], ["description", "說明"],
+    ["crop_code", "指定作物", (v) => (v ? ($("ef-crop").querySelector(`option[value="${CSS.escape(v)}"]`)?.textContent || v) : "全部作物")],
+    ["sell_price_pct", "售價倍率", (v) => `×${v / 100}`], ["grow_reduction_pct", "生長時間減少", (v) => `${v}%`],
+    ["quality_bonus_bp", "品質加成", (v) => `${v / 100}%`], ["mutation_bonus_bp", "突變加成", (v) => `${v / 100}%`],
+    ["harvest_bonus_pct", "收成加成", (v) => `${v}%`], ["harvest_loss", "大風損失", (v) => String(v)],
+    ["free_water", "免費澆水", (v) => (v ? "是" : "否")],
+    ["schedule_type", "排程", (v) => $("ef-schedule").querySelector(`option[value="${CSS.escape(v)}"]`)?.textContent || v],
+    ["starts_at", "開始", fmtTime], ["ends_at", "結束", fmtTime],
+    ["start_time", "每天開始", (v) => v || "—"], ["end_time", "每天結束", (v) => v || "—"],
+    ["weekdays", "星期", (v) => (v.length ? v.map((d) => WEEKDAYS[d]).join("、") : "—")],
+    ["enabled", "啟用", (v) => (v ? "是" : "否")],
+  ];
+
+  function eventDiff(before, after) {
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    return EVENT_FIELDS.filter(([k]) => !same(before[k], after[k]))
+      .map(([k, label, fmt]) => [label, fmt ? fmt(before[k]) : String(before[k] ?? "—"), fmt ? fmt(after[k]) : String(after[k] ?? "—")]);
+  }
+
   async function submitEvent() {
     const body = readEventForm();
     if (!validateForm($("event-form-box"))) return;
@@ -1949,6 +2060,13 @@ if (typeof document !== "undefined") {
       return;
     }
     const id = manage.editEventId;
+    if (id !== null && manage.editEventBase) {
+      const diff = eventDiff(manage.editEventBase, body);
+      if (!diff.length) { setNote("ef-note", "活動內容沒有變更。", "bad"); return; }
+      const answer = await confirmDialog({ title: `修改活動 #${id}「${manage.editEventBase.name}」`, diff,
+        message: "儲存後立即生效（Bot 最晚 10 秒內套用）。", confirmText: "儲存變更" });
+      if (!answer.ok) return;
+    }
     const res = id === null
       ? await manageAction("ef-note", "POST", "/api/admin/events", body, "活動已新增。")
       : await manageAction("ef-note", "PUT", `/api/admin/events/${id}`, body, `活動 #${id} 已更新。`);
@@ -2026,6 +2144,12 @@ if (typeof document !== "undefined") {
     ["crf-sell", "sell_price"], ["crf-vname", "variant_name"],
   ];
 
+  // 生長秒數旁即時顯示換算（例如「= 2 小時」）
+  function updateGrowText() {
+    const v = Number($("crf-grow").value);
+    $("crf-grow-text").textContent = Number.isFinite(v) && v > 0 ? `= ${fmtDuration(v).replace(/ 0 分| 0 秒/g, "")}` : "";
+  }
+
   function resetCropForm() {
     manage.editCrop = null;
     $("crf-title").textContent = "新增作物";
@@ -2033,6 +2157,7 @@ if (typeof document !== "undefined") {
     for (const id of ["crf-code", "crf-vcode", "crf-name", "crf-vname"]) $(id).value = "";
     $("crf-code").disabled = $("crf-vcode").disabled = false;
     resetLimits("crf");
+    updateGrowText();
   }
 
   function fillCropForm(x) {
@@ -2044,6 +2169,7 @@ if (typeof document !== "undefined") {
     $("crf-vcode").value = x.variant_code;
     $("crf-code").disabled = $("crf-vcode").disabled = true; // 代碼不可修改
     for (const [id, key] of CROP_FIELDS) $(id).value = String(x[key]);
+    updateGrowText();
     fillLimits("crf", x);
     $("crf-note").textContent = "";
     $("crop-form-box").scrollIntoView({ block: "nearest" });
@@ -2245,8 +2371,9 @@ if (typeof document !== "undefined") {
   function inventoryBlock(f, c) {
     const rows = f.inventory.map((i) => {
       const qty = numInput(null, i.quantity, 0, 100000);
-      const set = (n) => playerAction("PUT", "/inventory",
-        { item_code: i.item_code, quality: i.quality, mutation: i.mutation, quantity: n },
+      // expect_quantity：畫面上的數量；載入後玩家的數量有變動時伺服器會拒絕，請重新整理（2026-11-16）
+      const set = (n, reason) => playerAction("PUT", "/inventory",
+        { item_code: i.item_code, quality: i.quality, mutation: i.mutation, quantity: n, expect_quantity: i.quantity, reason },
         `${i.name}（${genLabel(i.quality, i.mutation)}）已設為 ${n}。`);
       const label = `${i.name}（${genLabel(i.quality, i.mutation)}）`;
       return el("tr", {}, [
@@ -2257,11 +2384,14 @@ if (typeof document !== "undefined") {
             const n = Number(qty.value);
             if (!checkField(qty)) { qty.focus(); return; }
             if (n === i.quantity) { setNote("pa-note", `${label}的數量沒有變更。`, "bad"); return; }
-            if (await confirmPlayerChange(`調整 ${f.player_name} 的背包`, [[label, fmtNum(i.quantity), fmtNum(n)]])) set(n);
+            const answer = await confirmPlayerChangeWithReason(`調整 ${f.player_name} 的背包`,
+              [[label, fmtNum(i.quantity), `${fmtNum(n)}（${signed(n - i.quantity)}）`]]);
+            if (answer.ok) set(n, answer.reason);
           }),
           smallButton("刪除", async () => {
-            if (await confirmPlayerChange(`刪除 ${f.player_name} 的物品`, [[label, fmtNum(i.quantity), "0（刪除）"]],
-              "物品會從玩家背包移除，並寫入管理員調整紀錄。", true)) set(0);
+            const answer = await confirmPlayerChangeWithReason(`刪除 ${f.player_name} 的物品`, [[label, fmtNum(i.quantity), "0（刪除）"]],
+              "物品會從玩家背包移除，並寫入管理員調整紀錄。", true);
+            if (answer.ok) set(0, answer.reason);
           }, "danger"),
         ]),
       ]);
@@ -2274,23 +2404,36 @@ if (typeof document !== "undefined") {
     const item = selectEl("pa-item", items);
     const quality = selectEl("pa-quality", Object.entries(QUALITY_NAMES));
     const mutation = selectEl("pa-mutation", Object.entries(MUTATION_NAMES));
+    const qtyMode = selectEl("pa-qty-mode", [["add", "增加"], ["sub", "減少"], ["set", "設為"]], "add");
+    qtyMode.setAttribute("aria-label", "數量調整方式");
     const qty = numInput("pa-qty", 1, 0, 100000);
-    const add = smallButton("設定數量", async () => {
+    const add = smallButton("送出", async () => {
       if (!checkField(qty)) { qty.focus(); return; }
       const n = Number(qty.value);
       const current = f.inventory.find((x) => x.item_code === item.value && x.quality === quality.value
         && x.mutation === mutation.value);
+      const have = current ? current.quantity : 0;
+      const delta = qtyMode.value === "add" ? n : qtyMode.value === "sub" ? -n : n - have;
+      const after = have + delta;
+      if (delta === 0) { setNote("pa-note", "數量沒有變更。", "bad"); return; }
+      if (after < 0) { setNote("pa-note", `玩家目前只有 ${fmtNum(have)} 個，不能減少 ${fmtNum(n)} 個。`, "bad"); return; }
       const label = `${item.options[item.selectedIndex].text}（${genLabel(quality.value, mutation.value)}）`;
-      if (!await confirmPlayerChange(`設定 ${f.player_name} 的物品數量`,
-        [[label, fmtNum(current ? current.quantity : 0), n === 0 ? "0（刪除）" : fmtNum(n)]])) return;
-      playerAction("PUT", "/inventory",
-        { item_code: item.value, quality: quality.value, mutation: mutation.value, quantity: n }, "背包已更新。");
+      const answer = await confirmPlayerChangeWithReason(`調整 ${f.player_name} 的物品數量`,
+        [[label, fmtNum(have), `${after === 0 ? "0（刪除）" : fmtNum(after)}（${signed(delta)}）`]],
+        qtyMode.value === "set"
+          ? "「設為」以畫面上的數量為準；載入後數量有變動時會被拒絕，請重新整理後再調整。"
+          : "增減以伺服器上的最新數量計算（上表的調整後數量是以畫面上的數量估計）。");
+      if (!answer.ok) return;
+      const body = { item_code: item.value, quality: quality.value, mutation: mutation.value, reason: answer.reason };
+      if (qtyMode.value === "set") Object.assign(body, { quantity: n, expect_quantity: have });
+      else body.delta = delta;
+      playerAction("PUT", "/inventory", body, "背包已更新。");
     }, "primary");
     return el("div", {}, [
       el("h3", { text: `背包（${f.used}/${f.capacity}）` }),
       el("div", { className: "table-wrap" }, [table]),
-      el("p", { className: "muted small", text: "新增或設定某物品（同一品質／突變）的數量；0 = 刪除。只有農產品可設定品質與突變，珍稀變種的突變固定為「珍稀變種」。" }),
-      el("div", { className: "controls" }, [item, quality, mutation, qty, add]),
+      el("p", { className: "muted small", text: "增加、減少或設定某物品（同一品質／突變）的數量；結果為 0 時刪除。只有農產品可設定品質與突變，珍稀變種的突變固定為「珍稀變種」。" }),
+      el("div", { className: "controls" }, [item, quality, mutation, qtyMode, qty, add]),
     ]);
   }
 
@@ -2403,37 +2546,77 @@ if (typeof document !== "undefined") {
     ]);
   }
 
+  // 玩家資料調整（金幣、物品）：顯示調整前後、要求填寫原因（記在管理操作紀錄）
+  const REASON = { label: "調整原因（會記在管理操作紀錄，玩家看不到）", min: 1, max: 200 };
+
+  async function confirmPlayerChangeWithReason(title, diff, message, danger = false) {
+    return confirmDialog({
+      title, diff, danger, reason: REASON,
+      message: message || "調整會寫入玩家交易紀錄（管理員調整）與管理操作紀錄。",
+      confirmText: danger ? "確認執行" : "確認調整",
+    });
+  }
+
+  const signed = (n) => `${n > 0 ? "+" : n < 0 ? "-" : "±"}${fmtNum(Math.abs(n))}`;
+
+  // 金幣與等級（2026-11-16）：金幣可以「設為」或「增加／減少」；送出前重新讀取最新數值，
+  // 「設為」時附上畫面看到的數值，伺服器發現已變動會拒絕，不會蓋掉玩家剛才的收支。
   function farmValuesBlock(f) {
+    const mode = selectEl("pa-gold-mode", [["set", "設為"], ["add", "增加"], ["sub", "減少"]], "set");
+    mode.setAttribute("aria-label", "金幣調整方式");
     const gold = numInput("pa-gold", f.gold, 0, 1000000000000);
     gold.classList.add("wide-num");
+    gold.setAttribute("aria-label", "金幣");
+    mode.addEventListener("change", () => { gold.value = mode.value === "set" ? String(f.gold) : "0"; });
     const level = numInput("pa-level", f.level, 1, 100);
     const save = smallButton("儲存金幣與等級", async () => {
-      const body = { gold: Number(gold.value), level: Number(level.value) };
-      if (!Number.isInteger(body.gold) || !Number.isInteger(body.level) || body.gold < 0 || body.level < 1 || body.level > 100) {
+      const amount = Number(gold.value);
+      const lvl = Number(level.value);
+      if (!Number.isInteger(amount) || !Number.isInteger(lvl) || amount < 0 || lvl < 1 || lvl > 100) {
         setNote("pa-note", "金幣必須是 0 以上的整數，等級必須是 1–100 的整數。", "bad");
         checkField(gold);
         checkField(level);
         return;
       }
-      if (body.gold === f.gold && body.level === f.level) { setNote("pa-note", "金幣與等級沒有變更。", "bad"); return; }
-      const diff = [];
-      if (body.gold !== f.gold) {
-        const delta = body.gold - f.gold;
-        diff.push(["金幣", fmtNum(f.gold), `${fmtNum(body.gold)}（${delta > 0 ? "+" : "-"}${fmtNum(Math.abs(delta))}）`]);
+      let cur;
+      try {
+        cur = await fetchJson(`/api/monitor/players/${encodeURIComponent(f.player_id)}/admin-farm`);
+      } catch (err) {
+        setNote("pa-note", `讀取最新數值失敗：${err.message}`, "bad");
+        return;
       }
-      if (body.level !== f.level) diff.push(["農場等級", String(f.level), String(body.level)]);
-      if (!await confirmPlayerChange(`調整 ${f.player_name} 的金幣與等級`, diff,
-        "金幣差額會記入玩家交易紀錄（管理員調整）；等級只影響品質加成，不會自動增減土地。")) return;
+      const delta = mode.value === "add" ? amount : mode.value === "sub" ? -amount : amount - cur.gold;
+      const target = cur.gold + delta;
+      const levelChanged = lvl !== cur.level;
+      if (delta === 0 && !levelChanged) { setNote("pa-note", "金幣與等級沒有變更。", "bad"); return; }
+      if (target < 0) { setNote("pa-note", `玩家目前只有 ${fmtNum(cur.gold)} 金幣，不能減少 ${fmtNum(amount)}。`, "bad"); return; }
+      const diff = [];
+      if (delta !== 0) diff.push(["金幣", fmtNum(cur.gold), `${fmtNum(target)}（${signed(delta)}）`]);
+      if (levelChanged) diff.push(["農場等級", String(cur.level), String(lvl)]);
+      const moved = cur.gold !== f.gold || cur.level !== f.level;
+      const notes = ["金幣差額會記入玩家交易紀錄（管理員調整）；等級只影響品質加成，不會自動增減土地。"];
+      if (moved) {
+        notes.unshift(`⚠️ 畫面載入後玩家的數值已經變動（金幣 ${fmtNum(f.gold)} → ${fmtNum(cur.gold)}、等級 ${f.level} → ${cur.level}），下表是最新數值。`
+          + (mode.value === "set" && delta !== 0 ? "「設為」會蓋掉這段期間的收支，請確認目標金額。" : ""));
+      }
+      const answer = await confirmPlayerChangeWithReason(`調整 ${f.player_name} 的金幣與等級`, diff, notes.join("\n"));
+      if (!answer.ok) return;
+      const body = { reason: answer.reason };
+      if (delta !== 0) {
+        if (mode.value === "set") Object.assign(body, { gold: amount, expect_gold: cur.gold });
+        else body.gold_delta = delta;
+      }
+      if (levelChanged) Object.assign(body, { level: lvl, expect_level: cur.level });
       playerAction("PUT", "/farm", body, "金幣與農場等級已更新。");
     }, "primary");
     return el("div", { className: "subpanel" }, [
       el("h3", { text: "金幣與農場等級" }),
       el("div", { className: "controls" }, [
-        el("label", { className: "inline", text: "金幣 " }, [gold]),
+        el("label", { className: "inline", text: "金幣 " }, [mode, gold]),
         el("label", { className: "inline", text: "農場等級 " }, [level]),
         save,
       ]),
-      el("p", { className: "muted small", text: "直接設定數值；金幣差額會記入玩家交易紀錄。等級只影響品質加成，不會自動增減土地（土地請在下方調整）。" }),
+      el("p", { className: "muted small", text: "金幣可以直接設為某個數值，或增加／減少（建議用增減，不會蓋掉玩家這段期間的收支）；差額會記入玩家交易紀錄。等級只影響品質加成，不會自動增減土地（土地請在下方調整）。送出前會重新讀取最新數值，並要求填寫原因。" }),
     ]);
   }
 
@@ -2471,13 +2654,15 @@ if (typeof document !== "undefined") {
 
   async function loadPlayerAdmin() {
     const body = $("pa-body");
+    body.classList.remove("dirty"); // 重建畫面：未儲存的修改一併清除（離開前已確認）
     const pid = manage.playerId;
     if (!pid) { body.replaceChildren(el("p", { className: "muted", text: "請輸入玩家名稱或 ID，從建議清單選擇。" })); return; }
     try {
       if (!manage.catalog) await loadCatalog();
-      const [f, p] = await Promise.all([
+      const [f, p, g] = await Promise.all([
         fetchJson(`/api/monitor/players/${encodeURIComponent(pid)}/admin-farm`),
         sendAdminRequest("GET", `/api/admin/players/${encodeURIComponent(pid)}/progress`).catch((err) => err),
+        sendAdminRequest("GET", `/api/admin/players/${encodeURIComponent(pid)}/go-features`).catch((err) => err),
       ]);
       if (pid !== manage.playerId) return;
       const progress = p instanceof Error
@@ -2495,11 +2680,171 @@ if (typeof document !== "undefined") {
         el("div", { className: "pa-grid" }, [inventoryBlock(f, manage.catalog), plotsBlock(f, manage.catalog), ranchBlock(f, manage.catalog)]),
         el("h2", { text: "新功能（溫室、寵物、稱號、簽到、成就、圖鑑）" }),
         ...progress,
+        el("h2", { text: "Go 版新增功能（唯讀）" }),
+        ...(g instanceof Error ? [el("p", { className: "is-error", text: `Go 版新增功能資料載入失敗：${g.message}` })] : goFeatureBlocks(g)),
       );
     } catch (err) {
       body.replaceChildren(el("p", { className: "is-error", text: `玩家資料載入失敗：${err.message}` }));
     }
   }
+
+  // ---------- Go 版新增功能（唯讀檢視，2026-11-16） ----------
+  function plainTable(heads, rows, emptyText) {
+    return el("div", { className: "table-wrap" }, [el("table", {}, [
+      el("thead", {}, [el("tr", {}, heads.map((t) => el("th", { text: t })))]),
+      el("tbody", {}, rows.length ? rows : [emptyRow(emptyText, heads.length)]),
+    ])]);
+  }
+
+  const infoLine = (pairs) => el("p", { className: "info-line" },
+    pairs.filter(Boolean).flatMap(([k, v], i) => [
+      ...(i ? [document.createTextNode("　")] : []),
+      document.createTextNode(`${k} `), el("strong", { text: v }),
+    ]));
+
+  const LAB_KINDS = { cross: "🧬 雜交", mutate: "☢️ 突變研究", clone: "🌱 育苗" };
+  const readyText = (ready, at) => (ready ? "✅ 完成，等待領取" : `${fmtTime(at)} 完成`);
+
+  function goFeatureBlocks(g) {
+    const section = (key, title, build) => {
+      const box = el("div", {}, [el("h3", { text: title })]);
+      if (g.errors[key]) box.append(el("p", { className: "is-error", text: `讀取失敗：${g.errors[key]}` }));
+      else box.append(...build());
+      return box;
+    };
+    const lab = () => {
+      const l = g.lab;
+      if (!l.unlocked) return [el("p", { className: "muted", text: `尚未解鎖（農場 Lv.${l.unlock_level} 開放）。` })];
+      if (!l.built) return [el("p", { className: "muted", text: "已解鎖，尚未建造實驗室。" })];
+      return [
+        infoLine([["研究等級", `Lv.${l.lab_level}`], ["經驗", l.next_exp ? `${fmtNum(l.exp)} / ${fmtNum(l.next_exp)}` : `${fmtNum(l.exp)}（已滿級）`],
+          ["研究槽", `${l.slots - l.free_slots} / ${l.slots}（加購 ${l.extra_slots}）`],
+          ["種子庫", `${l.seeds.length} / ${l.capacity}（擴充 Lv.${l.library_level}）`], ["今天已分享", `${l.sent_today} 次`]]),
+        el("h4", { text: "研究槽" }),
+        plainTable(["槽", "類型", "種子", "結果", "狀態"], l.jobs.map((j) => el("tr", {}, [
+          td(`#${j.slot}`), td(LAB_KINDS[j.kind] || j.kind),
+          td(j.father ? `${j.mother} × ${j.father}` : j.mother, "wrap"),
+          td(j.kind === "clone" ? `${j.batches} 次` : j.result_name || "—"), td(readyText(j.ready, j.ready_at)),
+        ])), "沒有進行中的研究"),
+        el("h4", { text: "種子庫" }),
+        plainTable(["#", "種子", "基因", "代數", "突變", "狀態"], l.seeds.map((x) => el("tr", {}, [
+          td(x.id, "num"), td(x.hybrid ? `${x.crop_name}（雜交）` : x.crop_name), td(`${x.genes}（合計 ${x.gene_total}）`, "wrap"),
+          td(x.generation, "num"), td(x.mutation_name || "—"), td(x.busy ? "培育中" : "—"),
+        ])), "種子庫是空的"),
+      ];
+    };
+    const cellar = () => {
+      const c = g.cellar;
+      if (!c.unlocked) return [el("p", { className: "muted", text: `尚未解鎖（農場 Lv.${c.unlock_level} 開放）。` })];
+      return [
+        infoLine([["木屑", fmtNum(c.sawdust)], ["加速沙漏", fmtNum(c.hourglasses)]]),
+        plainTable(["菇床", "投入木屑", "狀態"], c.beds.map((b) => el("tr", {}, [
+          td(`#${b.no}`), td(b.sawdust, "num"), td(readyText(b.ready, b.ready_at)),
+        ])), "沒有種菇"),
+      ];
+    };
+    const exploration = () => {
+      const x = g.exploration;
+      const t = x.trip;
+      return [
+        el("p", { text: t ? `${t.emoji} ${t.area_name}：${t.finished ? "✅ 已回來，等待查看結果" : `探險中，${fmtTime(t.ends_at)} 回來`}` : "沒有進行中的探險。" }),
+        plainTable(["區域", "狀態", "探索次數", "下次可出發"], x.areas.map((a) => el("tr", {}, [
+          td(`${a.emoji} ${a.name}`), td(a.unlocked ? "已解鎖" : `Lv.${a.unlock_level} 開放`),
+          td(a.explore_count, "num"), td(a.next_at ? fmtTime(a.next_at) : "—"),
+        ])), "沒有區域"),
+      ];
+    };
+    const machines = () => [plainTable(["機器", "狀態"], g.machines.map((m) => el("tr", {}, [
+      td(`${m.emoji} ${m.name}`),
+      td(!m.owned ? (m.unlocked ? "未製作" : "未解鎖") : m.enabled ? "✅ 啟用" : "⏸️ 停用"),
+    ])), "沒有機器")];
+    const decor = () => [plainTable(["裝飾", "等級", "位置"], g.decor.map((d) => el("tr", {}, [
+      td(`${d.emoji} ${d.name}`), td(d.tier), td(d.slot || "收起來"),
+    ])), "沒有任何裝飾")];
+    const fish = () => {
+      const b = g.fish_basket;
+      const a = b.auto_fish;
+      let status = "沒有自動釣魚機";
+      if (a.owned) {
+        status = !a.enabled ? "⏸️ 停用" : a.paused ? "⚠️ 魚簍滿了，暫停中" : a.no_bait ? "⚠️ 沒有魚餌，暫停中"
+          : `✅ 運作中${a.next_at ? `，下一條 ${fmtTime(a.next_at)}` : ""}`;
+      }
+      return [
+        infoLine([["魚簍", `${fmtNum(b.count)} / ${fmtNum(b.capacity)} 條`], ["總價值", `${fmtNum(b.total_value)} 金`]]),
+        infoLine([["自動釣魚機", status],
+          a.owned ? ["加速", `Lv.${a.speed_level}`] : null,
+          a.owned ? ["魚餌", a.bait_name ? `${a.bait_name}（${a.bait_left < 0 ? "不消耗" : `還能釣 ${a.bait_left} 條`}）` : "沒有裝備"] : null,
+          a.owned && a.auto_sell ? ["自動販售", "開啟"] : null]),
+        ...(a.caught ? [el("p", { className: "muted small", text: `上面的魚簍數量已包含這次讀取時補算的 ${a.caught} 條（玩家下次打開面板時才會真的寫入）。` })] : []),
+      ];
+    };
+    return [
+      el("p", { className: "muted small", text: `以玩家下次打開面板時會看到的狀態計算（自動化會先模擬結算），不會寫入資料庫。讀取時間 ${fmtTime(g.read_at)}。` }),
+      el("div", { className: "pa-grid" }, [
+        section("lab", "🧪 種子實驗室", lab),
+        section("cellar", "🍄 地下菇房", cellar),
+        section("exploration", "⛰️ 山洞探險", exploration),
+        section("machines", "🔧 機器", machines),
+        section("decor", "🎨 庭院擺設", decor),
+        section("fish_basket", "🎣 魚簍與自動釣魚機", fish),
+      ]),
+    ];
+  }
+
+  // ---------- 群組：古代遺跡與日報（需要登入，2026-11-16） ----------
+  async function loadGroupExtras(id) {
+    const box = $("group-extras");
+    if (!extra.admin.loggedIn) {
+      box.replaceChildren(el("p", { className: "muted", text: "登入管理員後可以查看這個群組的古代遺跡與昨天的日報。" }));
+      return;
+    }
+    box.replaceChildren(el("p", { className: "muted", text: "讀取中…" }));
+    let x;
+    try {
+      x = await sendAdminRequest("GET", `/api/admin/groups/${encodeURIComponent(id)}/extras`);
+    } catch (err) {
+      if (id === extra.selectedGroupId) box.replaceChildren(el("p", { className: "is-error", text: `遺跡與日報載入失敗：${err.message}` }));
+      return;
+    }
+    if (id !== extra.selectedGroupId) return;
+    const ruins = el("div", {}, [el("h3", { text: "🏛️ 古代遺跡" })]);
+    if (x.errors.ruins) ruins.append(el("p", { className: "muted", text: x.errors.ruins }));
+    else {
+      const r = x.ruins;
+      ruins.append(infoLine([
+        ["進度", r.completed ? `✅ 已修復（${fmtTime(r.completed_at)}）` : `第 ${r.stage + 1} / ${r.stages} 階段「${r.stage_name || ""}」${r.percent}%`],
+        r.collapsed_at ? ["崩壞", fmtTime(r.collapsed_at)] : null,
+      ]));
+      if (r.materials.length) {
+        ruins.append(plainTable(["材料", "已捐獻", "需要"], r.materials.map((m) => el("tr", {}, [
+          td(m.name), td(fmtNum(m.donated), "num"), td(fmtNum(m.need), "num"),
+        ])), ""));
+      }
+      ruins.append(el("h4", { text: "捐獻排行" }), plainTable(["農場", "稱號", "捐獻"], r.top.map((c) => el("tr", {}, [
+        td(c.Name), td(c.Title || "—"), td(fmtNum(c.Quantity), "num"),
+      ])), "還沒有人捐獻"));
+      const gd = r.guardian;
+      if (gd) {
+        ruins.append(el("h4", { text: `🗿 ${gd.name}` }), infoLine([
+          ["狀態", gd.defeated ? "已擊敗" : gd.active ? "本週出現中" : "尚未出現"],
+          gd.active ? ["血量", `${fmtNum(Math.max(0, gd.hp_max - gd.damage))} / ${fmtNum(gd.hp_max)}`] : null,
+          gd.active ? ["本週結束", fmtTime(gd.ends_at)] : null,
+        ]));
+        if (gd.top.length) {
+          ruins.append(plainTable(["農場", "傷害"], gd.top.map((h) => el("tr", {}, [td(h.Name), td(fmtNum(h.Damage), "num")])), ""));
+        }
+      }
+    }
+    const news = el("div", {}, [el("h3", { text: "📰 昨天的日報" })]);
+    if (x.errors.news) news.append(el("p", { className: "is-error", text: `讀取失敗：${x.errors.news}` }));
+    else if (!x.news || x.news.empty) news.append(el("p", { className: "muted", text: "昨天沒有值得上報的消息。" }));
+    else news.append(el("p", { className: "muted small", text: `${dateFmt(x.news.day)}（玩家在 Discord 看到的內容，Markdown 原文）` }),
+      el("pre", { className: "news-text", text: x.news.text }));
+    box.replaceChildren(el("div", { className: "pa-grid" }, [ruins, news]));
+  }
+
+  const dateFmt = (iso) => new Intl.DateTimeFormat("zh-TW", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date(iso));
 
   function initManage() {
     $("ef-weekdays").append(...WEEKDAYS.map((name, i) => {
@@ -2514,13 +2859,35 @@ if (typeof document !== "undefined") {
     $("ef-submit").addEventListener("click", submitEvent);
     $("ef-reset").addEventListener("click", () => { resetEventForm(); clearDirty("event-form-box"); setNote("ef-note", ""); });
     $("crf-submit").addEventListener("click", submitCrop);
+    $("crf-grow").addEventListener("input", updateGrowText);
     $("crf-reset").addEventListener("click", () => { resetCropForm(); clearDirty("crop-form-box"); setNote("crf-note", ""); });
     $("atf-submit").addEventListener("click", submitAnimal);
     $("atf-reset").addEventListener("click", () => { resetAnimalForm(); clearDirty("animal-form-box"); setNote("atf-note", ""); });
     $("catalog-refresh").addEventListener("click", loadCatalog);
-    $("pa-refresh").addEventListener("click", loadPlayerAdmin);
-    $("fs-refresh").addEventListener("click", () => loadFeatureSettings(true));
-    $("pa-player").addEventListener("change", (e) => {
+    $("pa-refresh").addEventListener("click", async () => {
+      if (await confirmDiscard($("pa-body"), "重新載入")) loadPlayerAdmin();
+    });
+    // 重新載入會重建所有卡片：有未儲存的修改時先確認，避免直接丟掉
+    $("fs-refresh").addEventListener("click", async () => {
+      const dirty = [...document.querySelectorAll("details.feature-card.dirty")];
+      if (dirty.length) {
+        const names = dirty.map((d) => d.querySelector("summary strong")?.textContent.trim() || "").filter(Boolean);
+        const answer = await confirmDialog({
+          title: "放棄未儲存的修改？",
+          message: `${names.length ? names.join("、") : `${dirty.length} 張卡片`}有還沒儲存的修改，重新載入後這些修改會消失。`,
+          confirmText: "放棄修改並重新載入", danger: true,
+        });
+        if (!answer.ok) return;
+      }
+      loadFeatureSettings(true);
+    });
+    $("pa-player").addEventListener("focus", (e) => { manage.playerInput = e.target.value; });
+    $("pa-player").addEventListener("change", async (e) => {
+      if (!await confirmDiscard($("pa-body"), "換一位玩家")) {
+        e.target.value = manage.playerInput || ""; // 取消：恢復原本的玩家
+        return;
+      }
+      manage.playerInput = e.target.value;
       const pid = pickedPlayerId(e.target, extra.players);
       manage.playerId = pid || null;
       setNote("pa-note", pid === undefined ? "找不到這位玩家，請從建議清單選擇。" : "", pid === undefined ? "bad" : undefined);
@@ -3438,19 +3805,47 @@ if (typeof document !== "undefined") {
     $("wbs-equipment").value = s.effects.equipment_attack_pct;
     $("wbs-per-item").value = s.limits.per_item_max;
     $("wbs-per-action").value = s.limits.per_action_max;
-    $("wbs-items").value = Object.entries(s.items).map(([code, x]) => `${code} ${x.supply} ${x.points}`).join("\n");
+    $("wbs-items").replaceChildren(...Object.entries(s.items).map(([code, x]) => bossItemRow(code, x.supply, x.points)));
     fillBossRewards("wbr", v.rewards);
     for (const id of ["wb-basic-box", "wb-settings-box", "wb-rewards-box"]) clearDirty(id);
   }
 
+  // 指定物品的一列：物品＋補給類型＋積分（送出格式與原本相同：{代碼: {supply, points}}）
+  const BOSS_SUPPLY_OPTIONS = [["food", "糧食"], ["medical", "醫療"], ["combat", "戰鬥"], ["equipment", "裝備"]];
+  function bossItemRow(code, supply = "food", points = 1) {
+    const list = (boss.data && boss.data.defaults.donatable) || [];
+    const options = list.map((x) => [x.code, `${x.name}（${x.code}）`]);
+    if (code && !list.some((x) => x.code === code)) options.unshift([code, code]); // 保留清單外的既有代碼
+    const item = selectEl(null, options, code || (options[0] && options[0][0]));
+    item.className = "wbs-item-code";
+    item.setAttribute("aria-label", "物品");
+    const kind = selectEl(null, BOSS_SUPPLY_OPTIONS, supply);
+    kind.className = "wbs-item-supply";
+    kind.setAttribute("aria-label", "補給類型");
+    const pts = numInput(null, points, 0, 100000);
+    pts.classList.add("wbs-item-points");
+    pts.setAttribute("aria-label", "積分");
+    const row = el("div", { className: "controls wbs-item-row" }, [item, kind, el("span", { className: "muted small", text: "積分" }), pts]);
+    row.appendChild(smallButton("移除", () => {
+      row.remove();
+      $("wb-settings-box").classList.add("dirty");
+    }, "danger"));
+    return row;
+  }
+
   function bossSettingsBody() {
     const items = {};
-    $("wbs-items").value.split("\n").forEach((line, i) => {
-      const t = line.trim();
-      if (!t) return;
-      const m = t.match(/^([a-z][a-z0-9_]{1,31})\s+(food|medical|combat|equipment)\s+(\d+)$/);
-      if (!m) throw new Error(`指定物品第 ${i + 1} 行「${t}」格式不正確，請用「代碼 補給 積分」。`);
-      items[m[1]] = { supply: m[2], points: Number(m[3]) };
+    $("wbs-items").querySelectorAll(".wbs-item-row").forEach((row, i) => {
+      const code = row.querySelector(".wbs-item-code").value;
+      const pts = row.querySelector(".wbs-item-points");
+      const points = Number(pts.value);
+      if (!code) throw new Error(`指定物品第 ${i + 1} 列請選擇物品。`);
+      if (pts.value === "" || !Number.isInteger(points) || points < 0 || points > 100000) {
+        pts.focus();
+        throw new Error(`指定物品第 ${i + 1} 列的積分必須是 0–100,000 的整數。`);
+      }
+      if (items[code]) throw new Error(`指定物品「${code}」重複了，請移除其中一列。`);
+      items[code] = { supply: row.querySelector(".wbs-item-supply").value, points };
     });
     const num = (id) => Number($(id).value);
     return {
@@ -3623,6 +4018,14 @@ if (typeof document !== "undefined") {
         toast(`更新失敗：${err.message}`, "bad");
       }
     });
+    $("wbs-item-add").addEventListener("click", () => {
+      const box = $("wbs-items");
+      if (box.children.length >= 60) { toast("指定物品最多 60 項。", "bad"); return; }
+      const row = bossItemRow("", "food", 1);
+      box.appendChild(row);
+      $("wb-settings-box").classList.add("dirty");
+      row.querySelector("select").focus();
+    });
     $("wbs-submit").addEventListener("click", async () => {
       const v = boss.detail;
       if (!v || !validateForm($("wb-settings-box"))) return;
@@ -3727,7 +4130,7 @@ if (typeof document !== "undefined") {
       for (const [s, n] of pairs) {
         if (!s.value) continue;
         const q = Number(n.value);
-        if (!Number.isInteger(q) || q < 1) throw new Error(`${itemName(s.value)}的數量必須是 1 以上的整數。`);
+        if (!Number.isInteger(q) || q < 1) throw fieldError(`${itemName(s.value)}的數量必須是 1 以上的整數。`, n);
         out[s.value] = (out[s.value] || 0) + q;
       }
       return out;
@@ -3737,9 +4140,36 @@ if (typeof document !== "undefined") {
 
   const featureKey = (key) => features.data.keys.find((k) => k.key === key);
 
+  // 設定區塊的結果訊息：顯示在該區塊內（長區塊捲到底也看得到），錯誤同時跳出提示；有指定欄位時捲動並聚焦
+  function featureNote(card, text, kind, field) {
+    const note = card && card.querySelector(".fs-card-note");
+    if (note) {
+      note.textContent = text;
+      note.classList.toggle("ok", kind === "good");
+      note.classList.toggle("bad", kind === "bad");
+    } else {
+      setNote("fs-note", text, kind);
+    }
+    if (kind !== "bad") return;
+    toast(text, "bad");
+    const target = field && field.isConnected ? field : note;
+    if (!target) return;
+    if (field && field.isConnected) {
+      field.classList.add("invalid");
+      field.setAttribute("aria-invalid", "true");
+    }
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (field && field.isConnected) field.focus({ preventScroll: true });
+  }
+  // 區塊內新增／移除列等按鈕的錯誤：顯示在最近點擊的設定區塊
+  const featureError = (text, field) => featureNote(features.activeCard, text, "bad", field);
+  // 錯誤訊息附上對應的輸入欄位，方便捲動並聚焦
+  const fieldError = (message, field) => Object.assign(new Error(message), { field });
+  const featureCardEl = (key) => $("fs-body").querySelector(`[data-feature-key="${key}"]`);
+
   async function saveFeature(key, value, diff) {
     const k = featureKey(key);
-    if (!diff.length) { setNote("fs-note", `「${k.label}」沒有變更。`, "bad"); return; }
+    if (!diff.length) { featureNote(featureCardEl(key), `「${k.label}」沒有變更。`, "bad"); return; }
     const answer = await confirmDialog({
       title: `儲存「${k.label}」設定`, diff,
       message: "儲存後網站立即生效，Discord Bot 最晚 10 秒內套用；只影響之後的操作，已發出的獎勵不變。",
@@ -3748,13 +4178,13 @@ if (typeof document !== "undefined") {
     if (!answer.ok) return;
     try {
       await adminRequest("PUT", `/api/admin/feature-settings/${key}`, value);
-      setNote("fs-note", `「${k.label}」設定已儲存。`, "good");
-      toast(`「${k.label}」設定已儲存。`, "good");
-      await loadFeatureSettings(true);
     } catch (err) {
-      setNote("fs-note", `失敗：${err.message}`, "bad");
-      toast(err.message, "bad");
+      featureNote(featureCardEl(key), `失敗：${err.message}`, "bad");
+      return;
     }
+    setNote("fs-note", `「${k.label}」設定已儲存。`, "good");
+    toast(`「${k.label}」設定已儲存。`, "good");
+    await refreshFeatureCard(key, `「${k.label}」設定已儲存。`);
   }
 
   async function resetFeature(key) {
@@ -3766,13 +4196,13 @@ if (typeof document !== "undefined") {
     if (!answer.ok) return;
     try {
       await adminRequest("DELETE", `/api/admin/feature-settings/${key}`);
-      setNote("fs-note", `「${k.label}」已還原成預設值。`, "good");
-      toast(`「${k.label}」已還原成預設值。`, "good");
-      await loadFeatureSettings(true);
     } catch (err) {
-      setNote("fs-note", `失敗：${err.message}`, "bad");
-      toast(err.message, "bad");
+      featureNote(featureCardEl(key), `失敗：${err.message}`, "bad");
+      return;
     }
+    setNote("fs-note", `「${k.label}」已還原成預設值。`, "good");
+    toast(`「${k.label}」已還原成預設值。`, "good");
+    await refreshFeatureCard(key, `「${k.label}」已還原成預設值。`);
   }
 
   // 每個設定區塊：標題、狀態、內容與「儲存／還原預設」；collect() 回傳 [送出的值, 調整前後]，格式錯誤時丟出 Error
@@ -3782,17 +4212,27 @@ if (typeof document !== "undefined") {
     const save = smallButton("儲存", () => {
       if (!validateForm(card)) return;
       let result;
-      try { result = collect(); } catch (err) { setNote("fs-note", err.message, "bad"); return; }
+      try { result = collect(); } catch (err) { featureNote(card, err.message, "bad", err.field); return; }
       saveFeature(key, result[0], result[1]);
     }, "primary");
     const reset = smallButton("還原預設值", () => resetFeature(key), "danger");
     reset.disabled = k.is_default;
+    const note = el("p", { className: "form-note fs-card-note" });
+    note.setAttribute("role", "status");
+    note.setAttribute("aria-live", "polite");
     const card = el("details", { className: "subpanel feature-card" }, [
       el("summary", {}, [el("strong", { text: k.label }), document.createTextNode(" "), badge(k.is_default ? "預設" : "已自訂", k.is_default ? "muted" : "info")]),
       el("p", { className: "muted small", text: `${description}（${meta}）` }),
       body,
+      note,
       el("div", { className: "controls" }, [save, reset]),
     ]);
+    card.dataset.featureKey = key;
+    // 記住最近操作的區塊（錯誤訊息顯示位置）；區塊內新增／移除列也算未儲存的變更
+    card.addEventListener("click", (e) => {
+      features.activeCard = card;
+      if (body.contains(e.target) && e.target.closest("button")) card.classList.add("dirty");
+    }, true);
     return card;
   }
 
@@ -3805,7 +4245,7 @@ if (typeof document !== "undefined") {
     let editors = [];
     const readDays = () => editors.map(({ gold, items }, i) => {
       const g = Number(gold.value);
-      if (!Number.isInteger(g) || g < 0) throw new Error(`第 ${i + 1} 天的金幣必須是 0 以上的整數。`);
+      if (!Number.isInteger(g) || g < 0) throw fieldError(`第 ${i + 1} 天的金幣必須是 0 以上的整數。`, gold);
       return { gold: g, items: items.read() };
     });
     const render = () => {
@@ -3818,14 +4258,14 @@ if (typeof document !== "undefined") {
     render();
     const limit = features.data.limits.checkin_days;
     const add = smallButton("新增一天", () => {
-      try { days = readDays(); } catch (err) { setNote("fs-note", err.message, "bad"); return; }
-      if (days.length >= limit) { setNote("fs-note", `最多 ${limit} 天一輪。`, "bad"); return; }
+      try { days = readDays(); } catch (err) { featureError(err.message, err.field); return; }
+      if (days.length >= limit) { featureError(`最多 ${limit} 天一輪。`); return; }
       days.push({ gold: 0, items: {} });
       render();
     });
     const remove = smallButton("移除最後一天", () => {
-      try { days = readDays(); } catch (err) { setNote("fs-note", err.message, "bad"); return; }
-      if (days.length <= 1) { setNote("fs-note", "至少要有 1 天。", "bad"); return; }
+      try { days = readDays(); } catch (err) { featureError(err.message, err.field); return; }
+      if (days.length <= 1) { featureError("至少要有 1 天。"); return; }
       days.pop();
       render();
     });
@@ -4006,7 +4446,7 @@ if (typeof document !== "undefined") {
   const intIn = (input, label, min, max) => {
     const n = Number(input.value);
     if (!Number.isInteger(n) || n < min || (max !== undefined && n > max)) {
-      throw new Error(`${label}必須是 ${fmtNum(min)}${max !== undefined ? `–${fmtNum(max)}` : " 以上"} 的整數。`);
+      throw fieldError(`${label}必須是 ${fmtNum(min)}${max !== undefined ? `–${fmtNum(max)}` : " 以上"} 的整數。`, input);
     }
     return n;
   };
@@ -4040,7 +4480,7 @@ if (typeof document !== "undefined") {
     render();
     const add = smallButton(`新增${label}`, () => {
       rows = snapshot();
-      if (rows.length >= 30) { setNote("fs-note", `${label}最多 30 項。`, "bad"); return; }
+      if (rows.length >= 30) { featureError(`${label}最多 30 項。`); return; }
       rows.push({ item: options[0][0], min_level: 1, weight: 1, qty: [1, 1] });
       render();
     });
@@ -4081,7 +4521,7 @@ if (typeof document !== "undefined") {
     render();
     const add = smallButton("新增特殊事件", () => {
       rows = snapshot();
-      if (rows.length >= 10) { setNote("fs-note", "特殊事件最多 10 個。", "bad"); return; }
+      if (rows.length >= 10) { featureError("特殊事件最多 10 個。"); return; }
       let n = rows.length + 1;
       while (rows.some((r) => r.code === `event_${n}`)) n += 1;
       rows.push({ code: `event_${n}`, name: "✨ 新事件", description: "", min_level: 1, weight: 1, fake_coins: [0, 0], bonus: ["rare"] });
@@ -4373,7 +4813,7 @@ if (typeof document !== "undefined") {
     render();
     const add = smallButton("新增一級", () => {
       tiers = loose();
-      if (tiers.length >= maxLevels) { setNote("fs-note", `魚簍最多 ${maxLevels} 級。`, "bad"); return; }
+      if (tiers.length >= maxLevels) { featureError(`魚簍最多 ${maxLevels} 級。`); return; }
       const last = tiers[tiers.length - 1] || { capacity: 20, price: 10000 };
       tiers.push({ capacity: last.capacity + 20, price: last.price * 2 });
       render();
@@ -4520,9 +4960,40 @@ if (typeof document !== "undefined") {
     });
   }
 
+  const FEATURE_CARDS = [["checkin", checkinCard], ["pets", petsCard], ["special_shop", specialShopCard],
+    ["achievements", achievementsCard], ["exploration", explorationCard], ["mushroom", mushroomCard],
+    ["seedlab", seedlabCard], ["autofish", autofishCard], ["hourglass", hourglassCard]];
+
   function renderFeatureSettings() {
-    $("fs-body").replaceChildren(checkinCard(), petsCard(), specialShopCard(), achievementsCard(), explorationCard(), mushroomCard(),
-      seedlabCard(), autofishCard(), hourglassCard());
+    $("fs-body").replaceChildren(...FEATURE_CARDS.map(([, build]) => build()));
+  }
+
+  // 儲存／還原後重新讀取設定：該區塊與其他沒有未儲存修改的區塊都更新（保留展開狀態），有未儲存修改的區塊不受影響
+  async function refreshFeatureCard(key, message) {
+    try {
+      features.data = await sendAdminRequest("GET", "/api/admin/feature-settings");
+    } catch (err) {
+      featureNote(featureCardEl(key), `已送出，但重新載入設定失敗：${err.message}`, "bad");
+      return;
+    }
+    const old = featureCardEl(key);
+    const entry = FEATURE_CARDS.find(([k]) => k === key);
+    if (!old || !entry) { renderFeatureSettings(); return; }
+    // 儲存的那張一定重建；其他沒有未儲存修改的卡片也換成最新設定（例如別的管理員剛改過），
+    // 有未儲存修改的卡片保留使用者正在編輯的內容，只提示不是最新設定。展開狀態都保留。
+    for (const [k, build] of FEATURE_CARDS) {
+      const card = featureCardEl(k);
+      if (!card) continue;
+      if (k !== key && card.classList.contains("dirty")) {
+        featureNote(card, "這張卡有未儲存的修改，畫面上不是最新設定；儲存或按「重新載入」後會更新。", "");
+        continue;
+      }
+      const fresh = build();
+      fresh.open = card.open;
+      card.replaceWith(fresh);
+      if (features.activeCard === card) features.activeCard = fresh;
+      if (k === key) featureNote(fresh, message, "good");
+    }
   }
 
   async function loadFeatureSettings(force = false) {

@@ -93,7 +93,8 @@ func siteOptions(s config.Settings, svc *services.SiteService) site.Options {
 	if support == "" { // 沒設定或空值時用官方 Discord 群組
 		support = config.OfficialGuildURL
 	}
-	music := site.Music{Enabled: s.MusicEnabled, PrefixCommands: s.MusicPrefixCommands, Prefix: s.MusicPrefix,
+	// Go 版音樂只有斜線指令（MUSIC_PREFIX_COMMANDS 不再使用），所以 PrefixCommands 固定為 false
+	music := site.Music{Enabled: s.MusicEnabled, PrefixCommands: false, Prefix: s.MusicPrefix,
 		PlaylistLimit: s.MusicPlaylistLimit, IdleTimeout: s.MusicIdleTimeout, Volume: s.MusicVolume}
 	if s.MusicBotConfigured { // 音樂改用獨立 Bot 時才有音樂 Bot 的邀請連結
 		music.ApplicationID = s.MusicApplicationID

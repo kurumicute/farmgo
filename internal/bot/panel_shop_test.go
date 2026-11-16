@@ -109,7 +109,7 @@ func TestSellTickedItems(t *testing.T) {
 	e.setInventory(pid, "tomato", 2)
 	p.goPage("sell")
 	gold := e.gold(pid)
-	keys := p.options("勾選多項")
+	keys := p.options("選擇要賣的東西")
 	pickKey := func(sub string) string {
 		i := slices.IndexFunc(keys, func(k string) bool { return strings.Contains(k, sub) })
 		if i < 0 {
@@ -125,7 +125,7 @@ func TestSellTickedItems(t *testing.T) {
 	if !hasSellButton() {
 		t.Fatal(p.labels())
 	}
-	p.chooseMany("勾選多項", []string{wheat, carrot})
+	p.chooseMany("選擇要賣的東西", []string{wheat, carrot})
 	if hasSellButton() {
 		t.Fatal(p.labels())
 	}
@@ -135,7 +135,7 @@ func TestSellTickedItems(t *testing.T) {
 	}
 	// 勾選在重繪後仍顯示為已選取
 	var ticked []string
-	for _, o := range p.selectMenu("勾選多項").Options {
+	for _, o := range p.selectMenu("選擇要賣的東西").Options {
 		if o.Default {
 			ticked = append(ticked, o.Value)
 		}
@@ -150,13 +150,13 @@ func TestSellTickedItems(t *testing.T) {
 	if strings.Contains(p.Text, "已勾選") {
 		t.Fatal(p.Text)
 	}
-	p.chooseMany("勾選多項", []string{wheat, carrot})
+	p.chooseMany("選擇要賣的東西", []string{wheat, carrot})
 	p.click("確認賣出 2 項")
 	contains(t, p.Text, "賣出 8 個商品")
 	if strings.Contains(p.Text, "已勾選") || e.gold(pid) <= gold {
 		t.Fatal(p.Text)
 	}
-	left := strings.Join(p.options("勾選多項"), " ")
+	left := strings.Join(p.options("選擇要賣的東西"), " ")
 	if !strings.Contains(left, "tomato") || strings.Contains(left, "wheat") || strings.Contains(left, "carrot") { // 沒勾的留著
 		t.Fatal(left)
 	}
@@ -170,7 +170,7 @@ func TestSellTickedSellsShownQuantityAndReportsFailures(t *testing.T) {
 	e.setInventory(pid, "wheat", 5)
 	e.setInventory(pid, "carrot", 3)
 	p.goPage("sell")
-	p.chooseMany("勾選多項", p.options("勾選多項"))
+	p.chooseMany("選擇要賣的東西", p.options("選擇要賣的東西"))
 	e.setInventory(pid, "wheat", 9)  // 確認前多出來的不賣
 	e.setInventory(pid, "carrot", 1) // 確認前變少的不會賣成負數
 	p.click("確認賣出 2 項")
@@ -274,7 +274,8 @@ func TestPanelRecordsOpenGotoAndAct(t *testing.T) {
 	for _, r := range e.cmds.Latency.Summary() {
 		names[r.Name] = r.Count
 	}
-	if names["開啟面板"] != 1 || names["換頁 shop"] != 1 || names["換頁 main"] != 1 {
+	// makePlayer 建立農場後先到農田頁再回總覽（2026-11-16），所以總覽換頁 2 次（makePlayer 1 次＋回總覽 1 次）
+	if names["開啟面板"] != 1 || names["換頁 shop"] != 1 || names["換頁 main"] != 2 {
 		t.Fatal(names)
 	}
 	acted := false
@@ -309,5 +310,24 @@ func TestShopSeedPages(t *testing.T) {
 	contains(t, p.Text, "🌰 種子（第 1/")
 	if strings.Contains(p.Text, "已選擇") {
 		t.Fatal("換分類時取消選取")
+	}
+}
+
+// 保留選取的商品（Keep）買完後依最新金幣重算：買不起時改成停用的「金幣不足」說明按鈕（2026-11-16）。
+func TestShopKeptPickerRechecksGold(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "玩家")
+	pid := p.panel.playerID
+	p.goPage("shop")
+	key := p.options("選擇要買的")[0]
+	code := strings.TrimPrefix(key, "seed:")
+	price := int(e.scalar(`SELECT seed_price FROM crop_types WHERE code = $1`, code).(int32))
+	e.setGold(pid, price+price/2)
+	p.goPage("shop")
+	p.choose("選擇要買的", key)
+	p.click("買 1")
+	b := p.button("金幣不足")
+	if !b.Disabled {
+		t.Fatalf("買完後金幣不夠再買 1 個，應顯示停用的金幣不足按鈕：%v", p.labels())
 	}
 }

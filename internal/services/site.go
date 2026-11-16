@@ -23,6 +23,7 @@ import (
 	"farmgm/internal/game/autofish"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/checkin"
+	"farmgm/internal/game/decor"
 	eventrules "farmgm/internal/game/events"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/fishing"
@@ -311,6 +312,7 @@ var guideKeys = []guideKey{
 		}
 		return mutations, nil
 	}},
+	{"decor", nil, func(*guideEnv) (any, error) { return guideOK(decorGuide()) }}, // 2026-11-16：庭院擺設的等級與價格
 	{"items", nil, func(e *guideEnv) (any, error) {
 		items := []map[string]any{}
 		for _, code := range balance.ItemOrder {
@@ -426,7 +428,7 @@ var GuideParts = map[string][]string{
 	"summary":      {"cards"},
 	"farm":         {"start", "crops", "seasons"},
 	"genetics":     {"genetics_version", "qualities", "level_bonus_pct", "level_bonus_max_pct", "mutations"},
-	"shop":         {"start", "items"},
+	"shop":         {"start", "items", "decor"},
 	"ranch":        {"start", "buildings", "animals"},
 	"craft":        {"start", "recipes", "craft"},
 	"fishing":      {"fishing"},
@@ -1144,4 +1146,25 @@ func buildMushroom(names map[string]string) map[string]any {
 	return map[string]any{"unlock_level": cfg.UnlockLevel, "beds": mushroom.BedCount, "grow_seconds": cfg.GrowSeconds,
 		"yield_per_bed": cfg.YieldPerBed, "max_sawdust": mushroom.MaxSawdust, "nutrients": nutrients, "rare": rare,
 		"sawdust_drop": sawdust}
+}
+
+// decorGuide 庭院擺設依等級分組：[{emoji, name, price, items}]（同一等級價格相同；不同時取最低價）。
+func decorGuide() []map[string]any {
+	out := []map[string]any{}
+	for _, tier := range []decor.Tier{decor.Common, decor.Fine, decor.Rare, decor.Festival} {
+		names, price := []string{}, 0
+		for _, it := range decor.Catalog {
+			if it.Tier != tier {
+				continue
+			}
+			names = append(names, it.Name)
+			if price == 0 || it.Price < price {
+				price = it.Price
+			}
+		}
+		if len(names) > 0 {
+			out = append(out, map[string]any{"emoji": tier.Emoji, "name": tier.Name, "price": price, "items": names})
+		}
+	}
+	return out
 }

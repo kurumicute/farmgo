@@ -84,13 +84,14 @@ func (p *Panel) buildCellar(_ context.Context, data any) (*ui.Embed, error) {
 		if s.Rare {
 			mark = "✨"
 		}
-		prices = append(prices, fmt.Sprintf("%s%s %d", mark, s.Name, balance.Goods[code].SellPrice))
+		prices = append(prices, fmt.Sprintf("%s%s %s", mark, s.Name, money(balance.Goods[code].SellPrice)))
 	}
+	// 2026-11-16 解鎖後不再每次顯示整段介紹（未解鎖畫面與說明頁仍有完整介紹），只留一句；菇床狀態放在最後，貼近按鈕
 	e.Description = sections(
-		cellarIntro(v.CropNames),
+		"🍄 長出什麼菇看上方農田種的作物；投入🪵木屑可以提高稀有菇機率。",
 		Section{Title: "上方農田的養分", Lines: nutrients},
-		Section{Title: "菇床", Lines: beds},
 		fmt.Sprintf("🪵 持有木屑 **%d** 個　💰 售價：%s", v.Sawdust, strings.Join(prices, "、")),
+		Section{Title: "菇床", Lines: beds},
 	)
 	e.Footer = "實際長出的菇在收成時依當下的作物擲骰；菇可以直接賣，或在烘焙坊做成料理。"
 	p.attachImage(e, p.image("地下菇房", func() ([]byte, error) {

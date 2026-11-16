@@ -43,6 +43,40 @@ func pageOf[T any](items []T, page int) ([]T, int, int) {
 	return items[min(len(items), page*ui.MaxOptions):min(len(items), (page+1)*ui.MaxOptions)], page, pages
 }
 
+// 選單內翻頁的選項值。
+const (
+	pagePrev = "__page_prev"
+	pageNext = "__page_next"
+)
+
+// pagedOptions 選單內翻頁：超過 25 項時每頁 23 項，第一項「上一頁」、最後一項「下一頁」（翻頁不用另外佔一列按鈕，
+// 也一定緊貼在對應的選單上）。回傳這一頁的選項、修正後的頁碼與總頁數。
+func pagedOptions(all []option, page int) ([]option, int, int) {
+	if len(all) <= ui.MaxOptions {
+		return all, 0, 1
+	}
+	size := ui.MaxOptions - 2
+	pages := pageCount(len(all), size)
+	page = max(0, min(page, pages-1))
+	prev, next := (page-1+pages)%pages+1, (page+1)%pages+1
+	out := []option{{fmt.Sprintf("上一頁：翻到第 %d 頁（目前第 %d/%d 頁）", prev, page+1, pages), pagePrev, "選這項只會翻頁", "◀️"}}
+	out = append(out, all[page*size:min(len(all), (page+1)*size)]...)
+	return append(out, option{fmt.Sprintf("下一頁：翻到第 %d 頁（目前第 %d/%d 頁）", next, page+1, pages), pageNext, "選這項只會翻頁", "▶️"}), page, pages
+}
+
+// turnPage 選到選單內的翻頁選項時更新頁碼（循環）並回傳 true。
+func turnPage(value string, page *int, pages int) bool {
+	switch value {
+	case pagePrev:
+		*page = ((*page-1)%pages + pages) % pages
+	case pageNext:
+		*page = (*page + 1) % pages
+	default:
+		return false
+	}
+	return true
+}
+
 // pageSlice 每頁 size 項時第 page 頁的內容、修正後的頁碼與總頁數（文字清單分頁用，例如紀錄、價目表）。
 func pageSlice[T any](items []T, page, size int) ([]T, int, int) {
 	pages := pageCount(len(items), size)
@@ -145,7 +179,7 @@ func seedLine(s services.LabSeedView) string {
 }
 
 func seedOptionLabel(s services.LabSeedView) string {
-	return fmt.Sprintf("#%d %s 第 %d 代", s.ID, s.CropName, s.Generation)
+	return fmt.Sprintf("%s 第 %d 代", s.CropName, s.Generation) // 同名種子以說明欄的基因星等區分，不顯示資料庫編號
 }
 
 func seedOptionDesc(s services.LabSeedView) string {
@@ -254,14 +288,14 @@ func (p *Panel) buildLab(_ context.Context, data any) (*ui.Embed, error) {
 	if len(v.ReceivedFrom) > 0 {
 		share += "　今天收到：" + strings.Join(v.ReceivedFrom, "、")
 	}
+	// 研究槽（哪些可以領取、還要多久）放在最後，貼近「領取」按鈕
 	e.Description = sections(
 		levelLine,
-		Section{Title: "研究槽", Lines: slots},
 		fmt.Sprintf("🌰 種子庫 %d／%d 顆（培育中 %d）　%s", len(v.Seeds), v.Capacity, busy, share),
 		"🧰 "+labMaterialLine(v, seedlab.MatResin, seedlab.MatHerb, seedlab.MatCrystal, seedlab.MatAncientCore),
-		Section{Title: "特殊種子怎麼來", Lines: labSeedSources()},
+		Section{Title: "研究槽", Lines: slots},
 	)
-	e.Footer = "研究在背景計時，完成後回來按「領取」。鑑定：一般種子 → 特殊種子（有基因）。"
+	e.Footer = "研究在背景計時，完成後回來按「領取」。看不懂術語？按「📖 實驗室說明」。"
 
 	p.button(fmt.Sprintf("領取（%d）", v.ReadyCount), func(ctx context.Context, it ui.Interaction) error {
 		p.act(ctx, it, p.call("collect_lab", func(ctx context.Context) (services.ActionResult, error) {
@@ -315,8 +349,38 @@ func (p *Panel) buildLab(_ context.Context, data any) (*ui.Embed, error) {
 			return nil
 		}, 2, "")
 	}
+	p.nav("實驗室說明", "lab_help", btn{emoji: "📖", row: 3})
 	p.nav("回農田", "plots", btn{emoji: "🌱", row: 3})
 	p.navBack(3)
+	return e, nil
+}
+
+// buildLabHelp 實驗室說明：術語、基因效果、遺傳機率與特殊種子的取得方式集中在這裡，其他頁面只留操作需要的一句話。
+func (p *Panel) buildLabHelp(_ context.Context, _ any) (*ui.Embed, error) {
+	c := seedlab.Current()
+	two, three := seedlab.CloneChanceBP(false)
+	e := &ui.Embed{Title: "📖 ✦ 實驗室說明 ✦", Color: Teal, Description: runes(sections(
+		labIntro(),
+		Section{Title: "名詞", Lines: []string{
+			"♀ **母本**：培育時保留的那顆種子，完成後放回種子庫",
+			"♂ **父本**：培育時會被用掉的那顆種子",
+			"🧬 **雜交**：兩種不同作物配對，成功會得到全新的雜交作物",
+			"🔧 **改良**：同一種作物配對，一定成功，用來提升基因",
+			"🔢 **世代**：培育出的新種子 = 兩顆種子中較大的世代 + 1",
+			"☢️ **突變**：讓種子帶上夜光、豐收等特性，之後培育會一直傳下去",
+		}},
+		Section{Title: "基因效果（1 級沒有加成）", Lines: strings.Split(strings.ReplaceAll(geneEffects(), "　", "\n"), "\n")},
+		Section{Title: "培育時基因怎麼決定", Lines: []string{
+			fmt.Sprintf("每個基因有 %s%% 機率直接拿兩顆中**較高**的那個，其餘母本、父本各一半機率", bpPct(c.DominantBP)),
+			fmt.Sprintf("之後再有 %s%% 機率升 1 級、%s%% 機率降 1 級", bpPct(c.GeneUpBP), bpPct(c.GeneDownBP)),
+		}},
+		Section{Title: "育苗", Lines: []string{
+			fmt.Sprintf("付金幣複製同基因、同世代的種子，每次 1–3 顆（2 顆以上 %s%%、3 顆 %s%%；加藥草更高），不含突變", bpPct(two), bpPct(three)),
+		}},
+		Section{Title: "特殊種子怎麼來", Lines: labSeedSources()},
+	), 4000)}
+	p.labNav(0)
+	p.navBack(0)
 	return e, nil
 }
 
@@ -390,7 +454,7 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 	p.lab.seedPage = page
 	var lines []string
 	for _, s := range pageSeeds {
-		lines = append(lines, fmt.Sprintf("`#%d` %s", s.ID, seedLine(s)))
+		lines = append(lines, seedLine(s))
 	}
 	sel := findSeed(v, p.lab.seed)
 	if sel != nil && sel.Busy {
@@ -416,19 +480,17 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 			detail = append(detail, "⚠️ 農田目前沒有空地：收成後空出來的土地就能種下這顆種子。")
 		}
 		if v.Built {
-			two, three := seedlab.CloneChanceBP(false)
-			detail = append(detail, fmt.Sprintf("🌱 育苗：每次 %s 金幣、約 %s，得到 1–3 顆同基因、同世代的種子（2 顆以上 %s%%、3 顆 %s%%；加藥草更高，不含突變），可以一次排程好幾次。",
-				money(seedlab.CloneFee(sel.Genes)), services.LongDuration(int(seedlab.CloneDuration(1).Seconds())), bpPct(two), bpPct(three)))
-			detail = append(detail, fmt.Sprintf("☢️ 突變研究成功率 %s%%（使用古代核心 %s%%），需要💎水晶 ×%d，約 %s。",
+			detail = append(detail, fmt.Sprintf("🌱 育苗：%s 金、約 %s，得到 1–3 顆同基因的種子",
+				money(seedlab.CloneFee(sel.Genes)), services.LongDuration(int(seedlab.CloneDuration(1).Seconds()))))
+			detail = append(detail, fmt.Sprintf("☢️ 突變研究：成功率 %s%%（加古代核心 %s%%），💎水晶 ×%d、約 %s",
 				bpPct(seedlab.MutateChanceBP(sel.Genes.Mutation, false)), bpPct(seedlab.MutateChanceBP(sel.Genes.Mutation, true)),
 				cfg.MutateCrystal, services.LongDuration(int(seedlab.MutateDuration().Seconds()))))
 		}
 		parts = append(parts, Section{Title: "選取的種子", Lines: detail})
 	}
-	parts = append(parts, geneEffects())
 	e.Description = runes(sections(parts...), 4000)
-	e.Footer = fmt.Sprintf("種下特殊種子後收成，有 %s%% 機率取回 1 顆同基因的種子。分享：每天最多送出 %d 顆，每人每天只能收 %d 位玩家的分享（對方沒有實驗室也能收）。",
-		bpPct(cfg.InheritBP), cfg.ShareSendPerDay, cfg.ShareReceiveSenders)
+	e.Footer = fmt.Sprintf("收成特殊種子有 %s%% 機率取回 1 顆。每天最多分享 %d 顆給朋友。",
+		bpPct(cfg.InheritBP), cfg.ShareSendPerDay)
 
 	var options []option
 	for _, s := range pageSeeds {
@@ -668,16 +730,15 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 		code, bp, _ := plan.Result()
 		switch {
 		case mother.CropCode == father.CropCode:
-			preview = append(preview, fmt.Sprintf("➡️ 改良基因：**%s**　成功率 100%%　約 %s", name(code),
+			preview = append(preview, fmt.Sprintf("➡️ 改良基因（同品種）：**%s**　成功率 100%%　約 %s", name(code),
 				services.LongDuration(int(plan.Duration().Seconds()))))
-			preview = append(preview, "♀ 完成後母本放回種子庫，只消耗父本。")
 		case services.CrossKnown(mother.CropCode, father.CropCode, v.KnownHybrids):
 			preview = append(preview, fmt.Sprintf("➡️ 雜交：**%s**　成功率 %s%%　約 %s", name(code), fmtPct(float64(bp)/100),
 				services.LongDuration(int(plan.Duration().Seconds()))),
-				fmt.Sprintf("失敗時得到%s種子（基因照樣繼承），培育材料退回。完成後母本放回種子庫，只消耗父本。", mother.CropName))
+				fmt.Sprintf("失敗時得到%s種子，材料退回。", mother.CropName))
 		default:
 			preview = append(preview, "➡️ 試驗雜交：**❔ 結果未知**（成功率、時間培育後才知道）",
-				fmt.Sprintf("如果這兩種不能雜交或雜交失敗，會得到%s種子（基因照樣繼承），培育材料退回。完成後母本放回種子庫，只消耗父本。", mother.CropName))
+				fmt.Sprintf("不能雜交或失敗時得到%s種子，材料退回。", mother.CropName))
 		}
 	} else {
 		preview = append(preview, "先選母本，再選父本。不同品種的組合要自己試驗，成功雜交出新作物就會記進配方表。")
@@ -708,16 +769,14 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 	if hidden := len(hybrids) - found; hidden > 0 {
 		table = append(table, fmt.Sprintf("❔ 還有 **%d** 種配方沒有發現：把兩種**不同的一般作物或稀有作物**配對試試看！", hidden))
 	}
-	tableTitle := fmt.Sprintf("雜交配方（已發現 %d/%d；同品種一定可以配對，用來改良基因）", found, len(hybrids))
+	tableTitle := fmt.Sprintf("雜交配方（已發現 %d/%d）", found, len(hybrids))
 	e.Description = runes(sections(
 		Section{Title: "這次培育", Lines: preview},
 		Section{Title: "培育材料", Lines: mats},
 		"🧰 "+labMaterialLine(v, seedlab.MatResin, seedlab.MatHerb, seedlab.MatCrystal),
 		Section{Title: tableTitle, Lines: table},
 	), 4000)
-	e.Footer = fmt.Sprintf("每個基因 %s%% 直接繼承較高的親本（優勢遺傳），其餘母本、父本各半；再有 %s%% 升級、%s%% 退化；"+
-		"世代 = 較大的世代 + 1。只消耗父本，母本放回種子庫。研究槽空 %d 個。",
-		bpPct(seedlab.Current().DominantBP), bpPct(seedlab.Current().GeneUpBP), bpPct(seedlab.Current().GeneDownBP), v.FreeSlots)
+	e.Footer = fmt.Sprintf("♂ 父本會被用掉，♀ 母本保留。研究槽空 %d 個。基因怎麼遺傳見「📖 實驗室說明」。", v.FreeSlots)
 
 	var mothers []option
 	for _, s := range v.Seeds {
@@ -729,16 +788,22 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 	if mother != nil {
 		selected = fmt.Sprint(mother.ID)
 	}
-	// 種子超過 25 顆時分頁：母本、父本選單各有一組翻頁按鈕（母本在最後一列，選好母本後仍可翻頁改選）
-	mothers, mPage, mPages := pageOf(mothers, st.motherPage)
+	// 種子超過 25 顆時分頁：翻頁放在選單裡（第一項「上一頁」、最後一項「下一頁」），不再另外佔用按鈕列
+	mothers, mPage, mPages := pagedOptions(mothers, st.motherPage)
 	st.motherPage = mPage
-	fPages := 0 // 父本選單的總頁數（還沒選母本時沒有父本選單）
 	mHolder := "♀ 選擇母本…"
 	if mPages > 1 {
 		mHolder = fmt.Sprintf("♀ 選擇母本（第 %d/%d 頁）…", mPage+1, mPages)
+		if mother != nil {
+			// 2026-11-16 選好母本後選單只顯示已選的種子、看不到頁碼，玩家不知道怎麼改選其他頁的種子
+			e.Description += fmt.Sprintf("\n\n🔄 母本選單共 %d 頁（目前第 %d 頁）：要改選其他頁的種子，打開母本選單，選最上面的「上一頁」或最下面的「下一頁」。",
+				mPages, mPage+1)
+		}
 	}
 	p.selectMenu(mHolder, mothers, func(ctx context.Context, it ui.Interaction, value string) error {
-		st.mother, _ = strconv.ParseInt(value, 10, 64)
+		if !turnPage(value, &st.motherPage, mPages) {
+			st.mother, _ = strconv.ParseInt(value, 10, 64)
+		}
 		p.goTo(ctx, it, "lab_cross", "")
 		return nil
 	}, 0, selected)
@@ -765,15 +830,16 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 			fathers = nil
 			e.Description += "\n\n⚠️ 種子庫沒有其他可以配對的種子。"
 		}
-		var fPage int
-		fathers, fPage, fPages = pageOf(fathers, st.fatherPage)
+		fathers, fPage, fPages := pagedOptions(fathers, st.fatherPage)
 		st.fatherPage = fPage
 		fHolder := "♂ 選擇父本…"
 		if fPages > 1 {
 			fHolder = fmt.Sprintf("♂ 選擇父本（第 %d/%d 頁）…", fPage+1, fPages)
 		}
 		p.selectMenu(fHolder, fathers, func(ctx context.Context, it ui.Interaction, value string) error {
-			st.father, _ = strconv.ParseInt(value, 10, 64)
+			if !turnPage(value, &st.fatherPage, fPages) {
+				st.father, _ = strconv.ParseInt(value, 10, 64)
+			}
 			p.goTo(ctx, it, "lab_cross", "")
 			return nil
 		}, 1, fsel)
@@ -818,9 +884,7 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 		}), actOpts{page: "lab", noProgress: true})
 		return nil
 	}, btn{emoji: "🧬", style: ui.Success, row: 3, disabled: mother == nil || father == nil || v.FreeSlots == 0})
-	p.pageButtons("父本", &st.fatherPage, fPages, 3, "lab_cross")
 	p.labNav(4)
-	p.pageButtons("母本", &st.motherPage, mPages, 4, "lab_cross")
 	return e, nil
 }
 

@@ -280,15 +280,19 @@ func (m *Music) nowPlayingEmbed(g *guildState) *ui.Embed {
 		req = "<@" + song.RequesterID + ">"
 	}
 	e.AddField("點播", req, true)
-	e.AddField("音量", fmt.Sprintf("%.0f%%", g.volume*100), true)
-	e.AddField("循環", loopLabels[g.loop], true)
 	next := "無"
 	if len(g.queue) > 0 {
 		next = g.queue[0].Title
 	}
 	e.AddField(fmt.Sprintf("下一首（剩 %d 首）", len(g.queue)), escape(short(next, 100)), true)
 	e.Thumbnail = song.Thumbnail
-	e.Footer, e.FooterIcon = m.dc.Guild(g.guildID)
+	// 2026-11-16：播放狀態、音量、循環放在 footer，緊貼下方的控制按鈕（原本在最上方）
+	guildName, icon := m.dc.Guild(g.guildID)
+	e.Footer = fmt.Sprintf("%s · 音量 %.0f%% · 循環：%s", status, g.volume*100, loopLabels[g.loop])
+	if guildName != "" {
+		e.Footer += " · " + guildName
+	}
+	e.FooterIcon = icon
 	return e
 }
 
@@ -546,6 +550,7 @@ func (m *Music) clearNP(ctx context.Context, g *guildState) {
 	np.view.Stop()
 	e := *np.embed
 	e.AuthorName, e.Description = "✔️ 已播放", ""
+	e.Footer, _ = m.dc.Guild(g.guildID) // 已播放：拿掉播放狀態與音量
 	if err := np.edit(ctx, ui.Message{Embed: &e, View: ui.NewView(0)}); err != nil {
 		m.log.Debug("更新已播放訊息失敗", "type", fmt.Sprintf("%T", err))
 	}
