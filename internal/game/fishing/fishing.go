@@ -153,12 +153,13 @@ var FishIntents = map[string]FishIntent{
 	"tired":    {-8, 0, 0},
 }
 
+// IntentText 魚的動作提示（2026-11-16 Go 版改寫：原本只描述魚的狀態，改成直接寫出該按哪顆按鈕，按鈕名稱與表情和面板相同）。
 var IntentText = map[string]string{
-	"calm":     "🌊 魚很平靜，現在收線正好！",
-	"struggle": "💦 魚在掙扎，小心張力。",
-	"surge":    "⚡ 魚準備衝刺！",
-	"strong":   "💥 魚正在猛烈掙扎，就要強力衝刺了！",
-	"tired":    "😮‍💨 魚累了，快收線！",
+	"calm":     "🌊 魚很平靜　⭐ 按「🎣 收線」最划算！",
+	"struggle": "💦 魚在掙扎　⭐ 可以「🎣 收線」，張力快滿時改按「⏳ 等待」",
+	"surge":    "⚡ 魚準備衝刺！⭐ 先按「⏳ 等待」或「↩️ 放線」，這時收線張力升很快",
+	"strong":   "💥 魚要強力衝刺了！⭐ 先按「⏳ 等待」或「↩️ 放線」，這時收線很容易斷線",
+	"tired":    "😮‍💨 魚累了　⭐ 快按「🎣 收線」！",
 }
 
 // 拉扯（2026-11-10 簡化）：每條魚要「成功拉幾下」才上岸，依稀有度在範圍內隨機（成功收線或壓對方向各算 1 下）。
@@ -185,7 +186,11 @@ var DodgeHit = struct{ Tension float64 }{-15}
 // DodgeMiss 沒壓中（按錯方向或其他操作）：張力暴增、魚被拉遠、不算進度
 var DodgeMiss = struct{ Tension, Distance float64 }{18, 8}
 
-var DodgeText = map[string]string{"left": "⬅️ 魚猛然往左邊竄！快往同方向壓竿！", "right": "➡️ 魚猛然往右邊竄！快往同方向壓竿！"}
+// DodgeText 魚竄向一邊（2026-11-16 Go 版改寫：寫清楚要按哪顆按鈕、按錯的後果）。
+var DodgeText = map[string]string{
+	"left":  "⬅️⬅️ 魚往【左邊】竄！⭐ 只能按「⬅️ 左壓」，按其他鍵都會被扯！",
+	"right": "➡️➡️ 魚往【右邊】竄！⭐ 只能按「➡️ 右壓」，按其他鍵都會被扯！",
+}
 
 // 防腳本：只影響能不能拋竿，不扣金幣或魚。
 // GuardEnabled 測試預設關閉（ManualClock 的操作間隔都是 0），防腳本測試自行開啟。

@@ -161,6 +161,7 @@
 - **特殊種子選單分頁（2026-11-16）**：農田頁「勾選特殊種子」以前只列前 25 顆，後面的種子種不到；改成和雜交頁一樣在選單內翻頁（第一項「上一頁」、最後一項「下一頁」，同時勾了種子和翻頁選項時只種種子）。選單內翻頁選項的文字改成「上一頁：翻到第 N 頁（目前第 X/Y 頁）」；雜交頁選好母本後（選單只顯示已選的種子、看不到頁碼），說明最下方提示母本選單共幾頁、怎麼改選其他頁的種子。
 - **審查修正（2026-11-16）**：footer 不再顯示名稱的跳脫反斜線（`plainText` 還原 `escapeMD` 的跳脫序列；`escapeMD` 改用日報的 `news.SafeName`，`@` 不會變成提及）；商店、釣具商店、特賣頁保留選取的商品每次重繪都重建，買完後「金幣不足」、可買數量會跟著更新（特賣買到上限時顯示「本週已達限購數量」）；世界 Boss 一鍵捐獻失敗時「返回」保留選取的物品；音樂「停止」確認時間過了按鈕自動改回「停止」；返回類按鈕改成明確標記（`btn.back`，`nav` 依標籤判斷，動作按鈕不受影響）；管理網站的新功能預覽所有區塊共用一筆交易（各區塊 SAVEPOINT、死結時整批重試），預覽中算出的日報不寫入快取；介紹網站 `Music.Prefix` 被註解吃掉的問題。
 - **育苗費用改版（2026-11-16，使用者要求）**：每次育苗的費用改成「作物售價 × 一次收成數量（含產量基因加成）× 50%」，無條件進位（例如售價 300、一次收成 3 個 → 450 金幣）；原本依基因總和（300 + 20 ×（總和 − 4）²）。管理網站的設定改成 `clone_fee_pct`（一次收成售價的 %），舊的 `clone_fee_base`、`clone_fee_per_level` 不再使用（正式環境存過的快照沒有新 key，會用預設 50%）。種子庫、育苗頁顯示的費用由服務層依作物計算（`LabSeedView.CloneFee`）；介紹網站改顯示公式與範例。
+- **釣魚提示改寫（2026-11-16，與 Python 版不同）**：拉扯中的 💬 提示（`fishing.IntentText`、`DodgeText`）原本只描述魚的狀態，改成用 ⭐ 直接寫出該按的按鈕（例如「⭐ 按「🎣 收線」最划算！」「⬅️⬅️ 魚往【左邊】竄！⭐ 只能按「⬅️ 左壓」，按其他鍵都會被扯！」）。魚竄向一邊時，魚的狀態那行拿掉 ⭐ 建議、改寫「（先處理竄動）」，避免兩行提示互相矛盾。
 
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
@@ -612,7 +613,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/pages_cave.go` | `2535d88413111fb6fc0d83ac1bba81d42cbe3af28f40e3748fc03a4c9da38e24` |
 | `internal/bot/pages_cellar.go` | `d0ed415b913854d079440a222a2f912e21cc1a0dc9663750c59492b4c6677336` |
 | `internal/bot/pages_decor.go` | `c7720365f1564014f40a9813f3815e8f4850392c33611e9a4cfd3b3188eff738` |
-| `internal/bot/pages_fishing.go` | `1a08f40b5fc8c739f40de6e9f42298e651473046ec9b7ca0c64efe09231668c3` |
+| `internal/bot/pages_fishing.go` | `ee83849036eeebe7c1988dfef20a63a678146659e7eca0f1ee2760ae53abfaf6` |
 | `internal/bot/pages_lab.go` | `46fd36dddb4ebe5fd2cc1a3d54a4c2c4f17d17ae9be2efce5e5ac30521118f8c` |
 | `internal/bot/pages_main.go` | `2218371883203b779a296bc1adafcdc9b85484f9e732f5ed59a161ea94c9f24e` |
 | `internal/bot/pages_progress.go` | `ab053e6ac54d5331b8735e196cf017630d08be83055785fa45c9109d23a71db8` |
@@ -683,7 +684,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/game/exploration/exploration.go` | `118cea9a8c8320dd17085cc3b6d68084e97486b56fcae0cac011ccd1371ed9ce` |
 | `internal/game/exploration/exploration_test.go` | `92c45a2caf2192c93bab90a1b9e3c66d2d1d2b709983cc7856d52bfe744a6c5e` |
 | `internal/game/featurecfg/featurecfg.go` | `9df670e9c365358bf783f89ea724663a69053f6390cb846ad8c80af317b28c80` |
-| `internal/game/fishing/fishing.go` | `919745950c8e31f4849dc55e09b634427552a0826eb4bcd5431f95dac5b03eca` |
+| `internal/game/fishing/fishing.go` | `0efa2942e1cd140a8417d1e8597236cc7d62a3bf2c6eb2d0d7083c21483136a7` |
 | `internal/game/fishing/fishing_test.go` | `f14fd8ebcee3a92b186c95b34ab1108faf7a3555a7c35fadca6f99b723ed1338` |
 | `internal/game/fishing/json_test.go` | `7613db59ac20e6f4336bbe131c006a6acbaa7289e43ed46d41072f2dcc5ff470` |
 | `internal/game/gameerr/errors.go` | `a1a295c2f0e0f9ac1b431f18eea6594cf663607864234d3cae3911c234a72264` |
@@ -871,7 +872,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/site/site.go` | `55322015208738b37413e5fa2246a87f1508539fb9f6ef11ea7c0baa674a7576` |
 | `internal/site/site_test.go` | `ecf3fe3f0d6d71dab6acf94573dfcaede23e7795683a4b27f5eda94427c887a0` |
 | `internal/site/static/favicon.svg` | `bba4123b033483f9ca309a1031c36a6459679843def75245bca83d74575bc292` |
-| `internal/site/static/index.html` | `bf43cdcb39d88d91e1ab182767950aa0b1e225cbb426d35747629b83fd44c79c` |
+| `internal/site/static/index.html` | `56c479410291b489bc74627f0c5390e60c7e38302054aea9f851a7021b5b2ae0` |
 | `internal/site/static/site.css` | `ec177304d9b87958db3a342efc75f6c5ece73641f2cf0543c3d9e43402d8f3be` |
 | `internal/site/static/site.js` | `fe9e5ff2123b82d0a63cbb97452d97935f5e1f19ab1896242ca4b75a00e0179e` |
 | `internal/web/admin.go` | `8179879a5db82198ab600bac39e9d5aacc3be855ae61b4bb1cfaa176ea924080` |

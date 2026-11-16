@@ -368,7 +368,9 @@ func (p *Panel) buildFight(v services.FishingView) *ui.Embed {
 	}
 	prompt := fmt.Sprintf("💬 **%s**", v.IntentText)
 	if v.Dodge != "" {
-		prompt = fmt.Sprintf("💬 **%s**\n💬 %s", v.DodgeText, v.IntentText)
+		// 魚竄向一邊時只能壓同方向：魚的狀態照樣顯示，但拿掉「⭐ 按收線」這類建議，避免和竄動提示互相矛盾（2026-11-16）
+		state, _, _ := strings.Cut(v.IntentText, "⭐")
+		prompt = fmt.Sprintf("💬 **%s**\n💬 %s（先處理竄動）", v.DodgeText, strings.TrimSpace(state))
 	}
 	last := ""
 	if v.LastText != nil && *v.LastText != "" {
