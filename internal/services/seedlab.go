@@ -45,6 +45,7 @@ type LabSeedView struct {
 	Busy         bool   // 培育中
 	Hybrid       bool   // 雜交作物
 	OffSeason    string // 現在不是這個作物的季節時，說明為什麼不能種（可以種時為 ""）
+	CloneFee     int    // 每次育苗的費用（seedlab.CloneFee：作物售價 × 一次收成數量 × %，2026-11-16）
 }
 
 // Label 例如「紫莓 第 3 代 ✨夜光作物」。
@@ -254,6 +255,9 @@ func seedView(seed *models.LabSeed, cropsByCode map[string]*models.CropType) Lab
 	v := LabSeedView{ID: seed.ID, CropCode: seed.CropCode, CropName: name, Genes: labrepo.GenesOf(seed),
 		Generation: seed.Generation, Mutation: seed.Mutation, Busy: seed.Status == models.LabSeedBusy,
 		Hybrid: seedlab.IsHybrid(seed.CropCode)}
+	if c := cropsByCode[seed.CropCode]; c != nil {
+		v.CloneFee = seedlab.CloneFee(v.Genes, c.SellPrice, c.HarvestQuantity)
+	}
 	if seed.Mutation != "none" {
 		v.MutationName = balance.Mutations[seed.Mutation]
 	}
@@ -858,7 +862,7 @@ func (s *GameService) StartMutation(ctx context.Context, playerID, seedID int64,
 }
 
 // StartClone 開始育苗（Go 版新增，2026-11-15）：在研究槽複製同基因、同世代的特殊種子，用來種滿農田。
-//   - 只要金幣（seedlab.CloneFee，依基因總和）就能育苗；藥草選用（每次 CloneHerb 個），提高得到 2、3 顆的機率。
+//   - 只要金幣（seedlab.CloneFee，作物售價 × 一次收成數量 × CloneFeePct%）就能育苗；藥草選用（每次 CloneHerb 個），提高得到 2、3 顆的機率。
 //   - 排程：一次 1–CloneMaxBatches 次，費用、藥草、時間 × 次數，全部完成後一起領取；每次得到 1–3 顆（seedlab.RollCloneCopies）。
 //   - 不複製突變（避免水晶突變等無限複製）。種子庫要能放下每次至少 1 顆（含其他還沒領取的育苗）；多出來的照樣放進種子庫。
 func (s *GameService) StartClone(ctx context.Context, playerID, seedID int64, batches int, herb bool) (ActionResult, error) {
@@ -897,7 +901,14 @@ func (s *GameService) StartClone(ctx context.Context, playerID, seedID int64, ba
 			return ActionResult{}, err
 		}
 		genes := labrepo.GenesOf(seed)
-		fee := seedlab.CloneFee(genes) * batches
+		crop, err := crops.ByCode(ctx, t, seed.CropCode, false)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if crop == nil {
+			return ActionResult{}, gameerr.NotFoundf("找不到這個作物。")
+		}
+		fee := seedlab.CloneFee(genes, crop.SellPrice, crop.HarvestQuantity) * batches
 		if farm.Gold < fee {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：育苗 %d 次需要 %d，目前只有 %d。", batches, fee, farm.Gold)
 		}

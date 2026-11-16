@@ -481,7 +481,7 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 		}
 		if v.Built {
 			detail = append(detail, fmt.Sprintf("🌱 育苗：%s 金、約 %s，得到 1–3 顆同基因的種子",
-				money(seedlab.CloneFee(sel.Genes)), services.LongDuration(int(seedlab.CloneDuration(1).Seconds()))))
+				money(sel.CloneFee), services.LongDuration(int(seedlab.CloneDuration(1).Seconds()))))
 			detail = append(detail, fmt.Sprintf("☢️ 突變研究：成功率 %s%%（加古代核心 %s%%），💎水晶 ×%d、約 %s",
 				bpPct(seedlab.MutateChanceBP(sel.Genes.Mutation, false)), bpPct(seedlab.MutateChanceBP(sel.Genes.Mutation, true)),
 				cfg.MutateCrystal, services.LongDuration(int(seedlab.MutateDuration().Seconds()))))
@@ -626,7 +626,7 @@ func (p *Panel) buildLabClone(ctx context.Context, data any) (*ui.Embed, error) 
 	if st.cloneHerb && v.Materials[seedlab.MatHerb] < herbNeed {
 		st.cloneHerb = false
 	}
-	fee := seedlab.CloneFee(sel.Genes)
+	fee := sel.CloneFee
 	total := fee * batches
 	two, three := seedlab.CloneChanceBP(false)
 	htwo, hthree := seedlab.CloneChanceBP(true)

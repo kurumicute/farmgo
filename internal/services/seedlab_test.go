@@ -242,12 +242,13 @@ func TestSeedLabClone(t *testing.T) {
 	e := setup(t)
 	pid := e.labOwner("阿明", e.group("主群組"))
 	e.s.LabRng = func() float64 { return 0.1 }
-	wheat := e.identify(pid, "wheat") // 基因都是 2 級：育苗費每次 300 + 20 × 4² = 620
+	wheat := e.identify(pid, "wheat") // 育苗費每次 = 小麥售價 × 一次收成數量（含產量基因）× 50%
 	corn := e.identify(pid, "corn")
 	e.exec("UPDATE lab_seeds SET mutation = 'glow', generation = 4 WHERE id = $1", wheat.ID)
-	fee := seedlab.CloneFee(wheat.Genes)
-	if fee != 620 {
-		t.Fatal(fee)
+	fee := wheat.CloneFee
+	price, qty := e.scalar("SELECT sell_price FROM crop_types WHERE code = 'wheat'"), e.scalar("SELECT harvest_quantity FROM crop_types WHERE code = 'wheat'")
+	if want := (price*seedlab.CloneHarvest(wheat.Genes, qty)*50 + 99) / 100; fee != want || fee <= 0 {
+		t.Fatal(fee, want)
 	}
 	_, err := e.s.StartClone(e.ctx, pid, wheat.ID, 0, false)
 	wantMsg(t, err, gameerr.Validation, "1–10 次")
@@ -256,17 +257,17 @@ func TestSeedLabClone(t *testing.T) {
 	_, err = e.s.StartClone(e.ctx, pid, wheat.ID, 3, true)
 	wantMsg(t, err, gameerr.InsufficientItems, "藥草")
 
-	// 不加藥草、排程 3 次：620 × 3 = 1,860 金幣、3 小時
+	// 不加藥草、排程 3 次：小麥售價 15 × 收成 3 個（產量 2 級 +1）× 50% = 23，× 3 = 69 金幣、3 小時
 	gold := e.gold(pid)
 	r := e.ok(e.s.StartClone(e.ctx, pid, wheat.ID, 3, false))
-	if !strings.Contains(r.Message, "開始育苗 ×3 次") || !strings.Contains(r.Message, "1,860 金幣") || r.GoldDelta != -3*fee {
+	if !strings.Contains(r.Message, "開始育苗 ×3 次") || !strings.Contains(r.Message, "花費 69 金幣") || fee != 23 || r.GoldDelta != -3*fee {
 		t.Fatalf("%+v", r)
 	}
 	if e.gold(pid) != gold-3*fee {
 		t.Fatal(e.gold(pid))
 	}
 	v := e.lab(pid)
-	if len(v.Jobs) != 1 || v.Jobs[0].Kind != "clone" || v.Jobs[0].Batches != 3 || !strings.Contains(v.Jobs[0].Materials, "1860 金幣") {
+	if len(v.Jobs) != 1 || v.Jobs[0].Kind != "clone" || v.Jobs[0].Batches != 3 || !strings.Contains(v.Jobs[0].Materials, "69 金幣") {
 		t.Fatalf("%+v", v.Jobs)
 	}
 	_, err = e.s.StartClone(e.ctx, pid, corn.ID, 1, false)

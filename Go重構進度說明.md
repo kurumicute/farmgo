@@ -86,7 +86,7 @@
   - **培育減負（2026-11-15，玩家回饋「雜交 2 換 1 要金字塔堆疊、弱親本 50% 拖累、種滿 11 格要 22 顆種子」，Migration 0040）**：
     - **雜交只消耗父本**：母本完成後放回種子庫（`services.collectCross`），種子數量不再每代減半；領取訊息與雜交頁說明會寫「母本已放回種子庫」。
     - **優勢遺傳**（`seedlab.Inherit`，設定 `dominant_bp` 預設 70%）：每個基因以一次亂數決定來源，u < 70% 取較高的親本，其餘區間前半母本、後半父本（設 0% 時與原本的 50%／50% 相同）。3333 × 2222 得到全部 ≥3 級約 13% → 57%。
-    - **育苗（新功能）**（`services.StartClone`／`collectClone`，研究槽工作 `kind = clone`）：在「🌰 種子庫」選種子按「🌱 育苗」，付金幣（`seedlab.CloneFee` = 300 + 20 ×（基因總和 − 4）²：2222 620、3333 1,580、4444 3,180、5555 5,420）與藥草 ×1，1 小時後複製一顆**同基因、同世代**的種子，**不複製突變**（避免水晶突變等無限複製），來源種子培育中暫停使用、完成後放回種子庫；種子庫要有空位（含其他還沒領取的育苗），研究經驗 +3。設定：`clone_fee_base`、`clone_fee_per_level`、`clone_herb`、`clone_minutes`、`exp_clone`。
+    - **育苗（新功能）**（`services.StartClone`／`collectClone`，研究槽工作 `kind = clone`）：在「🌰 種子庫」選種子按「🌱 育苗」，付金幣（`seedlab.CloneFee`；2026-11-16 起 = 作物售價 × 一次收成數量（含產量基因，不含突變）× `clone_fee_pct`%（預設 50%），無條件進位，例如售價 300、收成 3 個 → 450；原本是 300 + 20 ×（基因總和 − 4）²）與藥草 ×1，1 小時後複製一顆**同基因、同世代**的種子，**不複製突變**（避免水晶突變等無限複製），來源種子培育中暫停使用、完成後放回種子庫；種子庫要有空位（含其他還沒領取的育苗），研究經驗 +3。設定：`clone_fee_base`、`clone_fee_per_level`、`clone_herb`、`clone_minutes`、`exp_clone`。
     - **數值調整**（預設值與正式環境的設定一起改）：收成取回種子 60% → 85%、基因退化 5% → 2%、水晶催化 +20% → +30%。
     - **Migration 0040**（Python 專案）：`lab_jobs.kind`、`lab_records.kind` 的 CHECK 加入 `clone`；降版刪除育苗的工作與紀錄、來源種子改回種子庫。`db.AlembicHead` 改為 0040。
     - 管理網站設定卡新增「🌱 育苗」群組與優勢遺傳、育苗經驗；介紹網站的實驗室說明、Discord 種子庫／雜交頁的說明同步更新（`/api/guide` 新增 `dominant_pct`、`clone_herb`、`clone_minutes`、`clone_fees`、`exp.clone`）。
@@ -160,6 +160,7 @@
 - **Discord 面板（2026-11-16）**：建立農場的提示改成「農場建立完成：「名稱」！」，因為直接到農田頁後，畫面上沒有農場名稱。另外補上今天早上面板改版後沒有跟著更新的 7 個面板測試和 1 個 discordio 測試（之前沒有測試資料庫，一直被略過）。
 - **特殊種子選單分頁（2026-11-16）**：農田頁「勾選特殊種子」以前只列前 25 顆，後面的種子種不到；改成和雜交頁一樣在選單內翻頁（第一項「上一頁」、最後一項「下一頁」，同時勾了種子和翻頁選項時只種種子）。選單內翻頁選項的文字改成「上一頁：翻到第 N 頁（目前第 X/Y 頁）」；雜交頁選好母本後（選單只顯示已選的種子、看不到頁碼），說明最下方提示母本選單共幾頁、怎麼改選其他頁的種子。
 - **審查修正（2026-11-16）**：footer 不再顯示名稱的跳脫反斜線（`plainText` 還原 `escapeMD` 的跳脫序列；`escapeMD` 改用日報的 `news.SafeName`，`@` 不會變成提及）；商店、釣具商店、特賣頁保留選取的商品每次重繪都重建，買完後「金幣不足」、可買數量會跟著更新（特賣買到上限時顯示「本週已達限購數量」）；世界 Boss 一鍵捐獻失敗時「返回」保留選取的物品；音樂「停止」確認時間過了按鈕自動改回「停止」；返回類按鈕改成明確標記（`btn.back`，`nav` 依標籤判斷，動作按鈕不受影響）；管理網站的新功能預覽所有區塊共用一筆交易（各區塊 SAVEPOINT、死結時整批重試），預覽中算出的日報不寫入快取；介紹網站 `Music.Prefix` 被註解吃掉的問題。
+- **育苗費用改版（2026-11-16，使用者要求）**：每次育苗的費用改成「作物售價 × 一次收成數量（含產量基因加成）× 50%」，無條件進位（例如售價 300、一次收成 3 個 → 450 金幣）；原本依基因總和（300 + 20 ×（總和 − 4）²）。管理網站的設定改成 `clone_fee_pct`（一次收成售價的 %），舊的 `clone_fee_base`、`clone_fee_per_level` 不再使用（正式環境存過的快照沒有新 key，會用預設 50%）。種子庫、育苗頁顯示的費用由服務層依作物計算（`LabSeedView.CloneFee`）；介紹網站改顯示公式與範例。
 
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
@@ -612,7 +613,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/pages_cellar.go` | `d0ed415b913854d079440a222a2f912e21cc1a0dc9663750c59492b4c6677336` |
 | `internal/bot/pages_decor.go` | `c7720365f1564014f40a9813f3815e8f4850392c33611e9a4cfd3b3188eff738` |
 | `internal/bot/pages_fishing.go` | `1a08f40b5fc8c739f40de6e9f42298e651473046ec9b7ca0c64efe09231668c3` |
-| `internal/bot/pages_lab.go` | `44a85313598526029be0647a812c438b577d49249af5cbe59e5e6f8eeed38819` |
+| `internal/bot/pages_lab.go` | `46fd36dddb4ebe5fd2cc1a3d54a4c2c4f17d17ae9be2efce5e5ac30521118f8c` |
 | `internal/bot/pages_main.go` | `2218371883203b779a296bc1adafcdc9b85484f9e732f5ed59a161ea94c9f24e` |
 | `internal/bot/pages_progress.go` | `ab053e6ac54d5331b8735e196cf017630d08be83055785fa45c9109d23a71db8` |
 | `internal/bot/pages_ranch.go` | `4e55741a19494c41eeebff7d22c484a469fe3e17b67f423b4b3c634530130eb7` |
@@ -623,10 +624,10 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/panel_autofish_test.go` | `f8204b17908932e84a9a869f876bd292203f84a7c5ccaa2ad8b1b4bab16ac36d` |
 | `internal/bot/panel_autoseller_test.go` | `55eb73ccf2b77df8ed030d4f9066c41cb1e80d86635ce49fa3f4c81d9254e11b` |
 | `internal/bot/panel_boss_test.go` | `d94aac119d7868055d446b6070b25871c8924e818c91381cf9165029d5d30e26` |
-| `internal/bot/panel_expansions_test.go` | `a1361fd328308ea29e157c4c5dbec2f9b0ae55180e0b81e7d6cb02b97f4295e0` |
+| `internal/bot/panel_expansions_test.go` | `de28aa3c902c8b5c9b34ff8209fa6c616c01e8fe6158bfb41386d9c7e17f07e7` |
 | `internal/bot/panel_fishing_test.go` | `3c6b53e22643f95278f3d446f0392a455f2afe0e7adb63d1428fb064ec55be57` |
 | `internal/bot/panel_go_features_test.go` | `5e2ae2a3a752f6b9b35541372f799e01706fe7592292b0a2ea511040b6de261f` |
-| `internal/bot/panel_lab_test.go` | `815445bd06a09e002168933b91de49adb20f167885fe36e3af8fd1c1cbb2922f` |
+| `internal/bot/panel_lab_test.go` | `8ac1fa2b55efab33cf6937f8b99aa4ee98094664bad9ded88d8ac74793cd9a50` |
 | `internal/bot/panel_progress_test.go` | `f8738ee2532b93da6ec75847d1f7c0114388a4606bf2d2122c86a6ed10ea4f6c` |
 | `internal/bot/panel_ranch_test.go` | `8b84fc1dc2f632522cd50d101d12240d32545740b1ab191f2f6bd1a77d487f04` |
 | `internal/bot/panel_shop_test.go` | `bf44cd3a125ee377a5585aed500aba50eb38c0b360cf5be18d29bd28e7395702` |
@@ -708,9 +709,9 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/game/rules/rules_test.go` | `15a50ff32878f023b6ef40aba46da086e51defd5ad01d0b2e95dc1a8c7af76e2` |
 | `internal/game/seasons/seasons.go` | `42b329bbd98a846e2dcdc61b95a224cf24d3d705afa89813c7e695d8cf40fb8c` |
 | `internal/game/seasons/seasons_test.go` | `2c73b7e80242a2d8da08b16ab7a3bafb72d5a1e3c456b43b2a44ff4e110a5f32` |
-| `internal/game/seedlab/config.go` | `5d4a1acae7a405b299305e7f2cdda1ea99c549ff28b303f193279838379da7df` |
-| `internal/game/seedlab/seedlab.go` | `680695eb6be93a2d20af5daf1a19da4b666ec1a03f803f1ce15578e1005bb1be` |
-| `internal/game/seedlab/seedlab_test.go` | `b32c9af7e9f6e473eb58b59e57de5ef113726f2a90007e4fc05045917dc360cc` |
+| `internal/game/seedlab/config.go` | `656c0793491686156762945909b92e70603451140c4df1bc1310f1a9e92c832e` |
+| `internal/game/seedlab/seedlab.go` | `e28c5cffe2c7f6b497fb15eb1821eefdd7be44df763d5934b16f1b13e92c6a47` |
+| `internal/game/seedlab/seedlab_test.go` | `3bb0cc86a078bbb03dddc96a405399c39601ab8435d3530d60c7c5f7a8c7d6ec` |
 | `internal/game/specialshop/specialshop.go` | `2fec3d9bb244583b748a884e9c8566837bed59ba9d889323b10d241ce3e88120` |
 | `internal/game/specialshop/specialshop_test.go` | `b7dbccb2994dfdb8f2a49731b417eaa79c6249edad3a45fd0d480d2e81276590` |
 | `internal/game/worldboss/worldboss.go` | `bf48640f807809086b67a7788de6cf194c4192bb2f711adaf182f5324c5523dc` |
@@ -857,10 +858,10 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/ranking_test.go` | `0701621de69f1f78ef54108dc123efa9c5f917f9875463da86f74801f01b8c94` |
 | `internal/services/retry.go` | `ba146e2ae2ceca83016f2af28ee78a44af39f946325459e372dc994c267c5385` |
 | `internal/services/ruins_test.go` | `80565e5b64a40c7d283bb7ecfaad5cafd3c4a1ac34853a216d38d609618d40d6` |
-| `internal/services/seedlab.go` | `206884875f9c7ceb1fbf999d5a9328388fba7932089af9c21489a426ce6485a1` |
-| `internal/services/seedlab_test.go` | `fd28a9101d44d7d3946c609a24784458474a830c2305b850f4d2862854b44b6c` |
+| `internal/services/seedlab.go` | `a8bf4159f5754ae516a8c77f5c9d5185fd7c7ebb9e7db7e7ccbfcb7623265053` |
+| `internal/services/seedlab_test.go` | `a1197fa863f7731f4079b40bea43b8ea4c071a2c4271bb69f0281769031d992a` |
 | `internal/services/service.go` | `4e8678eb40d2910da4f26a8e4db8008fca97a52e4b467c9def99bfa68ebd511d` |
-| `internal/services/site.go` | `9a0e4422972b8cf425f33fcdee021e83bc59bdbc2bd41ac77d3d3a192f695569` |
+| `internal/services/site.go` | `c16400efbd0aa844e2b3124594507dfe9c8e213864ade3750b2214348259889f` |
 | `internal/services/social.go` | `d3e32dcf63cba29196947bbc7a8b640c99baf56c820d719614fb9c5028221709` |
 | `internal/services/social_test.go` | `65f6371c11236d0837f6144494da0fad58fa23d8db38c6b6ac28144821a755b0` |
 | `internal/services/stress_test.go` | `a4aa847f169673c1d8af3656a9508f25c226415f50f465f141f546e025ec2e8f` |
@@ -870,9 +871,9 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/site/site.go` | `55322015208738b37413e5fa2246a87f1508539fb9f6ef11ea7c0baa674a7576` |
 | `internal/site/site_test.go` | `ecf3fe3f0d6d71dab6acf94573dfcaede23e7795683a4b27f5eda94427c887a0` |
 | `internal/site/static/favicon.svg` | `bba4123b033483f9ca309a1031c36a6459679843def75245bca83d74575bc292` |
-| `internal/site/static/index.html` | `52d0ad4f8ee6a7124fcef6a126cc750b5d59f049aa9cb2b9d878d3876732d091` |
+| `internal/site/static/index.html` | `bf43cdcb39d88d91e1ab182767950aa0b1e225cbb426d35747629b83fd44c79c` |
 | `internal/site/static/site.css` | `ec177304d9b87958db3a342efc75f6c5ece73641f2cf0543c3d9e43402d8f3be` |
-| `internal/site/static/site.js` | `be200cc425a6878ba1d2c171475d03fa4f5e5cfad875b621c7b163044d919937` |
+| `internal/site/static/site.js` | `fe9e5ff2123b82d0a63cbb97452d97935f5e1f19ab1896242ca4b75a00e0179e` |
 | `internal/web/admin.go` | `8179879a5db82198ab600bac39e9d5aacc3be855ae61b4bb1cfaa176ea924080` |
 | `internal/web/admin_boss.go` | `a588cb805d2739bcaa5fefc6cb5c5abc7d066d70bc6abdb14ba94efa2513924f` |
 | `internal/web/admin_boss_test.go` | `749a86128ae3d09ad2b41ab37cd127a35e56cd5b4ec6bed8edd98649f35e9919` |
@@ -891,7 +892,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/web/respond.go` | `869011e0448845d1d9106ff5d2ecaaf8c815d043a9b5e84b51c24f33d364d67b` |
 | `internal/web/schema.go` | `f0b0107ada37ebd88f1b71f73c1d9f3c2c48afcc69eae25203c24bffaf41b6a3` |
 | `internal/web/static/monitor/app.css` | `7b14f1ca62408340284c3b895d69b6d4dbbf6aaf2720d2da313f5906e1101664` |
-| `internal/web/static/monitor/app.js` | `bc2d1d828e06188f63f34199cda0855ff5be17557fc4d871d04e1268840b245c` |
+| `internal/web/static/monitor/app.js` | `7adcefcdb458f3fdc03cf2f613f6fd0d6cae798912ac6237683cdcb7563046c8` |
 | `internal/web/static/monitor/index.html` | `bca83af5db8644fcbb83f03b857cb7c19699959023985770fef70fa10e9c9e58` |
 | `internal/web/web.go` | `2eaef4fc10ef26c31b7a977e5b1d411cbc6edb4c0c753e1215f028a95fadfd22` |
 | `internal/web/ws.go` | `dda2e1fd64b2f7f6adb5d31c531feebfb0e0956b3ea5a2ed7e93863c39bd8b9c` |

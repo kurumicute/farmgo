@@ -55,7 +55,7 @@ func TestHourglassAndLabExpansionPanel(t *testing.T) {
 	p.goPage("lab_seeds")
 	p.choose("選擇種子", p.options("選擇種子")[0])
 	p.click("育苗")
-	p.click("開始育苗（300 金）")
+	p.click("開始育苗（15 金）")
 	p.goPage("lab")
 	if got := p.options("使用加速沙漏"); len(got) != 1 || got[0] != "lab:1" {
 		t.Fatal(got)

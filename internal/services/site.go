@@ -1064,11 +1064,6 @@ func buildSeedLab(rareSeeds []string) map[string]any {
 	}
 	two, three := seedlab.CloneChanceBP(false)
 	htwo, hthree := seedlab.CloneChanceBP(true)
-	cloneFees := []map[string]any{}
-	for lv := 2; lv <= seedlab.GeneMax; lv++ {
-		g := seedlab.Genes{Growth: lv, Yield: lv, Quality: lv, Mutation: lv}
-		cloneFees = append(cloneFees, map[string]any{"genes": strings.Repeat(fmt.Sprint(lv), 4), "fee": seedlab.CloneFee(g)})
-	}
 	mutations := []map[string]any{}
 	for _, m := range []struct{ code, effect string }{
 		{"glow", fmt.Sprintf("售價 ×%s", pyG(float64(balance.GlowPricePct)/100))},
@@ -1094,7 +1089,7 @@ func buildSeedLab(rareSeeds []string) map[string]any {
 			"clone": c.ExpClone},
 		"level_exp": []int{c.LevelExp[2], c.LevelExp[3]}, "rare_seeds": rareSeeds,
 		// 2026-11-15 起：優勢遺傳、育苗
-		"dominant_pct": bpPct(c.DominantBP), "clone_herb": c.CloneHerb, "clone_minutes": c.CloneMinutes, "clone_fees": cloneFees,
+		"dominant_pct": bpPct(c.DominantBP), "clone_herb": c.CloneHerb, "clone_minutes": c.CloneMinutes, "clone_fee_pct": c.CloneFeePct,
 		"clone_max_batches": c.CloneMaxBatches, "clone_two_pct": bpPct(two), "clone_three_pct": bpPct(three),
 		"clone_herb_two_pct": bpPct(htwo), "clone_herb_three_pct": bpPct(hthree),
 		// 擴充與加速沙漏（2026-11-15）

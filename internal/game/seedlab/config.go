@@ -45,8 +45,7 @@ type Config struct {
 	MutateMaxBP           int
 	InheritBP             int // 收成特殊種子時取回同基因種子的機率
 	DominantBP            int // 優勢遺傳：每個基因直接繼承雙親中較高等級的機率（其餘機率才是母本、父本各半）
-	CloneFeeBase          int // 育苗的基本費用（金幣）
-	CloneFeePerLevel      int // 育苗費用：每多 (基因總和 − 4)² 的金幣
+	CloneFeePct           int // 育苗費用：這顆種子一次收成的售價（作物售價 × 收成數量，含產量基因）的 %（2026-11-16）
 	CloneHerb             int // 育苗加藥草（選用）時每次用掉的藥草
 	CloneMinutes          int // 每次育苗的時間
 	CloneTwoBP            int // 每次育苗得到 2 顆以上的機率
@@ -118,7 +117,7 @@ func DefaultConfig() *Config {
 		GeneUpBP: 2500, GeneDownBP: 200, InheritMutationBP: 5000, CrossMutationPerLvBP: 100,
 		MutateCrystal: 2, MutateBaseBP: 3000, MutatePerLevelBP: 500, MutateMaxBP: 9000,
 		InheritBP: 8500, ShareSendPerDay: 5, ShareReceiveSenders: 1,
-		DominantBP: 7000, CloneFeeBase: 300, CloneFeePerLevel: 20, CloneHerb: 1, CloneMinutes: 60,
+		DominantBP: 7000, CloneFeePct: 50, CloneHerb: 1, CloneMinutes: 60,
 		CloneTwoBP: 3000, CloneThreeBP: 1000, CloneHerbBonusBP: 2000, CloneMaxBatches: 10,
 		GrowthPctPerLevel: 6, YieldPctPerLevel: 15, QualityBPPerLevel: 500, MutationBPPerLevel: 150,
 		ExpIdentify: 2, ExpCross: 10, ExpCrossFail: 15, ExpMutate: 8, ExpClone: 3,
@@ -184,8 +183,7 @@ var intFields = []intField{
 	{"mutate_max_bp", "突變研究成功率上限", 0, 10_000, func(c *Config) *int { return &c.MutateMaxBP }},
 	{"inherit_bp", "收成時取回種子的機率", 0, 10_000, func(c *Config) *int { return &c.InheritBP }},
 	{"dominant_bp", "優勢遺傳（繼承較高親本）的機率", 0, 10_000, func(c *Config) *int { return &c.DominantBP }},
-	{"clone_fee_base", "育苗基本費用", 0, 10_000_000, func(c *Config) *int { return &c.CloneFeeBase }},
-	{"clone_fee_per_level", "育苗費用（每 (基因總和−4)²）", 0, 1_000_000, func(c *Config) *int { return &c.CloneFeePerLevel }},
+	{"clone_fee_pct", "育苗費用（一次收成售價的 %）", 0, 1_000, func(c *Config) *int { return &c.CloneFeePct }},
 	{"clone_herb", "育苗加藥草時每次用掉的藥草", 1, 100, func(c *Config) *int { return &c.CloneHerb }},
 	{"clone_minutes", "每次育苗時間（分鐘）", 1, 1440, func(c *Config) *int { return &c.CloneMinutes }},
 	{"clone_two_bp", "育苗得到 2 顆以上的機率", 0, 10_000, func(c *Config) *int { return &c.CloneTwoBP }},

@@ -444,11 +444,16 @@ func RollLabMutation(current string, u float64) string {
 
 // ---------- 育苗 ----------
 
-// CloneFee 育苗費用 = 基本費用 + 每級費用 ×（基因總和 − 4）²：基因越好越貴（2222 620、3333 1,580、5555 5,420 金幣）。
-func CloneFee(g Genes) int {
-	c := Current()
-	d := max(0, g.Total()-4)
-	return c.CloneFeeBase + c.CloneFeePerLevel*d*d
+// CloneHarvest 這顆種子種下後一次收成的數量：作物目錄的收成數量 + 產量基因加成（不含突變，例如巨型作物的加倍）。
+func CloneHarvest(g Genes, baseQuantity int) int {
+	return max(0, baseQuantity) + YieldBonus(g.Yield, baseQuantity)
+}
+
+// CloneFee 每次育苗的費用 = 作物售價 × 一次收成的數量（含產量基因）× CloneFeePct%，無條件進位
+// （2026-11-16 使用者要求：例如售價 300、一次收成 3 個、50% → 450 金幣；原本依基因總和計算）。
+func CloneFee(g Genes, sellPrice, baseQuantity int) int {
+	total := max(0, sellPrice) * CloneHarvest(g, baseQuantity) * Current().CloneFeePct
+	return (total + 99) / 100
 }
 
 // CloneDuration 排程 batches 次育苗的總時間。

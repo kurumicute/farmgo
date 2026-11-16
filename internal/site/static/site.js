@@ -305,7 +305,9 @@
         setText("g-lab-dominant", String(l.dominant_pct));
         setText("g-lab-clone-herb", String(l.clone_herb));
         setText("g-lab-clone-time", mins(l.clone_minutes));
-        setText("g-lab-clone-fees", l.clone_fees.map((f) => `${f.genes} 是 ${num.format(f.fee)}`).join("、") + " 金幣");
+        setText("g-lab-clone-fee-pct", String(l.clone_fee_pct));
+        setText("g-lab-clone-fee-pct2", String(l.clone_fee_pct));
+        setText("g-lab-clone-fee-example", num.format(Math.ceil((300 * 3 * l.clone_fee_pct) / 100)));
         if (l.clone_two_pct != null) {
           setText("g-lab-clone-two", String(l.clone_two_pct));
           setText("g-lab-clone-three", String(l.clone_three_pct));

@@ -148,23 +148,23 @@ func TestLabClonePanel(t *testing.T) {
 	p.goPage("lab")
 	p.click("建造實驗室")
 	p.click("確認建造")
-	e.admin.LabRng = func() float64 { return 0.9 } // 基因都是 1 級：每次育苗 300 金；0.9 → 每次 1 顆
+	e.admin.LabRng = func() float64 { return 0.9 } // 基因都是 1 級：小麥售價 15 × 收成 2 個 × 50% = 每次育苗 15 金；0.9 → 每次 1 顆
 	e.setInventory(pid, "seed_wheat", 1)
 	p.goPage("lab")
 	p.choose("鑑定一般種子", "wheat")
 	p.goPage("lab_seeds")
 	p.choose("選擇種子", p.options("選擇種子")[0])
-	contains(t, p.Text, "🌱 育苗：300 金", "得到 1–3 顆")
+	contains(t, p.Text, "🌱 育苗：15 金", "得到 1–3 顆")
 	p.click("育苗")
-	contains(t, p.Text, "✦ 育苗 ✦", "1 顆 70%、2 顆 20%、3 顆 10%", "1 顆 50%、2 顆 20%、3 顆 30%", "排程 **1** 次：300 金幣")
+	contains(t, p.Text, "✦ 育苗 ✦", "1 顆 70%、2 顆 20%、3 顆 10%", "1 顆 50%、2 顆 20%、3 顆 30%", "排程 **1** 次：15 金幣")
 	if !p.button("加藥草（需要 1，持有 0）").Disabled {
 		t.Fatal("沒有藥草時不能選加藥草")
 	}
 	p.choose("選擇育苗次數", "3")
-	contains(t, p.Text, "排程 **3** 次：900 金幣", "預計得到 **3–9** 顆")
-	p.click("開始育苗（900 金）")
+	contains(t, p.Text, "排程 **3** 次：45 金幣", "預計得到 **3–9** 顆")
+	p.click("開始育苗（45 金）")
 	contains(t, p.Text, "開始育苗 ×3 次：小麥種子 第 1 代", "🌱 育苗 ×3 次：小麥 第 1 代")
-	if e.gold(pid) != 100_000-5000-900-10 { // 建造 5,000、鑑定 10
+	if e.gold(pid) != 100_000-5000-45-10 { // 建造 5,000、鑑定 10
 		t.Fatal(e.gold(pid))
 	}
 	e.clock.Advance((3 * time.Hour).Seconds())

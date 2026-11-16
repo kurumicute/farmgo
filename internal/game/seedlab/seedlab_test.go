@@ -250,12 +250,20 @@ func TestInheritDominant(t *testing.T) {
 }
 
 func TestCloneFee(t *testing.T) {
+	// 售價 × 一次收成數量（含產量基因）× 50%，無條件進位：售價 300、收成 3 個 → 450
 	for _, c := range []struct {
-		g    Genes
-		want int
-	}{{Genes{1, 1, 1, 1}, 300}, {Genes{2, 2, 2, 2}, 620}, {Genes{3, 3, 3, 3}, 1580}, {Genes{5, 5, 5, 5}, 5420}} {
-		if got := CloneFee(c.g); got != c.want {
-			t.Errorf("%+v：%d，應該是 %d", c.g, got, c.want)
+		g           Genes
+		price, base int
+		want        int
+	}{
+		{Genes{1, 1, 1, 1}, 300, 3, 450},
+		{Genes{5, 1, 5, 5}, 300, 3, 450}, // 只有產量基因影響費用
+		{Genes{1, 3, 1, 1}, 300, 3, 600}, // 產量 3 級：3 × 30% = 0.9 → 進位 +1 → 4 個
+		{Genes{1, 1, 1, 1}, 25, 1, 13},   // 12.5 → 13
+		{Genes{1, 1, 1, 1}, 0, 3, 0},
+	} {
+		if got := CloneFee(c.g, c.price, c.base); got != c.want {
+			t.Errorf("%+v 售價 %d 收成 %d：%d，應該是 %d", c.g, c.price, c.base, got, c.want)
 		}
 	}
 	if CloneDuration(1) != time.Hour || CloneDuration(3) != 3*time.Hour {
