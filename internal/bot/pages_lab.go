@@ -38,6 +38,8 @@ type labState struct {
 	// 種子庫頁的作物篩選（"" / cropFilterAll = 全部）與篩選選單的頁碼（2026-11-17）
 	filter     string
 	filterPage int
+	// 雜交頁母本、父本選單的作物篩選（"" / cropFilterAll = 全部、cropFilterPick = 正在選作物；2026-11-17）
+	motherCrop, fatherCrop string
 }
 
 // pageOf 第 page 頁（每頁 ui.MaxOptions 項）的內容、修正後的頁碼與總頁數。
@@ -817,10 +819,10 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 	), 4000)
 	e.Footer = fmt.Sprintf("♂ 父本會被用掉，♀ 母本保留。研究槽空 %d 個。基因怎麼遺傳見「📖 實驗室說明」。", v.FreeSlots)
 
-	var mothers []option
-	for _, s := range sortSeedsByCrop(v.Seeds) {
+	var mothers []services.LabSeedView
+	for _, s := range v.Seeds {
 		if !s.Busy {
-			mothers = append(mothers, option{seedOptionLabel(s), fmt.Sprint(s.ID), seedOptionDesc(s), cropEmoji(s.CropCode)})
+			mothers = append(mothers, s)
 		}
 	}
 	selected := ""
@@ -828,60 +830,40 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 		selected = fmt.Sprint(mother.ID)
 	}
 	// 種子超過 25 顆時分頁：翻頁放在選單裡（第一項「上一頁」、最後一項「下一頁」），不再另外佔用按鈕列
-	mothers, mPage, mPages := pagedOptions(mothers, st.motherPage)
-	st.motherPage = mPage
-	mHolder := "♀ 選擇母本…"
-	if mPages > 1 {
-		mHolder = fmt.Sprintf("♀ 選擇母本（第 %d/%d 頁）…", mPage+1, mPages)
-		if mother != nil {
-			// 2026-11-16 選好母本後選單只顯示已選的種子、看不到頁碼，玩家不知道怎麼改選其他頁的種子
-			e.Description += fmt.Sprintf("\n\n🔄 母本選單共 %d 頁（目前第 %d 頁）：要改選其他頁的種子，打開母本選單，選最上面的「上一頁」或最下面的「下一頁」。",
-				mPages, mPage+1)
-		}
+	mPage, mPages := p.seedSelect("♀ 選擇母本", mothers, &st.motherCrop, &st.motherPage, 0, selected,
+		func(s services.LabSeedView) option {
+			return option{seedOptionLabel(s), fmt.Sprint(s.ID), seedOptionDesc(s), cropEmoji(s.CropCode)}
+		}, func(id int64) { st.mother = id }, "lab_cross")
+	if mPages > 1 && mother != nil {
+		// 2026-11-16 選好母本後選單只顯示已選的種子、看不到頁碼，玩家不知道怎麼改選其他頁的種子
+		e.Description += fmt.Sprintf("\n\n🔄 母本選單共 %d 頁（目前第 %d 頁）：要改選其他頁的種子，打開母本選單，選最上面的「上一頁」或最下面的「下一頁」。",
+			mPages, mPage+1)
 	}
-	p.selectMenu(mHolder, mothers, func(ctx context.Context, it ui.Interaction, value string) error {
-		if !turnPage(value, &st.motherPage, mPages) {
-			st.mother, _ = strconv.ParseInt(value, 10, 64)
-		}
-		p.goTo(ctx, it, "lab_cross", "")
-		return nil
-	}, 0, selected)
 	if mother != nil {
-		var fathers []option
-		for _, s := range sortSeedsByCrop(v.Seeds) {
-			if s.Busy || s.ID == mother.ID {
-				continue
+		var fathers []services.LabSeedView
+		for _, s := range v.Seeds {
+			if !s.Busy && s.ID != mother.ID {
+				fathers = append(fathers, s)
 			}
-			result := "改良" + name(mother.CropCode)
-			if s.CropCode != mother.CropCode {
-				result = "❔ 試驗雜交"
-				if services.CrossKnown(mother.CropCode, s.CropCode, v.KnownHybrids) {
-					result = name(seedlab.FindHybrid(mother.CropCode, s.CropCode).Code)
-				}
-			}
-			fathers = append(fathers, option{seedOptionLabel(s), fmt.Sprint(s.ID), "→ " + result + "　" + seedOptionDesc(s), cropEmoji(s.CropCode)})
 		}
 		fsel := ""
 		if father != nil {
 			fsel = fmt.Sprint(father.ID)
 		}
 		if len(fathers) == 0 {
-			fathers = nil
 			e.Description += "\n\n⚠️ 種子庫沒有其他可以配對的種子。"
 		}
-		fathers, fPage, fPages := pagedOptions(fathers, st.fatherPage)
-		st.fatherPage = fPage
-		fHolder := "♂ 選擇父本…"
-		if fPages > 1 {
-			fHolder = fmt.Sprintf("♂ 選擇父本（第 %d/%d 頁）…", fPage+1, fPages)
-		}
-		p.selectMenu(fHolder, fathers, func(ctx context.Context, it ui.Interaction, value string) error {
-			if !turnPage(value, &st.fatherPage, fPages) {
-				st.father, _ = strconv.ParseInt(value, 10, 64)
-			}
-			p.goTo(ctx, it, "lab_cross", "")
-			return nil
-		}, 1, fsel)
+		p.seedSelect("♂ 選擇父本", fathers, &st.fatherCrop, &st.fatherPage, 1, fsel,
+			func(s services.LabSeedView) option {
+				result := "改良" + name(mother.CropCode)
+				if s.CropCode != mother.CropCode {
+					result = "❔ 試驗雜交"
+					if services.CrossKnown(mother.CropCode, s.CropCode, v.KnownHybrids) {
+						result = name(seedlab.FindHybrid(mother.CropCode, s.CropCode).Code)
+					}
+				}
+				return option{seedOptionLabel(s), fmt.Sprint(s.ID), "→ " + result + "　" + seedOptionDesc(s), cropEmoji(s.CropCode)}
+			}, func(id int64) { st.father = id }, "lab_cross")
 	}
 	if v.Materials[seedlab.MatCrystal] > 0 {
 		cat := []option{{"不使用水晶催化劑", "none", "", "⬜"}}
@@ -997,6 +979,68 @@ const (
 	cropFilterAll    = "*"
 	cropFilterPick   = "?" // 農田頁：正在選要篩選的作物
 )
+
+// seedSelect 單選的種子選單，可以在選單內篩選作物（2026-11-17，雜交頁的母本、父本）：
+// 種子有兩種以上作物時第一項是「🔎 篩選作物」，選了會把這個選單換成作物清單，選好作物後只列那種作物的種子。
+// filter：""／cropFilterAll = 全部、cropFilterPick = 正在選作物、其他為作物代碼。超過 25 項時選單內翻頁。
+// 回傳修正後的頁碼與總頁數。
+func (p *Panel) seedSelect(holder string, seeds []services.LabSeedView, filter *string, page *int, row int, selected string,
+	opt func(services.LabSeedView) option, pick func(id int64), reload string) (int, int) {
+	codes, _, _ := seedCrops(seeds)
+	if len(codes) <= 1 && *filter == cropFilterPick {
+		*filter = ""
+	}
+	if *filter == cropFilterPick {
+		opts, pg, pages := pagedOptions(cropFilterOptions(seeds, "所有作物的種子一起列出"), *page)
+		*page = pg
+		p.selectMenu(fmt.Sprintf("🔎 %s：先選擇要看的作物（共 %d 顆）…", strings.TrimLeft(holder, "♀♂ "), len(seeds)), opts,
+			func(ctx context.Context, it ui.Interaction, value string) error {
+				if !turnPage(value, page, pages) {
+					*filter, *page = strings.TrimPrefix(value, cropFilterPrefix), 0
+				}
+				p.goTo(ctx, it, reload, "")
+				return nil
+			}, row, "")
+		return pg, pages
+	}
+	shown := filterSeeds(sortSeedsByCrop(seeds), *filter)
+	if len(shown) == 0 {
+		*filter, shown = "", sortSeedsByCrop(seeds)
+	}
+	var all []option
+	if len(codes) > 1 {
+		label := "🔎 篩選作物（只看某種作物）"
+		if name := cropFilterName(seeds, *filter); name != "" {
+			label = "🔎 改選其他作物（目前只看" + name + "）"
+		}
+		all = append(all, option{label, cropFilterPrefix, "選這項會打開作物清單", "🔎"})
+	}
+	for _, s := range shown {
+		all = append(all, opt(s))
+	}
+	opts, pg, pages := pagedOptions(all, *page)
+	*page = pg
+	h := holder
+	if name := cropFilterName(seeds, *filter); name != "" {
+		h += "（只看" + name + "）"
+	}
+	if pages > 1 {
+		h += fmt.Sprintf("（第 %d/%d 頁）", pg+1, pages)
+	}
+	p.selectMenu(h+"…", opts, func(ctx context.Context, it ui.Interaction, value string) error {
+		switch {
+		case value == cropFilterPrefix:
+			*filter, *page = cropFilterPick, 0
+		case turnPage(value, page, pages):
+		default:
+			id, _ := strconv.ParseInt(value, 10, 64)
+			pick(id)
+		}
+		p.goTo(ctx, it, reload, "")
+		return nil
+	}, row, selected)
+	return pg, pages
+}
 
 // sortSeedsByCrop 同一種作物的種子排在一起（依作物名稱；同作物維持原本順序），不再各種種子穿插。
 func sortSeedsByCrop(seeds []services.LabSeedView) []services.LabSeedView {

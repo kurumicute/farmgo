@@ -57,13 +57,23 @@ func TestLabPageFlow(t *testing.T) {
 	if strings.Contains(p.Text, "黃金穀物") {
 		t.Fatal("沒發現的配方不應該顯示：" + p.Text)
 	}
+	// 兩種以上作物時，選單第一項是「🔎 篩選作物」（2026-11-17）
 	mothers := p.options("選擇母本")
-	if len(mothers) != 3 {
+	if len(mothers) != 4 || mothers[0] != cropFilterPrefix {
 		t.Fatal(mothers)
 	}
+	mothers = mothers[1:]
+	// 篩選：母本選單換成作物清單，選玉米後只列玉米
+	p.choose("選擇母本", cropFilterPrefix)
+	p.choose("先選擇要看的作物", cropFilterPrefix+"corn")
+	if got := p.options("選擇母本（只看玉米）"); len(got) != 2 || got[0] != cropFilterPrefix || got[1] != mothers[2] {
+		t.Fatal(got)
+	}
+	p.choose("選擇母本", cropFilterPrefix)
+	p.choose("先選擇要看的作物", cropFilterPrefix+cropFilterAll)
 	p.choose("選擇母本", mothers[0])
 	fathers := p.options("選擇父本")
-	if len(fathers) != 2 {
+	if len(fathers) != 3 || fathers[0] != cropFilterPrefix {
 		t.Fatal(fathers)
 	}
 	p.choose("選擇父本", mothers[2]) // 玉米

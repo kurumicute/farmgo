@@ -170,6 +170,7 @@
   - **特殊種子依作物篩選**：種子庫、農田頁、雜交頁的種子改成同作物排在一起（`sortSeedsByCrop`）。
     - 種子庫：沒選種子時第 2 列是「🔎 篩選作物」選單（全部／只看某作物，超過 25 項時選單內翻頁）。選了種子後這一列讓給「種下」選單，按「🔎 取消選取／篩選」回來。
     - 農田頁：「🧬」選單照常直接列出全部種子可以勾選；種子有兩種以上作物時，第一項「🔎 篩選作物」把這一列換成作物清單，選了作物只列那種作物的種子（第一項變成「🔎 改選其他作物」）。原本一定要先選作物才能種，使用者反映不能直接種，當天改回。
+    - 雜交頁：母本、父本選單同樣在第一項放「🔎 篩選作物」（`Panel.seedSelect`），選了把那個選單換成作物清單，選好作物只列那種作物的種子（選單標題顯示「只看X」）；母本、父本各自篩選。這一頁的元件列已經滿了，所以篩選放在選單裡，不另外佔一列。
   - **加工設施升級（Migration 0043：`farm_buildings.level` 0–3）**：磨坊、烘焙坊、果醬工坊在「🏗️ 建造設施」頁各可升 3 級（`balance.BuildingUpgradePrices` 15,000／50,000／100,000 金），加工時間 -15%／-40%／-60%（`balance.CraftSeconds`，整張訂單的秒數無條件進位）。
     - 選了設施後要再按「確認升級」才扣錢。升級記為 `build` 交易，計入「農場建設」任務與發展點數。
     - 升級後新開的訂單（含自動加工機開的訂單）才縮短，已經排隊的訂單時間不變。加工頁的設施狀態與配方時間依等級顯示。畜舍不能升級。
@@ -639,7 +640,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/pages_cellar.go` | `d0ed415b913854d079440a222a2f912e21cc1a0dc9663750c59492b4c6677336` |
 | `internal/bot/pages_decor.go` | `c7720365f1564014f40a9813f3815e8f4850392c33611e9a4cfd3b3188eff738` |
 | `internal/bot/pages_fishing.go` | `8b00f9184ba26449ea84cdae08ff63ead7a1b5e53404e10bba34cbede7f8c7f3` |
-| `internal/bot/pages_lab.go` | `3c088b9ac1424ac3da4c9e8ab57aff944ebcd839c4bd5b8ef2e6197f43a90bc3` |
+| `internal/bot/pages_lab.go` | `837898a95983ec239e3bdce0f0c45cc85b0d9217b12cddaff197f6182c50afd0` |
 | `internal/bot/pages_main.go` | `b2219318b13d9679eb96c63a37bbee07cb2070860f43e284968b7edbe7b9afe6` |
 | `internal/bot/pages_progress.go` | `ab053e6ac54d5331b8735e196cf017630d08be83055785fa45c9109d23a71db8` |
 | `internal/bot/pages_ranch.go` | `6c24d9867020c2d381cb296257d30a2dd3fdd53cbe945348f2e0ad1e9b059bd1` |
@@ -654,7 +655,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/panel_expansions_test.go` | `de28aa3c902c8b5c9b34ff8209fa6c616c01e8fe6158bfb41386d9c7e17f07e7` |
 | `internal/bot/panel_fishing_test.go` | `3c6b53e22643f95278f3d446f0392a455f2afe0e7adb63d1428fb064ec55be57` |
 | `internal/bot/panel_go_features_test.go` | `5e2ae2a3a752f6b9b35541372f799e01706fe7592292b0a2ea511040b6de261f` |
-| `internal/bot/panel_lab_test.go` | `0bbc4b36d9564b466cdb6933a6bf84c5dd9dea2c52bc3b3501befa41a85bb8c6` |
+| `internal/bot/panel_lab_test.go` | `366bab5e827793d09c2bc79e2c312d508e4315eef0a1743727c306777feb7d53` |
 | `internal/bot/panel_progress_test.go` | `f8738ee2532b93da6ec75847d1f7c0114388a4606bf2d2122c86a6ed10ea4f6c` |
 | `internal/bot/panel_ranch_test.go` | `8b84fc1dc2f632522cd50d101d12240d32545740b1ab191f2f6bd1a77d487f04` |
 | `internal/bot/panel_shop_test.go` | `c992fda095572e81ec390d9083b6d21869ac099c401316f15ef6f1c03bcd80b6` |
