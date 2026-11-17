@@ -308,11 +308,17 @@ func TestPlantLabSeedsFromPlots(t *testing.T) {
 	e.exec(`INSERT INTO lab_seeds (farm_id, breeder_farm_id, crop_code, gene_growth, gene_yield, gene_quality, gene_mutation, status)
 		SELECT id, id, 'wheat', 1, 1, 1, 1, 'busy' FROM farms WHERE player_id = $1`, pid)
 	p.goPage("plots")
-	// 有兩種作物：先選作物（2026-11-17），培育中的種子不算
-	if c := p.selectMenu("先選作物"); c == nil || len(c.Options) != 3 || !strings.Contains(c.Options[1].Label, "小麥（1 顆）") {
+	// 有兩種作物：直接列出全部種子，第一項可以切換成作物清單篩選（2026-11-17），培育中的種子不算
+	p.chooseMany("勾選特殊種子", []string{cropFilterPrefix})
+	if c := p.selectMenu("選擇要看的作物"); c == nil || len(c.Options) != 3 || !strings.Contains(c.Options[1].Label, "小麥（1 顆）") {
 		t.Fatalf("%+v", c)
 	}
-	p.choose("先選作物", cropFilterPrefix+cropFilterAll)
+	p.choose("選擇要看的作物", cropFilterPrefix+"corn")
+	if s := p.selectMenu("勾選特殊種子"); s == nil || len(s.Options) != 2 || !strings.Contains(s.Options[0].Label, "目前只看玉米") {
+		t.Fatalf("%+v", s)
+	}
+	p.chooseMany("勾選特殊種子", []string{cropFilterPrefix})
+	p.choose("選擇要看的作物", cropFilterPrefix+cropFilterAll)
 	s := p.selectMenu("勾選特殊種子")
 	if s == nil || len(s.Options) != 3 || s.Options[0].Value != cropFilterPrefix || s.MaxValues != 3 {
 		t.Fatalf("培育中的種子不列出：%+v", s)

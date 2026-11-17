@@ -662,16 +662,20 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 	if empty := countState(s.Plots, rules.PlotEmpty); empty > 0 && len(d.labSeeds) > 0 {
 		// 種子實驗室的特殊種子（2026-11-15）：勾選要種的種子，每顆依序種到一格空地；沒有可種的特殊種子時不顯示
 		// 2026-11-16 超過 25 顆時選單內翻頁（第一項「上一頁」、最後一項「下一頁」），以前只列前 25 顆，後面的種子種不到
-		// 2026-11-17 種子有好幾種作物時先選作物（同一列），再勾選這種作物的種子；同作物排在一起
+		// 2026-11-17 同作物排在一起；預設直接列出全部種子可以勾選，選單第一項「🔎 篩選作物」切換成作物清單（同一列），
+		// 選了作物只列那種作物的種子（原本一定要先選作物，不能直接種，使用者要求改回）
 		codes, _, _ := seedCrops(d.labSeeds)
-		seeds := filterSeeds(sortSeedsByCrop(d.labSeeds), p.plotSeedCrop)
-		if len(seeds) == 0 {
-			p.plotSeedCrop, seeds = "", sortSeedsByCrop(d.labSeeds)
+		picking := len(codes) > 1 && p.plotSeedCrop == cropFilterPick
+		seeds := sortSeedsByCrop(d.labSeeds)
+		if !picking {
+			if seeds = filterSeeds(seeds, p.plotSeedCrop); len(seeds) == 0 {
+				p.plotSeedCrop, seeds = "", sortSeedsByCrop(d.labSeeds)
+			}
 		}
-		if len(codes) > 1 && p.plotSeedCrop == "" {
+		if picking {
 			opts, page, pages := pagedOptions(cropFilterOptions(d.labSeeds, "所有作物的特殊種子一起列出"), p.plotSeedPage)
 			p.plotSeedPage = page
-			p.selectMenu(fmt.Sprintf("🧬 種特殊種子：先選作物（共 %d 顆，空地 %d 格）…", len(d.labSeeds), empty), opts,
+			p.selectMenu(fmt.Sprintf("🔎 篩選特殊種子：選擇要看的作物（共 %d 顆，空地 %d 格）…", len(d.labSeeds), empty), opts,
 				func(ctx context.Context, it ui.Interaction, value string) error {
 					if !turnPage(value, &p.plotSeedPage, pages) {
 						p.plotSeedCrop, p.plotSeedPage = strings.TrimPrefix(value, cropFilterPrefix), 0
@@ -682,7 +686,11 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 		} else {
 			all := make([]option, 0, len(seeds)+1)
 			if len(codes) > 1 {
-				all = append(all, option{"🔎 改選其他作物", cropFilterPrefix, "選這項回到作物清單", "🔙"})
+				filterLabel := "🔎 篩選作物（只看某種作物）"
+				if name := cropFilterName(d.labSeeds, p.plotSeedCrop); name != "" {
+					filterLabel = "🔎 改選其他作物（目前只看" + name + "）"
+				}
+				all = append(all, option{filterLabel, cropFilterPrefix, "選這項會打開作物清單，不會種下", "🔎"})
 			}
 			for _, sv := range seeds {
 				all = append(all, option{seedOptionLabel(sv), fmt.Sprint(sv.ID), seedOptionDesc(sv), cropEmoji(sv.CropCode)})
@@ -706,7 +714,7 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 					}
 					if len(ids) == 0 {
 						if turn == cropFilterPrefix {
-							p.plotSeedCrop, p.plotSeedPage = "", 0
+							p.plotSeedCrop, p.plotSeedPage = cropFilterPick, 0
 							p.goTo(ctx, it, "plots", "")
 						} else if turnPage(turn, &p.plotSeedPage, pages) {
 							p.goTo(ctx, it, "plots", "")

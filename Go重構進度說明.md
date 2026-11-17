@@ -169,7 +169,7 @@
     - 按到已失效的元件（Bot 重新啟動、面板閒置超過 15 分鐘）以前完全不回應。現在私密的農場面板會在同一則訊息直接重開（`Commands.ReopenPanel`，釣魚進行中時直接回到釣魚畫面），其他訊息則私密回覆「這個按鈕已經失效了」。
   - **特殊種子依作物篩選**：種子庫、農田頁、雜交頁的種子改成同作物排在一起（`sortSeedsByCrop`）。
     - 種子庫：沒選種子時第 2 列是「🔎 篩選作物」選單（全部／只看某作物，超過 25 項時選單內翻頁）。選了種子後這一列讓給「種下」選單，按「🔎 取消選取／篩選」回來。
-    - 農田頁：種子有兩種以上作物時，「🧬」那一列先選作物（或全部），再勾選這種作物的種子；選單第一項「🔎 改選其他作物」回到作物清單。
+    - 農田頁：「🧬」選單照常直接列出全部種子可以勾選；種子有兩種以上作物時，第一項「🔎 篩選作物」把這一列換成作物清單，選了作物只列那種作物的種子（第一項變成「🔎 改選其他作物」）。原本一定要先選作物才能種，使用者反映不能直接種，當天改回。
   - **加工設施升級（Migration 0043：`farm_buildings.level` 0–3）**：磨坊、烘焙坊、果醬工坊在「🏗️ 建造設施」頁各可升 3 級（`balance.BuildingUpgradePrices` 15,000／50,000／100,000 金），加工時間 -15%／-40%／-60%（`balance.CraftSeconds`，整張訂單的秒數無條件進位）。
     - 選了設施後要再按「確認升級」才扣錢。升級記為 `build` 交易，計入「農場建設」任務與發展點數。
     - 升級後新開的訂單（含自動加工機開的訂單）才縮短，已經排隊的訂單時間不變。加工頁的設施狀態與配方時間依等級顯示。畜舍不能升級。
@@ -626,21 +626,21 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/pages_cellar.go` | `d0ed415b913854d079440a222a2f912e21cc1a0dc9663750c59492b4c6677336` |
 | `internal/bot/pages_decor.go` | `c7720365f1564014f40a9813f3815e8f4850392c33611e9a4cfd3b3188eff738` |
 | `internal/bot/pages_fishing.go` | `8b00f9184ba26449ea84cdae08ff63ead7a1b5e53404e10bba34cbede7f8c7f3` |
-| `internal/bot/pages_lab.go` | `aa27179f49a782922e30ff396f43e995689c3c006276004a52707a4f3dec6671` |
-| `internal/bot/pages_main.go` | `d4eabafecdb04dda878391f6a9ca2cf81f8c53c6e32da314a0eda14d2671c69b` |
+| `internal/bot/pages_lab.go` | `50b42e4f0174f528830f0b1905999c0015e635e1b592327f1a7fa2adb6d5da3b` |
+| `internal/bot/pages_main.go` | `e593a8839932e710b634a8adabc4c7a04ff897f13cd17ad75457d9c3ca1eb621` |
 | `internal/bot/pages_progress.go` | `ab053e6ac54d5331b8735e196cf017630d08be83055785fa45c9109d23a71db8` |
 | `internal/bot/pages_ranch.go` | `6c24d9867020c2d381cb296257d30a2dd3fdd53cbe945348f2e0ad1e9b059bd1` |
 | `internal/bot/pages_seedmaker.go` | `6ea7b8693b864694989f47463a21f22e8f35b772604618a1852b822df6078ea3` |
 | `internal/bot/pages_shop.go` | `23c0df47c39fff4c8d68f1020804f04209ba221b1e044f9878ddc031f63a3651` |
 | `internal/bot/pages_social.go` | `5ffd360c37ef282f4ab92e3832c638761b5126b3e1898d5d1c9e4448b902d7bd` |
-| `internal/bot/panel.go` | `70ba1331179cf0b7ead18dcd8cb38a2daf03d7e6aeb6349c1487b91b830a1991` |
+| `internal/bot/panel.go` | `489ae42afedb6a8fc6bf8a363375fa2d1405941116297a6fce4fc4a96fc75c66` |
 | `internal/bot/panel_autofish_test.go` | `f8204b17908932e84a9a869f876bd292203f84a7c5ccaa2ad8b1b4bab16ac36d` |
 | `internal/bot/panel_autoseller_test.go` | `55eb73ccf2b77df8ed030d4f9066c41cb1e80d86635ce49fa3f4c81d9254e11b` |
 | `internal/bot/panel_boss_test.go` | `d94aac119d7868055d446b6070b25871c8924e818c91381cf9165029d5d30e26` |
 | `internal/bot/panel_expansions_test.go` | `de28aa3c902c8b5c9b34ff8209fa6c616c01e8fe6158bfb41386d9c7e17f07e7` |
 | `internal/bot/panel_fishing_test.go` | `3c6b53e22643f95278f3d446f0392a455f2afe0e7adb63d1428fb064ec55be57` |
 | `internal/bot/panel_go_features_test.go` | `5e2ae2a3a752f6b9b35541372f799e01706fe7592292b0a2ea511040b6de261f` |
-| `internal/bot/panel_lab_test.go` | `6466ba4988d12dbdeac782ba19d1f5fbe8bf5b131a730f258a0e3dbe6e10b625` |
+| `internal/bot/panel_lab_test.go` | `0bbc4b36d9564b466cdb6933a6bf84c5dd9dea2c52bc3b3501befa41a85bb8c6` |
 | `internal/bot/panel_progress_test.go` | `f8738ee2532b93da6ec75847d1f7c0114388a4606bf2d2122c86a6ed10ea4f6c` |
 | `internal/bot/panel_ranch_test.go` | `8b84fc1dc2f632522cd50d101d12240d32545740b1ab191f2f6bd1a77d487f04` |
 | `internal/bot/panel_shop_test.go` | `bf44cd3a125ee377a5585aed500aba50eb38c0b360cf5be18d29bd28e7395702` |
@@ -886,7 +886,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/site/site.go` | `55322015208738b37413e5fa2246a87f1508539fb9f6ef11ea7c0baa674a7576` |
 | `internal/site/site_test.go` | `ecf3fe3f0d6d71dab6acf94573dfcaede23e7795683a4b27f5eda94427c887a0` |
 | `internal/site/static/favicon.svg` | `bba4123b033483f9ca309a1031c36a6459679843def75245bca83d74575bc292` |
-| `internal/site/static/index.html` | `03b8d1cc8baa8ef9680da758c40154675d37470a5dc85857be782888d15b88c1` |
+| `internal/site/static/index.html` | `59e0f36307aa62b96337f831fa3a287bde1c5b5b9fd10ef22f772987dbd62683` |
 | `internal/site/static/site.css` | `ec177304d9b87958db3a342efc75f6c5ece73641f2cf0543c3d9e43402d8f3be` |
 | `internal/site/static/site.js` | `f3a1e23a03267b3cc4b32f16d04d5574d758c4bb410902ad02bffe08d963c102` |
 | `internal/web/admin.go` | `8179879a5db82198ab600bac39e9d5aacc3be855ae61b4bb1cfaa176ea924080` |

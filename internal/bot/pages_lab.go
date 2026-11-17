@@ -967,6 +967,7 @@ func labMutationNames() string {
 const (
 	cropFilterPrefix = "__crop:"
 	cropFilterAll    = "*"
+	cropFilterPick   = "?" // 農田頁：正在選要篩選的作物
 )
 
 // sortSeedsByCrop 同一種作物的種子排在一起（依作物名稱；同作物維持原本順序），不再各種種子穿插。
