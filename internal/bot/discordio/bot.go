@@ -282,8 +282,15 @@ func (b *Bot) onInteraction(s *discordgo.Session, ic *discordgo.InteractionCreat
 		b.Cmds.Handle(ctx, it, name)
 	case discordgo.InteractionMessageComponent:
 		d := i.MessageComponentData()
-		// 找不到元件（舊訊息、已逾時）時不回應，Discord 顯示互動失敗（discord.py 相同）
-		b.Reg.DispatchComponent(ctx, it, d.CustomID, d.Values)
+		// 找不到元件（Bot 重新啟動、面板已逾時）：私密的農場面板直接重開，其他訊息回覆按鈕已失效；
+		// 原本不回應，Discord 會顯示「交互失敗」（2026-11-17）
+		if !b.Reg.DispatchComponent(ctx, it, d.CustomID, d.Values) {
+			if i.Message != nil && i.Message.Flags&discordgo.MessageFlagsEphemeral != 0 && b.Cmds != nil {
+				b.Cmds.ReopenPanel(ctx, it)
+			} else {
+				_ = it.SendMessage(ctx, ui.Message{Content: &expiredButton, Ephemeral: true})
+			}
+		}
 	case discordgo.InteractionModalSubmit:
 		d := i.ModalSubmitData()
 		b.Reg.DispatchModal(ctx, it, d.CustomID, modalValues(d.Components))
@@ -421,3 +428,6 @@ func (b *Bot) onGuildDelete(_ *discordgo.Session, g *discordgo.GuildDelete) {
 		b.music.OnGuildRemove(g.ID)
 	}
 }
+
+// expiredButton 按到已失效的公開訊息按鈕時的私密回覆。
+var expiredButton = "⌛ 這個按鈕已經失效了（Bot 更新過或太久沒操作），請重新輸入指令。"

@@ -313,6 +313,31 @@ var Buildings = map[string]Building{
 
 const BarnSlots = 4 // 每座畜舍可安置的動物數（任一動物佔 1 欄位）
 
+// ---------- 加工設施升級（2026-11-17，Go 版新增） ----------
+
+// BuildingUpgradePrices 加工設施升到第 1、2、3 級的價格。
+var BuildingUpgradePrices = []int{15000, 50000, 100000}
+
+// BuildingUpgradeCutPct 各等級縮短的加工時間 %（索引 = 等級，0 = 未升級）。
+var BuildingUpgradeCutPct = []int{0, 15, 40, 60}
+
+// BuildingMaxLevel 加工設施最高等級。
+func BuildingMaxLevel() int { return len(BuildingUpgradePrices) }
+
+// Upgradable 可以升級的設施（磨坊、烘焙坊、果醬工坊；畜舍不能升級）。
+func Upgradable(code string) bool {
+	return code == "mill" || code == "bakery" || code == "jam_workshop"
+}
+
+// CraftSeconds 依設施等級縮短後的加工秒數（無條件進位，至少 1 秒）。
+func CraftSeconds(seconds, level int) int {
+	if seconds <= 0 {
+		return seconds
+	}
+	pct := BuildingUpgradeCutPct[max(0, min(level, len(BuildingUpgradeCutPct)-1))]
+	return max(1, (seconds*(100-pct)+99)/100)
+}
+
 // ---------- 加工配方 ----------
 
 // Recipe 名稱、所需設施、{原料代碼: 每份數量}、成品代碼、每份產量、每份加工秒數、別名。

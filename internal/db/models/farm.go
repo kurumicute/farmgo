@@ -399,6 +399,7 @@ type FarmBuilding struct {
 	BuildingCode string    `db:"building_code"`
 	Slot         int       `db:"slot"`
 	BuiltAt      time.Time `db:"built_at"`
+	Level        int       `db:"level"` // 加工設施升級等級 0–3（Migration 0043，Go 版新增）
 }
 
 func (FarmBuilding) TableName() string { return TableFarmBuilding }

@@ -40,6 +40,19 @@ func AddBuilding(ctx context.Context, t *db.Tx, farmID int64, buildingCode strin
 		farmID, buildingCode, slot, now)
 }
 
+// BuildingLevels 農場各設施的升級等級（同種建築取最高；沒有的設施不在 map 裡）。
+func BuildingLevels(ctx context.Context, t *db.Tx, farmID int64) (map[string]int, error) {
+	list, err := ListBuildings(ctx, t, farmID)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]int{}
+	for _, b := range list {
+		out[b.BuildingCode] = max(out[b.BuildingCode], b.Level)
+	}
+	return out, nil
+}
+
 // ---------- 動物 ----------
 
 // ListAnimals forUpdate 預設 false。

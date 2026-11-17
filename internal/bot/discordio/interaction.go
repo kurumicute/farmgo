@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 
@@ -240,10 +241,29 @@ func (it *Interaction) Show(ctx context.Context, m ui.Message) error {
 	it.bind(m)
 	e := encode(m, true)
 	if !it.responded {
-		return it.respond(ctx, respUpdateMessage, &e)
+		// 要上傳圖片或互動已經快到 3 秒期限時，先 defer 再編輯原訊息：直接回應要在 3 秒內「傳完」，
+		// 上傳圖片可能超過期限而變成「交互失敗」（2026-11-17）
+		if it.isCommand() || (len(e.files) == 0 && it.age() < showDirectAge) {
+			return it.respond(ctx, respUpdateMessage, &e)
+		}
+		if err := it.respond(ctx, respDeferUpdate, nil); err != nil {
+			return err
+		}
 	}
 	_, err := it.c.send(ctx, http.MethodPatch, it.webhookURL("/messages/@original"), e.msg, e.files)
 	return err
+}
+
+// showDirectAge 互動建立超過這段時間後，Show 一律先 defer（Discord 要求 3 秒內回應）。
+const showDirectAge = 2 * time.Second
+
+// age 互動建立至今的時間（無法解析 ID 時視為 0）。
+func (it *Interaction) age() time.Duration {
+	created, err := discordgo.SnowflakeTimestamp(it.i.ID)
+	if err != nil {
+		return 0
+	}
+	return max(0, time.Since(created))
 }
 
 // EditOriginal 編輯原訊息（回應之後）。

@@ -281,16 +281,19 @@ func TestStaleTurnIsNotAppliedTwice(t *testing.T) {
 	}
 }
 
-func TestActionTimeoutAndGiveUp(t *testing.T) {
+// 拉扯中太久沒操作不會失敗（2026-11-17 拔掉時限），之後仍可接著操作或放棄。
+func TestFightNoTimeoutAndGiveUp(t *testing.T) {
 	e := setup(t)
 	pid := e.player()
 	e.equipStarter(pid, 10)
-	e.castAndHook(pid)
-	e.clock.Advance(float64(fishing.DefaultSettings().ActionTimeoutSeconds) + fishing.ReactionGraceSeconds + 1)
-	if st := must[*FishingView](t)(e.f.FishingState(e.ctx, pid)); st.Status != "timeout" {
+	v := e.castAndHook(pid)
+	e.clock.Advance(float64(fishing.DefaultSettings().ActionTimeoutSeconds) * 10)
+	if st := must[*FishingView](t)(e.f.FishingState(e.ctx, pid)); st.Status != "fighting" {
 		t.Fatal(st.Status)
 	}
-	v := e.view(e.f.StartFishing(e.ctx, pid))
+	if next := e.view(e.f.FishingAction(e.ctx, pid, v.ID, "wait", 0)); next.Turn != 1 {
+		t.Fatal(next.Turn)
+	}
 	if g := e.view(e.f.GiveUpFishing(e.ctx, pid, v.ID)); g.Status != "abandoned" {
 		t.Fatal(g.Status)
 	}

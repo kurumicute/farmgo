@@ -204,6 +204,7 @@ func NewOrderView(o models.CraftOrder, now time.Time, names map[string]string) O
 
 type WorkshopStatus struct {
 	Counts   map[string]int        // 建築代碼 → 座數
+	Levels   map[string]int        // 建築代碼 → 升級等級（加工設施，2026-11-17）
 	Busy     map[string]*OrderView // 建築代碼 → 加工中的訂單（閒置為 nil）
 	Queued   map[string]int        // 建築代碼 → 排在加工中訂單之後的張數
 	Capacity int
@@ -230,7 +231,7 @@ type RecipeView struct {
 	InputOrder     []string       // Inputs 的顯示順序（名稱）
 	OutputName     string
 	OutputQuantity int
-	Seconds        int
+	Seconds        int // 每份的加工秒數（已依設施等級縮短）
 	SellPrice      *int
 	CanMake        *int // 現有原料最多能做幾份（單張訂單上限內）；沒有指定玩家時為 nil
 }
@@ -366,6 +367,50 @@ func (r *RanchService) Build(ctx context.Context, playerID int64, key string) (A
 	})
 }
 
+// UpgradeBuilding 加工設施升級（2026-11-17，Go 版新增）：每級縮短加工時間，最多 balance.BuildingMaxLevel() 級。
+// 已經在排隊的訂單完成時間不變，升級後新開的訂單才縮短。
+func (r *RanchService) UpgradeBuilding(ctx context.Context, playerID int64, code string) (ActionResult, error) {
+	if !balance.Upgradable(code) {
+		return ActionResult{}, gameerr.Validationf("只有磨坊、烘焙坊、果醬工坊可以升級。")
+	}
+	b := balance.Buildings[code]
+	return inTx(ctx, r.GameService, func(t *db.Tx) (ActionResult, error) {
+		farm, err := r.lockedFarm(ctx, t, playerID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		list, err := ranch.ListBuildings(ctx, t, farm.ID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		i := slices.IndexFunc(list, func(x models.FarmBuilding) bool { return x.BuildingCode == code })
+		if i < 0 {
+			return ActionResult{}, gameerr.Validationf("還沒有%s，請先建造。", b.Name)
+		}
+		cur := list[i]
+		if cur.Level >= balance.BuildingMaxLevel() {
+			return ActionResult{}, gameerr.New(gameerr.AlreadyExists, "%s已經升到最高等級 Lv.%d。", b.Name, cur.Level)
+		}
+		price, next := balance.BuildingUpgradePrices[cur.Level], cur.Level+1
+		if farm.Gold < price {
+			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：%s升到 Lv.%d 需要 %d，目前只有 %d。", b.Name, next, price, farm.Gold)
+		}
+		if _, err := db.UpdateByID(ctx, t, "farm_buildings", cur.ID, db.C("level", next)); err != nil {
+			return ActionResult{}, err
+		}
+		farm.Gold -= price
+		if err := r.saveFarm(ctx, t, farm, db.C("gold", farm.Gold)); err != nil {
+			return ActionResult{}, err
+		}
+		pct := balance.BuildingUpgradeCutPct[next]
+		if err := r.record(ctx, t, farm, rules.EvBuild, fmt.Sprintf("升級%s到 Lv.%d（加工時間 -%d%%），金幣 -%d", b.Name, next, pct, price),
+			rec{ItemCode: code, Quantity: 1, GoldDelta: -price}); err != nil {
+			return ActionResult{}, err
+		}
+		return result(fmt.Sprintf("%s升到 Lv.%d，之後新開的加工訂單時間 -%d%%，花費 %d 金幣。", b.Name, next, pct, price), farm.Gold, -price, code, 1), nil
+	})
+}
+
 func (r *RanchService) capacity(ctx context.Context, t *db.Tx, farmID int64) (int, error) {
 	n, err := ranch.CountBuildings(ctx, t, farmID, "barn")
 	return n * balance.BarnSlots, err
@@ -382,13 +427,14 @@ func (r *RanchService) WorkshopStatus(ctx context.Context, playerID int64) (Work
 		if err != nil {
 			return WorkshopStatus{}, err
 		}
-		st := WorkshopStatus{Counts: map[string]int{}, Busy: map[string]*OrderView{}, Queued: map[string]int{}, Gold: farm.Gold}
+		st := WorkshopStatus{Counts: map[string]int{}, Levels: map[string]int{}, Busy: map[string]*OrderView{}, Queued: map[string]int{}, Gold: farm.Gold}
 		for _, code := range balance.BuildingOrder {
 			st.Counts[code] = 0
 		}
 		for _, b := range list {
 			if _, ok := balance.Buildings[b.BuildingCode]; ok {
 				st.Counts[b.BuildingCode]++
+				st.Levels[b.BuildingCode] = max(st.Levels[b.BuildingCode], b.Level)
 			}
 		}
 		names, err := catalog.ItemNames(ctx, t)
@@ -758,7 +804,7 @@ func (r *RanchService) ReleaseAnimal(ctx context.Context, playerID int64, animal
 
 // Recipes playerID 為 nil 時不標示是否已建造設施。
 func (r *RanchService) Recipes(ctx context.Context, playerID *int64) ([]RecipeView, error) {
-	counts, have := map[string]int{}, map[string]int{}
+	counts, have, levels := map[string]int{}, map[string]int{}, map[string]int{}
 	names, err := inTx(ctx, r.GameService, func(t *db.Tx) (map[string]string, error) {
 		names, err := catalog.ItemNames(ctx, t)
 		if err != nil || playerID == nil {
@@ -774,6 +820,7 @@ func (r *RanchService) Recipes(ctx context.Context, playerID *int64) ([]RecipeVi
 		}
 		for _, b := range list {
 			counts[b.BuildingCode]++
+			levels[b.BuildingCode] = max(levels[b.BuildingCode], b.Level)
 		}
 		for _, code := range balance.RecipeOrder {
 			for _, item := range balance.Recipes[code].InputOrder {
@@ -795,7 +842,7 @@ func (r *RanchService) Recipes(ctx context.Context, playerID *int64) ([]RecipeVi
 		rc := balance.Recipes[code]
 		v := RecipeView{Code: code, Name: rc.Name, BuildingCode: rc.Building, BuildingName: balance.Buildings[rc.Building].Name,
 			Built: counts[rc.Building] > 0, Inputs: map[string]int{}, OutputName: ItemName(rc.Output, names),
-			OutputQuantity: rc.OutputQty, Seconds: rc.Seconds}
+			OutputQuantity: rc.OutputQty, Seconds: balance.CraftSeconds(rc.Seconds, levels[rc.Building])}
 		for _, item := range rc.InputOrder {
 			n := ItemName(item, names)
 			v.Inputs[n] = rc.Inputs[item]
@@ -879,6 +926,10 @@ func (r *RanchService) startOrder(ctx context.Context, t *db.Tx, farm *models.Fa
 	if len(active) > 0 {
 		start = active[len(active)-1].ReadyAt
 	}
+	levels, err := ranch.BuildingLevels(ctx, t, farm.ID) // 加工設施升級縮短加工時間（2026-11-17）；機器不在建築表，等級 0
+	if err != nil {
+		return ActionResult{}, err
+	}
 	names, err := catalog.ItemNames(ctx, t)
 	if err != nil {
 		return ActionResult{}, err
@@ -912,7 +963,7 @@ func (r *RanchService) startOrder(ctx context.Context, t *db.Tx, farm *models.Fa
 	out := sp.OutputQty * quantity
 	order, err := addOrder(ctx, t, ranch.NewOrder{FarmID: farm.ID, RecipeCode: sp.Code, BuildingCode: sp.Building,
 		Quantity: quantity, Inputs: needed, OutputCode: sp.Output, OutputQuantity: out, Status: "in_progress",
-		StartedAt: start, ReadyAt: start.Add(time.Duration(sp.Seconds*quantity) * time.Second)})
+		StartedAt: start, ReadyAt: start.Add(time.Duration(balance.CraftSeconds(sp.Seconds*quantity, levels[sp.Building])) * time.Second)})
 	if err != nil {
 		return ActionResult{}, err
 	}

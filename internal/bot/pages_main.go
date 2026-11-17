@@ -662,44 +662,69 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 	if empty := countState(s.Plots, rules.PlotEmpty); empty > 0 && len(d.labSeeds) > 0 {
 		// 種子實驗室的特殊種子（2026-11-15）：勾選要種的種子，每顆依序種到一格空地；沒有可種的特殊種子時不顯示
 		// 2026-11-16 超過 25 顆時選單內翻頁（第一項「上一頁」、最後一項「下一頁」），以前只列前 25 顆，後面的種子種不到
-		all := make([]option, 0, len(d.labSeeds))
-		for _, sv := range d.labSeeds {
-			all = append(all, option{seedOptionLabel(sv), fmt.Sprint(sv.ID), seedOptionDesc(sv), cropEmoji(sv.CropCode)})
+		// 2026-11-17 種子有好幾種作物時先選作物（同一列），再勾選這種作物的種子；同作物排在一起
+		codes, _, _ := seedCrops(d.labSeeds)
+		seeds := filterSeeds(sortSeedsByCrop(d.labSeeds), p.plotSeedCrop)
+		if len(seeds) == 0 {
+			p.plotSeedCrop, seeds = "", sortSeedsByCrop(d.labSeeds)
 		}
-		opts, page, pages := pagedOptions(all, p.plotSeedPage)
-		p.plotSeedPage = page
-		holder := fmt.Sprintf("🧬 勾選特殊種子，每顆種到 1 格空地（空地 %d 格，可複選）…", empty)
-		if pages > 1 {
-			holder = fmt.Sprintf("🧬 勾選特殊種子種到空地（空地 %d 格，第 %d/%d 頁，選單頭尾可翻頁）…", empty, page+1, pages)
-		}
-		multi := &ui.Select{Placeholder: holder, Row: 3, MinValues: 1, MaxValues: min(len(opts), empty),
-			OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
-				ids := make([]int64, 0, len(values))
-				turn := ""
-				for _, v := range values {
-					if v == pagePrev || v == pageNext {
-						turn = v
-					} else if id, ok := parseDigits(v); ok {
-						ids = append(ids, int64(id))
+		if len(codes) > 1 && p.plotSeedCrop == "" {
+			opts, page, pages := pagedOptions(cropFilterOptions(d.labSeeds, "所有作物的特殊種子一起列出"), p.plotSeedPage)
+			p.plotSeedPage = page
+			p.selectMenu(fmt.Sprintf("🧬 種特殊種子：先選作物（共 %d 顆，空地 %d 格）…", len(d.labSeeds), empty), opts,
+				func(ctx context.Context, it ui.Interaction, value string) error {
+					if !turnPage(value, &p.plotSeedPage, pages) {
+						p.plotSeedCrop, p.plotSeedPage = strings.TrimPrefix(value, cropFilterPrefix), 0
 					}
-				}
-				if len(ids) == 0 {
-					if turnPage(turn, &p.plotSeedPage, pages) {
-						p.goTo(ctx, it, "plots", "")
-					}
+					p.goTo(ctx, it, "plots", "")
 					return nil
-				}
-				// 同時勾了種子和翻頁選項時只種種子（翻頁選項忽略）
-				p.act(ctx, it, p.call("plant_lab_seeds", func(ctx context.Context) (services.ActionResult, error) {
-					return p.svc().PlantLabSeeds(ctx, p.playerID, ids)
-				}), actOpts{})
-				return nil
-			}}
-		for _, o := range opts {
-			multi.Options = append(multi.Options, ui.SelectOption{Label: cut(o.label, 100), Value: o.value,
-				Emoji: o.emoji, Description: cut(o.desc, 100)})
+				}, 3, "")
+		} else {
+			all := make([]option, 0, len(seeds)+1)
+			if len(codes) > 1 {
+				all = append(all, option{"🔎 改選其他作物", cropFilterPrefix, "選這項回到作物清單", "🔙"})
+			}
+			for _, sv := range seeds {
+				all = append(all, option{seedOptionLabel(sv), fmt.Sprint(sv.ID), seedOptionDesc(sv), cropEmoji(sv.CropCode)})
+			}
+			opts, page, pages := pagedOptions(all, p.plotSeedPage)
+			p.plotSeedPage = page
+			holder := fmt.Sprintf("🧬 勾選特殊種子，每顆種到 1 格空地（空地 %d 格，可複選）…", empty)
+			if pages > 1 {
+				holder = fmt.Sprintf("🧬 勾選特殊種子種到空地（空地 %d 格，第 %d/%d 頁，選單頭尾可翻頁）…", empty, page+1, pages)
+			}
+			multi := &ui.Select{Placeholder: holder, Row: 3, MinValues: 1, MaxValues: min(len(opts), empty),
+				OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
+					ids := make([]int64, 0, len(values))
+					turn := ""
+					for _, v := range values {
+						if v == pagePrev || v == pageNext || v == cropFilterPrefix {
+							turn = v
+						} else if id, ok := parseDigits(v); ok {
+							ids = append(ids, int64(id))
+						}
+					}
+					if len(ids) == 0 {
+						if turn == cropFilterPrefix {
+							p.plotSeedCrop, p.plotSeedPage = "", 0
+							p.goTo(ctx, it, "plots", "")
+						} else if turnPage(turn, &p.plotSeedPage, pages) {
+							p.goTo(ctx, it, "plots", "")
+						}
+						return nil
+					}
+					// 同時勾了種子和翻頁選項時只種種子（翻頁選項忽略）
+					p.act(ctx, it, p.call("plant_lab_seeds", func(ctx context.Context) (services.ActionResult, error) {
+						return p.svc().PlantLabSeeds(ctx, p.playerID, ids)
+					}), actOpts{})
+					return nil
+				}}
+			for _, o := range opts {
+				multi.Options = append(multi.Options, ui.SelectOption{Label: cut(o.label, 100), Value: o.value,
+					Emoji: o.emoji, Description: cut(o.desc, 100)})
+			}
+			p.add(multi)
 		}
-		p.add(multi)
 	}
 	p.nav("地下菇房", "cellar", btn{emoji: "🍄", row: 4, style: ui.Primary})
 	p.nav("種子實驗室", "lab", btn{emoji: "🧪", row: 4, style: ui.Primary})

@@ -6,6 +6,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,9 @@ type labState struct {
 	cloneHerb    bool
 	// 種子超過 25 顆（Discord 選單上限）時分頁：種子庫頁、雜交頁的母本與父本選單各自的頁碼
 	seedPage, motherPage, fatherPage int
+	// 種子庫頁的作物篩選（"" / cropFilterAll = 全部）與篩選選單的頁碼（2026-11-17）
+	filter     string
+	filterPage int
 }
 
 // pageOf 第 page 頁（每頁 ui.MaxOptions 項）的內容、修正後的頁碼與總頁數。
@@ -449,8 +453,13 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 	}
 	cfg := seedlab.Current()
 	e := &ui.Embed{Title: "🌰 ✦ 種子庫 ✦", Color: Teal}
+	// 同作物排在一起，可依作物篩選（2026-11-17）；篩選的作物已經沒有種子時回到全部
+	seeds := filterSeeds(sortSeedsByCrop(v.Seeds), p.lab.filter)
+	if len(seeds) == 0 {
+		p.lab.filter, seeds = "", sortSeedsByCrop(v.Seeds)
+	}
 	// 種子超過 25 顆時分頁：清單與選單都只顯示這一頁
-	pageSeeds, page, pages := pageOf(v.Seeds, p.lab.seedPage)
+	pageSeeds, page, pages := pageOf(seeds, p.lab.seedPage)
 	p.lab.seedPage = page
 	var lines []string
 	for _, s := range pageSeeds {
@@ -461,6 +470,9 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 		sel = nil
 	}
 	listTitle := fmt.Sprintf("特殊種子 %d／%d", len(v.Seeds), v.Capacity)
+	if name := cropFilterName(v.Seeds, p.lab.filter); name != "" {
+		listTitle += fmt.Sprintf("｜只看 %s %d 顆", name, len(seeds))
+	}
 	if pages > 1 {
 		listTitle += fmt.Sprintf("（第 %d/%d 頁）", page+1, pages)
 	}
@@ -513,6 +525,29 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 		p.goTo(ctx, it, "lab_seeds", "")
 		return nil
 	}, 0, selected)
+	if codes, _, _ := seedCrops(v.Seeds); sel == nil && len(codes) > 1 {
+		// 作物篩選（2026-11-17）：選了種子之後這一列給「種下」選單，按「取消選取」回來改篩選
+		opts, fpage, fpages := pagedOptions(cropFilterOptions(v.Seeds, "種子庫顯示所有種子"), p.lab.filterPage)
+		p.lab.filterPage = fpage
+		holder := "🔎 篩選作物：全部"
+		if name := cropFilterName(v.Seeds, p.lab.filter); name != "" {
+			holder = "🔎 篩選作物：只看 " + name
+		}
+		p.selectMenu(holder+"（選擇要看的作物）…", opts, func(ctx context.Context, it ui.Interaction, value string) error {
+			if !turnPage(value, &p.lab.filterPage, fpages) {
+				p.lab.filter, p.lab.seedPage = strings.TrimPrefix(value, cropFilterPrefix), 0
+			}
+			p.goTo(ctx, it, "lab_seeds", "")
+			return nil
+		}, 1, "")
+	}
+	if sel != nil {
+		p.button("取消選取／篩選", func(ctx context.Context, it ui.Interaction) error {
+			p.lab.seed = 0
+			p.goTo(ctx, it, "lab_seeds", "")
+			return nil
+		}, btn{emoji: "🔎", row: 4})
+	}
 	if sel != nil {
 		seedID := sel.ID
 		var plots []option
@@ -779,7 +814,7 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 	e.Footer = fmt.Sprintf("♂ 父本會被用掉，♀ 母本保留。研究槽空 %d 個。基因怎麼遺傳見「📖 實驗室說明」。", v.FreeSlots)
 
 	var mothers []option
-	for _, s := range v.Seeds {
+	for _, s := range sortSeedsByCrop(v.Seeds) {
 		if !s.Busy {
 			mothers = append(mothers, option{seedOptionLabel(s), fmt.Sprint(s.ID), seedOptionDesc(s), cropEmoji(s.CropCode)})
 		}
@@ -809,7 +844,7 @@ func (p *Panel) buildLabCross(ctx context.Context, data any) (*ui.Embed, error) 
 	}, 0, selected)
 	if mother != nil {
 		var fathers []option
-		for _, s := range v.Seeds {
+		for _, s := range sortSeedsByCrop(v.Seeds) {
 			if s.Busy || s.ID == mother.ID {
 				continue
 			}
@@ -924,4 +959,63 @@ func labMutationNames() string {
 		names[i] = balance.Mutations[m]
 	}
 	return strings.Join(names, "、")
+}
+
+// ---------- 特殊種子依作物篩選（2026-11-17） ----------
+
+// cropFilterPrefix 篩選選項的值：cropFilterPrefix + 作物代碼；cropFilterAll 顯示全部作物。
+const (
+	cropFilterPrefix = "__crop:"
+	cropFilterAll    = "*"
+)
+
+// sortSeedsByCrop 同一種作物的種子排在一起（依作物名稱；同作物維持原本順序），不再各種種子穿插。
+func sortSeedsByCrop(seeds []services.LabSeedView) []services.LabSeedView {
+	out := slices.Clone(seeds)
+	slices.SortStableFunc(out, func(a, b services.LabSeedView) int { return strings.Compare(a.CropName, b.CropName) })
+	return out
+}
+
+// filterSeeds 只留 crop 這種作物的種子（"" 或 cropFilterAll = 全部）。
+func filterSeeds(seeds []services.LabSeedView, crop string) []services.LabSeedView {
+	if crop == "" || crop == cropFilterAll {
+		return seeds
+	}
+	return slices.DeleteFunc(slices.Clone(seeds), func(s services.LabSeedView) bool { return s.CropCode != crop })
+}
+
+// seedCrops 種子裡有哪些作物（依作物名稱）與各自的顆數。
+func seedCrops(seeds []services.LabSeedView) (codes []string, names map[string]string, counts map[string]int) {
+	names, counts = map[string]string{}, map[string]int{}
+	for _, s := range sortSeedsByCrop(seeds) {
+		if counts[s.CropCode] == 0 {
+			codes = append(codes, s.CropCode)
+			names[s.CropCode] = s.CropName
+		}
+		counts[s.CropCode]++
+	}
+	return codes, names, counts
+}
+
+// cropFilterOptions 篩選選單：第一項「全部作物」，接著每種作物一項（超過 25 項時由呼叫端分頁）。
+func cropFilterOptions(seeds []services.LabSeedView, allDesc string) []option {
+	codes, names, counts := seedCrops(seeds)
+	out := []option{{fmt.Sprintf("全部作物（%d 顆）", len(seeds)), cropFilterPrefix + cropFilterAll, allDesc, "🌈"}}
+	for _, c := range codes {
+		out = append(out, option{fmt.Sprintf("只看 %s（%d 顆）", names[c], counts[c]), cropFilterPrefix + c, "", cropEmoji(c)})
+	}
+	return out
+}
+
+// cropFilterName 篩選條件的顯示名稱（全部時為 ""）。
+func cropFilterName(seeds []services.LabSeedView, crop string) string {
+	if crop == "" || crop == cropFilterAll {
+		return ""
+	}
+	for _, s := range seeds {
+		if s.CropCode == crop {
+			return s.CropName
+		}
+	}
+	return ""
 }

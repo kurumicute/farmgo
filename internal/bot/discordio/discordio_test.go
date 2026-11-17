@@ -6,6 +6,7 @@ package discordio
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -215,12 +216,25 @@ func TestComponentShowDeferEditAndFollowup(t *testing.T) {
 	v.Add(&ui.Button{Label: "按我", Row: 0})
 	png := ui.File{Name: "farm.png", Data: []byte("png")}
 
-	// 尚未回應：UPDATE_MESSAGE（type 7），附件以 multipart 上傳
+	// 尚未回應、要上傳圖片：先 defer（type 6），再編輯原訊息上傳附件（直接回應可能傳不完而超過 3 秒；2026-11-17）
 	if err := it.Show(context.Background(), ui.Message{Embed: &ui.Embed{Title: "A"}, View: v, Attachments: &ui.Attachments{Files: []ui.File{png}}}); err != nil {
 		t.Fatal(err)
 	}
+	reqs := f.requests()
+	if d := reqs[len(reqs)-2]; d.Method != "POST" || d.Path != "interactions/1/tok/callback" || typeOf(d) != 6 {
+		t.Fatalf("%+v", d)
+	}
 	r := f.last()
-	if r.Method != "POST" || r.Path != "interactions/1/tok/callback" || typeOf(r) != 7 || len(r.Files) != 1 || r.Files[0] != "farm.png" {
+	if r.Method != "PATCH" || r.Path != "webhooks/app/tok/messages/@original" || len(r.Files) != 1 || r.Files[0] != "farm.png" {
+		t.Fatalf("%+v", r)
+	}
+	// 剛建立的互動、沒有新圖片：直接 UPDATE_MESSAGE（type 7）
+	freshID := fmt.Sprint((time.Now().UnixMilli() - 1420070400000) << 22)
+	fresh := NewInteraction(session(t), component(freshID, "c1"), reg)
+	if err := fresh.Show(context.Background(), ui.Message{Embed: &ui.Embed{Title: "A"}, View: v, Attachments: &ui.Attachments{Keep: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if r := f.last(); r.Method != "POST" || r.Path != "interactions/"+freshID+"/tok/callback" || typeOf(r) != 7 {
 		t.Fatalf("%+v", r)
 	}
 	if v.Items()[0].(*ui.Button).CustomID() == "" || !reg.Has(v.Items()[0].(*ui.Button).CustomID()) { // 送出前已登記元件
@@ -437,13 +451,22 @@ func TestFarmCommandAndButtonClickEndToEnd(t *testing.T) {
 	if !strings.Contains(text, "農場建立完成") || len(shown.Files) != 1 || shown.Files[0] != "farm.png" {
 		t.Fatalf("%s %v", text, shown.Files)
 	}
-	// 再點一次舊的按鈕：已重繪，舊的 custom_id 失效，不送任何請求（Discord 顯示互動失敗）
+	// 再點一次舊的按鈕：已重繪，舊的 custom_id 失效；公開訊息回覆私密的「按鈕已失效」（以前不回應，Discord 顯示互動失敗）
 	n := len(f.requests())
 	stale := component("12", create)
 	stale.Token, stale.Member = "t3", member
 	b.onInteraction(b.S, &discordgo.InteractionCreate{Interaction: stale})
-	if len(f.requests()) != n {
-		t.Fatal("舊按鈕不應回應")
+	if reqs := f.requests(); len(reqs) != n+1 || typeOf(reqs[n]) != 4 || !strings.Contains(fmt.Sprint(data(reqs[n])["content"]), "已經失效") {
+		t.Fatalf("舊按鈕應回覆已失效：%+v", reqs[n:])
+	}
+	// 私密面板的舊按鈕：在同一則訊息重開面板（先 defer，再編輯原訊息）
+	n = len(f.requests())
+	stale = component("14", create)
+	stale.Token, stale.Member = "t5", member
+	stale.Message = &discordgo.Message{Flags: discordgo.MessageFlagsEphemeral}
+	b.onInteraction(b.S, &discordgo.InteractionCreate{Interaction: stale})
+	if reqs := f.requests(); len(reqs) < n+2 || typeOf(reqs[n]) != 6 || reqs[len(reqs)-1].Method != "PATCH" {
+		t.Fatalf("私密面板的舊按鈕應重開面板：%+v", reqs[n:])
 	}
 	// /help：私密的說明訊息
 	help := &discordgo.Interaction{ID: "13", AppID: "app", Token: "t4", Type: discordgo.InteractionApplicationCommand,

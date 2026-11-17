@@ -308,11 +308,16 @@ func TestPlantLabSeedsFromPlots(t *testing.T) {
 	e.exec(`INSERT INTO lab_seeds (farm_id, breeder_farm_id, crop_code, gene_growth, gene_yield, gene_quality, gene_mutation, status)
 		SELECT id, id, 'wheat', 1, 1, 1, 1, 'busy' FROM farms WHERE player_id = $1`, pid)
 	p.goPage("plots")
+	// 有兩種作物：先選作物（2026-11-17），培育中的種子不算
+	if c := p.selectMenu("先選作物"); c == nil || len(c.Options) != 3 || !strings.Contains(c.Options[1].Label, "小麥（1 顆）") {
+		t.Fatalf("%+v", c)
+	}
+	p.choose("先選作物", cropFilterPrefix+cropFilterAll)
 	s := p.selectMenu("勾選特殊種子")
-	if s == nil || len(s.Options) != 2 || s.MaxValues != 2 {
+	if s == nil || len(s.Options) != 3 || s.Options[0].Value != cropFilterPrefix || s.MaxValues != 3 {
 		t.Fatalf("培育中的種子不列出：%+v", s)
 	}
-	p.chooseMany("勾選特殊種子", []string{s.Options[0].Value, s.Options[1].Value})
+	p.chooseMany("勾選特殊種子", []string{s.Options[1].Value, s.Options[2].Value})
 	contains(t, p.Text, "種下 2 顆特殊種子", "已在第 1 格種下特殊小麥種子", "已在第 2 格種下特殊玉米種子")
 	p.goPage("plots")
 	if p.selectMenu("勾選特殊種子") != nil {
@@ -347,4 +352,35 @@ func TestPlantLabSeedsFromPlotsPaged(t *testing.T) {
 		t.Fatal("第 2 頁的種子應該已經種下")
 	}
 	e.checkLedger()
+}
+
+// TestLabSeedsCropFilter 種子庫依作物篩選（2026-11-17）：同作物排在一起，選了作物只顯示那種作物；選了種子後可以取消選取。
+func TestLabSeedsCropFilter(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	pid := p.panel.playerID
+	e.exec(`INSERT INTO lab_seeds (farm_id, breeder_farm_id, crop_code, gene_growth, gene_yield, gene_quality, gene_mutation)
+		SELECT id, id, c, 1, 1, 1, 1 FROM farms, unnest(ARRAY['wheat', 'corn', 'wheat', 'corn', 'wheat']) c WHERE player_id = $1`, pid)
+	p.goPage("lab_seeds")
+	f := p.selectMenu("篩選作物")
+	if f == nil || len(f.Options) != 3 || !strings.Contains(f.Options[0].Label, "全部作物（5 顆）") {
+		t.Fatalf("%+v", f)
+	}
+	seeds := p.selectMenu("選擇種子")
+	if seeds == nil || len(seeds.Options) != 5 || seeds.Options[0].Label != "小麥 第 1 代" || seeds.Options[3].Label != "玉米 第 1 代" {
+		t.Fatalf("同作物應排在一起：%+v", seeds)
+	}
+	p.choose("篩選作物", cropFilterPrefix+"corn")
+	contains(t, p.Text, "只看 玉米 2 顆")
+	if s := p.selectMenu("選擇種子"); len(s.Options) != 2 || s.Options[0].Label != "玉米 第 1 代" {
+		t.Fatalf("%+v", s)
+	}
+	p.choose("選擇種子", p.options("選擇種子")[0])
+	if p.selectMenu("篩選作物") != nil {
+		t.Fatal("選了種子後篩選選單讓位給種下選單")
+	}
+	p.click("取消選取")
+	if p.selectMenu("篩選作物") == nil {
+		t.Fatal("取消選取後回到篩選")
+	}
 }

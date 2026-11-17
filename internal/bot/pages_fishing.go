@@ -347,9 +347,6 @@ func (p *Panel) buildBite(v services.FishingView) *ui.Embed {
 }
 
 func (p *Panel) buildFight(v services.FishingView) *ui.Embed {
-	if v.ActionDeadline != nil {
-		p.fishDue = &fishDue{*v.ActionDeadline, deadlineSlack}
-	}
 	tensionWarn, farWarn := "", ""
 	if v.Tension >= v.MaxTension*0.75 {
 		tensionWarn = " ⚠️"
@@ -380,12 +377,12 @@ func (p *Panel) buildFight(v services.FishingView) *ui.Embed {
 		"🐟 對手：**%s**級的魚　🔁 第 %d 回合\n%s\n"+
 			"🐟 魚的體力：**%s / %s**\n%s\n\n"+
 			"📏 魚的距離：**%s / %d**%s\n%s\n\n"+
-			"🪢 魚線張力：**%s / %s**%s\n%s\n%s\n%s%s\n%s\n⏰ %s內要操作，不然魚會跑掉",
+			"🪢 魚線張力：**%s / %s**%s\n%s\n%s\n%s%s\n%s\n🕊️ 拉扯沒有時間限制，想好再按；畫面沒反應時重新開啟面板就能接著拉",
 		rarityTag(v.Rarity), v.Turn+1, Line,
 		num(v.Stamina), num(v.MaxStamina), fbar(v.Stamina, v.MaxStamina),
 		num(v.Distance), v.EscapeDistance, farWarn, fbar(v.Distance, float64(v.EscapeDistance)),
 		num(v.Tension), num(v.MaxTension), tensionWarn, fbar(v.Tension, v.MaxTension), Line,
-		last, strings.Join(hints, "\n"), prompt, ts(v.ActionDeadline))}
+		last, strings.Join(hints, "\n"), prompt)}
 	// 魚的意圖與期限放在最後，緊貼操作按鈕；規則說明只在第 1 回合顯示，之後不再隔在提示和按鈕中間
 	if v.Turn == 0 {
 		e.Footer = "收線成功算 1 下，連續收線張力越來越高｜等待：張力下降｜放線：張力大降、魚游遠｜魚竄向一邊：一定要壓同方向（算 1 下），按其他鍵都會被扯。"

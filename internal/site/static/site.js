@@ -587,7 +587,7 @@
   function renderFishing(f) {
     setText("g-fish-wait", `${f.bite_wait[0]}–${f.bite_wait[1]} 秒`);
     setText("g-fish-react", `${f.reaction_seconds} 秒`);
-    setText("g-fish-timeout", `${f.action_timeout_seconds} 秒`);
+    // 拉扯不再逾時（2026-11-17），action_timeout_seconds 只用於操作節奏偵測
     setText("g-fish-basket", `最多 ${num.format(f.basket_capacity)} 隻`);
     const a = f.auto_fish;
     if (a) {

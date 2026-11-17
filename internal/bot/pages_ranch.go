@@ -452,7 +452,7 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 		default:
 			state = "💤 閒置中"
 		}
-		facilities = append(facilities, fmt.Sprintf("🏭 **%s**　%s", b.Name, state))
+		facilities = append(facilities, fmt.Sprintf("🏭 **%s**%s　%s", b.Name, levelTag(ws, code), state))
 	}
 	// 只列出「設施已建造、現有原料至少做得出 1 份」的配方（配方很多，全部列出太長；2026-11-13 使用者要求）
 	var recipes []string
@@ -571,11 +571,20 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 	return e, nil
 }
 
+// levelTag 加工設施的等級標示（已建造且升級過才顯示），例如「 Lv.2（加工時間 -40%）」。
+func levelTag(ws services.WorkshopStatus, code string) string {
+	lv := ws.Levels[code]
+	if ws.Counts[code] == 0 || lv == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" Lv.%d（加工時間 -%d%%）", lv, balance.BuildingUpgradeCutPct[lv])
+}
+
 func (p *Panel) buildBuild(_ context.Context, data any) (*ui.Embed, error) {
 	d := data.(craftData)
 	ws := d.workshop
 	var lines []string
-	var options []option
+	var options, upgrades []option
 	for _, code := range balance.BuildingOrder {
 		b := balance.Buildings[code]
 		var use string
@@ -597,7 +606,18 @@ func (p *Panel) buildBuild(_ context.Context, data any) (*ui.Embed, error) {
 		} else {
 			options = append(options, option{fmt.Sprintf("%s（%s 金）", b.Name, money(b.Price)), code, fmt.Sprintf("已有 %d/%d", owned, b.MaxPerFarm), "🏗️"})
 		}
-		lines = append(lines, fmt.Sprintf("🏭 **%s**　💰 **%s** 金　%s\n　📝 %s", b.Name, money(b.Price), state, use))
+		if balance.Upgradable(code) && owned > 0 {
+			lv := ws.Levels[code]
+			if lv >= balance.BuildingMaxLevel() {
+				use += fmt.Sprintf("\n　⬆️ Lv.%d 已滿級：加工時間 -%d%%", lv, balance.BuildingUpgradeCutPct[lv])
+			} else {
+				use += fmt.Sprintf("\n　⬆️ Lv.%d → Lv.%d：加工時間 -%d%% → -%d%%（%s 金）", lv, lv+1,
+					balance.BuildingUpgradeCutPct[lv], balance.BuildingUpgradeCutPct[lv+1], money(balance.BuildingUpgradePrices[lv]))
+				upgrades = append(upgrades, option{fmt.Sprintf("升級%s到 Lv.%d（%s 金）", b.Name, lv+1, money(balance.BuildingUpgradePrices[lv])),
+					code, fmt.Sprintf("加工時間 -%d%% → -%d%%", balance.BuildingUpgradeCutPct[lv], balance.BuildingUpgradeCutPct[lv+1]), "⬆️"})
+			}
+		}
+		lines = append(lines, fmt.Sprintf("🏭 **%s**%s　💰 **%s** 金　%s\n　📝 %s", b.Name, levelTag(ws, code), money(b.Price), state, use))
 	}
 	e := &ui.Embed{Title: "🏗️ ✦ 建造設施 ✦", Color: Blue, Description: sections(
 		fmt.Sprintf("💰 你的金幣：**%s**", money(ws.Gold)),
@@ -609,8 +629,32 @@ func (p *Panel) buildBuild(_ context.Context, data any) (*ui.Embed, error) {
 		}), actOpts{})
 		return nil
 	}, 0, "")
-	p.nav("回加工", "craft", btn{emoji: "↩️", row: 1})
-	p.navBack(1)
+	// 加工設施升級（2026-11-17）：選了先顯示確認按鈕，再按一次才扣錢
+	upgrading := strings.TrimPrefix(p.confirm, "upgrade:")
+	if !strings.HasPrefix(p.confirm, "upgrade:") || !slices.ContainsFunc(upgrades, func(o option) bool { return o.value == upgrading }) {
+		upgrading = ""
+	}
+	if len(upgrades) > 0 {
+		p.selectMenu("⬆️ 升級加工設施（縮短加工時間）…", upgrades, func(ctx context.Context, it ui.Interaction, code string) error {
+			p.confirm = "upgrade:" + code
+			lv := ws.Levels[code]
+			p.refresh(ctx, it, fmt.Sprintf("⚠️ %s升到 Lv.%d 需要 %s 金幣，加工時間 -%d%%（已排隊的訂單不變）。按「確認升級」完成。",
+				balance.Buildings[code].Name, lv+1, money(balance.BuildingUpgradePrices[lv]), balance.BuildingUpgradeCutPct[lv+1]), nil, "重繪", time.Time{})
+			return nil
+		}, 1, upgrading)
+	}
+	if upgrading != "" {
+		code, lv := upgrading, ws.Levels[upgrading]
+		price := balance.BuildingUpgradePrices[lv]
+		p.button(fmt.Sprintf("確認升級%s（%s 金）", balance.Buildings[code].Name, money(price)), func(ctx context.Context, it ui.Interaction) error {
+			p.act(ctx, it, p.call("upgrade_building", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().UpgradeBuilding(ctx, p.playerID, code)
+			}), actOpts{})
+			return nil
+		}, btn{emoji: "⬆️", row: 2, style: ui.Danger, disabled: ws.Gold < price})
+	}
+	p.nav("回加工", "craft", btn{emoji: "↩️", row: 2})
+	p.navBack(2)
 	p.attachImage(e, p.yardImage(d.workshop, d.animals)) // 圖片在交易外產生
 	return e, nil
 }

@@ -160,4 +160,38 @@ func (c *Commands) OpenPanel(ctx context.Context, it ui.Interaction) {
 	c.Latency.Record("開啟面板", msSince(started), false)
 }
 
+// ReopenPanel 玩家按到已失效的私密面板（Bot 重新啟動、閒置超過 15 分鐘）時，直接在同一則訊息重開面板，
+// 不再沒有回應而顯示「交互失敗」（2026-11-17）。釣魚進行中時直接回到釣魚畫面接著拉。
+func (c *Commands) ReopenPanel(ctx context.Context, it ui.Interaction) {
+	w := whoOf(it)
+	started := time.Now()
+	if err := it.DeferUpdateIfPending(ctx); err != nil {
+		slog.Warn("重開面板逾時（互動已失效）", "user", w.UserID, "type", fmt.Sprintf("%T", err))
+		return
+	}
+	pctx, err := Call(ctx, c.Runner, "external_context", func(ctx context.Context) (services.ExternalContext, error) {
+		return c.Service.ExternalContext(ctx, Platform, w.UserID, w.guildPtr(), w.GuildName)
+	})
+	if err != nil {
+		logUnexpected(err, "重開面板失敗", "user", w.UserID)
+		msg := "❌ " + PlayerMessage(err)
+		_, _ = it.Followup(ctx, ui.Message{Content: &msg, Ephemeral: true})
+		return
+	}
+	p := NewPanel(c, w, pctx)
+	p.AvatarURL = it.AvatarURL()
+	if c.onPanel != nil {
+		c.onPanel(p)
+	}
+	if pctx.HasFarm {
+		if v, err := Call(ctx, c.Runner, "fishing_state", func(ctx context.Context) (*services.FishingView, error) {
+			return p.svc().FishingState(ctx, p.playerID)
+		}); err == nil && v != nil && slices.Contains([]string{"check", "waiting", "bite", "fighting"}, v.Phase) {
+			p.Page, p.fishCache = "fish_game", v
+		}
+	}
+	p.refresh(ctx, it, "🔄 剛才的面板已失效（Bot 更新或閒置太久），已經幫你重新開啟。", nil, "", time.Time{})
+	c.Latency.Record("重開面板", msSince(started), true)
+}
+
 func msSince(t time.Time) float64 { return float64(time.Since(t).Microseconds()) / 1000 }

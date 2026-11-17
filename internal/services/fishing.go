@@ -431,11 +431,6 @@ func expire(ctx context.Context, t *db.Tx, row *models.FishingSession, now time.
 			return nil, err
 		}
 		finish(row, "missed", row.ReactDeadline)
-	case row.Status == "fighting" && row.ActionDeadline != nil && now.After(row.ActionDeadline.Add(grace())):
-		if row.State, err = withLast(row.State, "⌛ 太久沒有操作，魚趁機掙脫逃走了…"); err != nil {
-			return nil, err
-		}
-		finish(row, "timeout", *row.ActionDeadline)
 	default:
 		changed = false
 	}
@@ -454,10 +449,8 @@ func needsExpire(row *models.FishingSession, now time.Time) bool {
 	if now.After(row.StartedAt.Add(fishing.SessionMaxSeconds * time.Second)) {
 		return true
 	}
-	if row.Status == "casting" {
-		return now.After(row.ReactDeadline.Add(grace()))
-	}
-	return row.ActionDeadline != nil && now.After(row.ActionDeadline.Add(grace()))
+	// 拉扯中不再因為太久沒操作而失敗（2026-11-17）：互動失敗後重新開啟面板還能接著拉
+	return row.Status == "casting" && now.After(row.ReactDeadline.Add(grace()))
 }
 
 func (f *FishingService) sessionView(ctx context.Context, t *db.Tx, row *models.FishingSession, now time.Time) (FishingView, error) {
@@ -608,11 +601,7 @@ func (f *FishingService) FishingOverview(ctx context.Context, playerID int64) (F
 		}
 		expired := false
 		if active != nil {
-			if active.Status == "casting" {
-				expired = now.After(active.ReactDeadline)
-			} else {
-				expired = active.ActionDeadline != nil && now.After(*active.ActionDeadline)
-			}
+			expired = active.Status == "casting" && now.After(active.ReactDeadline)
 		}
 		ov := FishingOverview{PlayerName: player.DisplayName, Level: farm.Level, Gold: farm.Gold,
 			BasketCapacity: autofish.BasketCapacity(farm.FishBasketLevel, settings.BasketCapacity), BasketLevel: farm.FishBasketLevel,

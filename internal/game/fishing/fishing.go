@@ -112,7 +112,7 @@ const (
 	BaseMaxTension       = 100 // 沒有魚線加成時的最大張力
 	StartTension         = 20
 	ReactionGraceSeconds = 1.5     // 網路延遲的寬限（不顯示給玩家）
-	SessionMaxSeconds    = 15 * 60 // 單次釣魚最長時間（避免殘留）
+	SessionMaxSeconds    = 60 * 60 // 單次釣魚最長時間（避免殘留；2026-11-17 拉扯不再逾時，從 15 分鐘放寬）
 	TiredRatio           = 0.3     // 體力低於 30% 時，掙扎與衝刺機率減半
 )
 
