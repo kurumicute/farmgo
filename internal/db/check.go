@@ -11,7 +11,7 @@ import (
 )
 
 // AlembicHead Go 版程式對應的 Alembic 版本。
-const AlembicHead = "0043"
+const AlembicHead = "0044"
 
 // StartupCheckError 啟動檢查失敗。
 type StartupCheckError struct{ Msg string }

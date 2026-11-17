@@ -24,6 +24,7 @@ import (
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/seasons"
+	"farmgm/internal/game/weather"
 	"farmgm/internal/numfmt"
 	fishrepo "farmgm/internal/repositories/fishing"
 	"farmgm/internal/repositories/items"
@@ -250,7 +251,7 @@ func (s *GameService) autoCatch(ctx context.Context, t *db.Tx, farm *models.Farm
 				pools[ft.Rarity] = append(pools[ft.Rarity], ft)
 			}
 		}
-		rarity := fishing.RollRarity(settings.RarityBP, effects, rng)
+		rarity := fishing.RollRarity(settings.RarityBP, weather.Today(at).FishEffects(effects), rng) // 雨天稀有魚機率提高
 		ftype, ok := pickFish(pools, rarity, rng)
 		if !ok {
 			continue // 這個時段沒有魚可以釣（不扣魚餌）

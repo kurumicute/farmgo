@@ -497,6 +497,7 @@ func (p *Panel) buildGenetics(_ context.Context, data any) (*ui.Embed, error) {
 		fmt.Sprintf("農場每升 1 級，有 %s%% 機率從普通升到較高品質（上限 %s%%）。你的農場等級：**%s**",
 			pct(t.LevelBonusBP), pct(t.LevelBonusMaxBP), level),
 		Section{Title: "🧪 突變（每批最多一種）", Lines: mutations, Sep: "\n\n"},
+		Section{Title: "🔬 實驗室限定突變（一般種植不會抽到，只能靠種子實驗室的突變研究）", Lines: labMutationEffects()},
 	)}
 	p.navFirstPage("價目表", "prices", &p.pricePage, btn{emoji: "📈", row: 0})
 	p.navBack(0)

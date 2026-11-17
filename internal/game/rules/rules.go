@@ -82,6 +82,8 @@ const (
 	EvRumorTreasure     EventType = "rumor_treasure"
 	EvSeedLab           EventType = "seed_lab"   // 種子實驗室（Go 版新增，Migration 0039）
 	EvSeedShare         EventType = "seed_share" // 分享特殊種子（Go 版新增，Migration 0039）
+	EvAidGift           EventType = "aid_gift"   // 送作物給同群組的玩家（Go 版新增，Migration 0044）
+	EvAidWater          EventType = "aid_water"  // 幫同群組的玩家澆水（Go 版新增，Migration 0044）
 )
 
 // EventTypeOrder 事件類型的定義順序（Python EventType 列舉順序）。
@@ -91,7 +93,7 @@ var EventTypeOrder = []EventType{
 	EvCollectAnimal, EvCraftStart, EvCraftCollect, EvQuestReward, EvCompetitionReward, EvAdminAdjust, EvRankingReward,
 	EvTransferGroup, EvGamble, EvExplore, EvBuildMachine, EvExchange, EvMakeSeed, EvFishingBuy, EvFishSell,
 	EvReleaseAnimal, EvBossDonate, EvBossReward, EvRenameFarm, EvCheckinReward, EvAchievementReward, EvRuinsDonate,
-	EvRuinsGuardian, EvRumorTreasure, EvSeedLab, EvSeedShare,
+	EvRuinsGuardian, EvRumorTreasure, EvSeedLab, EvSeedShare, EvAidGift, EvAidWater,
 }
 
 var EventTypeLabels = map[EventType]string{
@@ -140,6 +142,8 @@ var EventTypeLabels = map[EventType]string{
 	EvRumorTreasure:     "傳聞寶藏",
 	EvSeedLab:           "種子實驗室",
 	EvSeedShare:         "分享種子",
+	EvAidGift:           "送禮",
+	EvAidWater:          "幫忙澆水",
 }
 
 func SeedItemCode(cropCode string) string    { return "seed_" + cropCode }

@@ -42,6 +42,7 @@ var (
 	NetGoldExcluded = []string{
 		"create_farm", "admin_adjust", "quest_reward", "competition_reward", "ranking_reward", "boss_reward",
 		"checkin_reward", "achievement_reward", "rumor_treasure",
+		"aid_gift", "aid_water", // 送禮與互助的獎勵（Go 版新增）不算經營所得
 	}
 )
 

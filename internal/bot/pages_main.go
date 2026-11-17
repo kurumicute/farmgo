@@ -20,6 +20,7 @@ import (
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/pets"
 	"farmgm/internal/game/rules"
+	"farmgm/internal/game/weather"
 	"farmgm/internal/services"
 )
 
@@ -49,6 +50,7 @@ func (p *Panel) registerPages() {
 		"defense":         {p.loadDefense, p.buildDefense},
 		"casino":          {p.loadCasino, p.buildCasino},
 		"steal":           {p.loadSteal, p.buildSteal},
+		"aid":             {p.loadAid, p.buildAid},
 		"steal_farm":      {p.loadStealFarm, p.buildStealFarm},
 		"board":           {p.loadBoard, p.buildBoard},
 		"rewards":         {p.loadRewards, p.buildRewards},
@@ -337,6 +339,9 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	e.AddField("📋 待辦", todo, false)
 	e.Footer = p.farmNextStep(s.Plots, false) // 大圖排在所有欄位之後，緊貼按鈕的只有 footer：放待辦摘要
+	// 每日天氣（Go 版新增）：放在最底部（footer 第一行），每天台灣時間 0 點換
+	w := weather.Today(time.Now())
+	e.Footer = strings.TrimSuffix(fmt.Sprintf("%s 今日天氣：%s｜%s\n%s", w.Emoji, w.Name, w.EffectText(), e.Footer), "\n")
 
 	p.button("全部澆水", p.waterAll, btn{emoji: "💧", style: ui.Primary, row: 0, disabled: waiting == 0})
 	p.button("全部收成", p.harvestAll, btn{emoji: "🧺", style: ui.Success, row: 0, disabled: ready == 0})
@@ -397,6 +402,7 @@ var moreEntries = []struct{ page, label, desc, emoji string }{
 	{"craft", "加工", "磨坊、烘焙坊、果醬工坊", "🏭"},
 	{"steal", "偷菜", "偷同伺服器玩家成熟的作物", "🥷"},
 	{"defense", "防守", "稻草人、警戒犬、巡查券", "🛡️"},
+	{"aid", "送禮互助", "送朋友作物、幫忙澆水，雙方都有獎勵", "🤝"},
 	{"cave", "山洞", "探險收集素材、機器", "⛰️"},
 	{"fishing", "釣魚", "釣魚中心、魚簍、釣具商店", "🎣"},
 	{"casino", "賭場", "用作物比大小", "🎰"},

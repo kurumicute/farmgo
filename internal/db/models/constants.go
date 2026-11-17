@@ -60,6 +60,9 @@ var EventTypes = []string{
 	// 0039 種子實驗室（Go 版新增）
 	"seed_lab",
 	"seed_share",
+	// 0044 送禮與互助（Go 版新增）
+	"aid_gift",
+	"aid_water",
 }
 
 // QualityCodes 作物品質代碼（inventory_items／farm_plots 等的 quality CHECK）。

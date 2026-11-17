@@ -17,9 +17,11 @@ import (
 	"farmgm/internal/game/seasons"
 	"farmgm/internal/game/seedlab"
 	"farmgm/internal/game/specialshop"
+	"farmgm/internal/game/weather"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/catalog"
 	"farmgm/internal/repositories/crops"
+	"farmgm/internal/repositories/defenses"
 	"farmgm/internal/repositories/farms"
 	"farmgm/internal/repositories/feedback"
 	"farmgm/internal/repositories/inventory"
@@ -382,6 +384,9 @@ func (s *GameService) water(ctx context.Context, t *db.Tx, farm *models.Farm, pl
 	if reason != nil {
 		bonuses = append(bonuses, *reason)
 		source = "免澆水活動"
+		if len(reason.Applied) == 1 && reason.Applied[0].ID == weather.EventID {
+			source = "下雨自動澆水"
+		}
 	} else if auto {
 		source = "自動澆水器"
 	}
@@ -496,8 +501,17 @@ func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.
 	}
 	// 大風颳走：收成時每格少 N 個，至少保留 1 個（在收成當下判斷）
 	wind := eventrules.BonusOf(active, "harvest_loss", &crop.ID)
+	// 暴風（每日天氣）：每種守護這格的防守設施擋下 weather.StormDefenseBlock 個（只減輕天氣造成的部分）
+	blocked := 0
+	if storm := weatherLoss(active); storm > 0 {
+		guards, err := s.plotGuards(ctx, t, farm.ID, plot.PlotNumber)
+		if err != nil {
+			return "", 0, "", err
+		}
+		blocked = min(storm, guards*weather.StormDefenseBlock)
+	}
 	remaining := *plot.RemainingQuantity
-	lost := min(wind.Value, max(0, remaining-1))
+	lost := min(max(0, wind.Value-blocked), max(0, remaining-1))
 	quantity := remaining - lost
 	// 貓咪趕走偷吃的老鼠：收成數量 +X%（只有主人收成時；被偷走的部分不會補回）
 	cat, err := db.Memo(t, petKey{farm.ID, petrules.Cat}, func() (*int, error) { return pets.Level(ctx, t, farm.ID, petrules.Cat) })
@@ -548,6 +562,9 @@ func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.
 	}
 	if lost > 0 {
 		note += fmt.Sprintf("（大風颳走 %d 個）", lost)
+	}
+	if blocked > 0 && remaining > 1 {
+		note += fmt.Sprintf("（🛡️ 防守設施擋下暴風 %d 個）", min(blocked, remaining-1))
 	}
 	if catBonus > 0 {
 		note += fmt.Sprintf("（🐱 貓咪趕走老鼠 +%d 個）", catBonus)
@@ -1108,4 +1125,31 @@ func (s *GameService) UpgradeGreenhouse(ctx context.Context, playerID int64) (Ac
 			farm.GreenhouseLevel, pct, specialshop.GreenhousePct(farm.GreenhouseLevel-1), pct, GoldChange(farm.Gold, -price), tail),
 			farm.Gold, -price, code, 1), nil
 	})
+}
+
+// weatherLoss 生效事件中天氣（暴風）造成的收成減損；沒有天氣事件時為 0。
+func weatherLoss(active []*eventrules.Event) int {
+	for _, e := range active {
+		if e.ID == weather.EventID {
+			return e.HarvestLoss
+		}
+	}
+	return 0
+}
+
+type defenseListKey struct{ farmID int64 }
+
+// plotGuards 守護這格的防守設施種類數（同種設施重疊只算一次）。一鍵收成時整座農場只查一次設施清單。
+func (s *GameService) plotGuards(ctx context.Context, t *db.Tx, farmID int64, plotNumber int) (int, error) {
+	list, err := db.Memo(t, defenseListKey{farmID}, func() ([]models.FarmDefense, error) { return defenses.ListForFarm(ctx, t, farmID) })
+	if err != nil {
+		return 0, err
+	}
+	covering := map[string]bool{}
+	for _, d := range list {
+		if rules.DefenseCovers(balance.Defenses[d.DeviceCode].Range, d.StartPlot, plotNumber) {
+			covering[d.DeviceCode] = true
+		}
+	}
+	return len(covering), nil
 }

@@ -25,6 +25,7 @@ import (
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
+	"farmgm/internal/game/weather"
 	"farmgm/internal/repositories/codex"
 	"farmgm/internal/repositories/crops"
 	"farmgm/internal/repositories/events"
@@ -318,7 +319,18 @@ type (
 )
 
 func (s *GameService) activeEvents(ctx context.Context, t *db.Tx) ([]*eventrules.Event, error) {
-	return db.Memo(t, eventsKey{}, func() ([]*eventrules.Event, error) { return events.Active(ctx, t, s.now()) })
+	return db.Memo(t, eventsKey{}, func() ([]*eventrules.Event, error) {
+		now := s.now()
+		list, err := events.Active(ctx, t, now)
+		if err != nil {
+			return nil, err
+		}
+		// 每日天氣（Go 版新增）：當成一個虛擬事件加進去，效果與管理員開的活動相加、共用上限
+		if ev := weather.Today(now).Event(); ev != nil {
+			list = append(list, ev)
+		}
+		return list, nil
+	})
 }
 
 // geneticsSettings 目前生效的品質與突變設定（最新版本）。

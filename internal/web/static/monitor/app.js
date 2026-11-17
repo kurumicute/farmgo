@@ -123,7 +123,7 @@ if (typeof document !== "undefined") {
     boss_donate: "世界 Boss 捐獻", boss_reward: "世界 Boss 獎勵", rename_farm: "農場改名",
     checkin_reward: "每日簽到", achievement_reward: "成就獎勵", ruins_donate: "修復遺跡",
     ruins_guardian: "攻擊遺跡守護者", rumor_treasure: "傳聞寶藏",
-    seed_lab: "種子實驗室", seed_share: "分享種子",
+    seed_lab: "種子實驗室", seed_share: "分享種子", aid_gift: "送禮", aid_water: "幫忙澆水",
   };
 
   const state = {
@@ -4960,9 +4960,32 @@ if (typeof document !== "undefined") {
     });
   }
 
+  // ----- 送禮與互助（Go 版新增，2026-11-17）-----
+  const AID_FIELDS = [
+    ["min_level", "等級門檻（雙方）", 1, 100], ["min_farm_days", "農場至少建立幾天", 0, 365],
+    ["gift_send_per_day", "每天最多送出幾份禮物", 0, 20], ["gift_receive_per_day", "每天最多收到幾份禮物", 0, 20],
+    ["gift_max_quantity", "一份最多幾個作物", 1, 100], ["gift_max_value", "一份的價值上限（金幣）", 1, 1000000],
+    ["gift_reward_gold", "送禮雙方各得金幣", 0, 10000],
+    ["water_send_per_day", "每天最多幫幾位玩家澆水", 0, 20], ["water_receive_per_day", "每天最多被幾位玩家幫忙", 0, 20],
+    ["water_reward_gold", "幫忙澆水雙方各得金幣", 0, 10000],
+  ];
+  function aidCard() {
+    const c = featureKey("aid").current;
+    const inputs = AID_FIELDS.map(([key, , low, high]) => numInput(null, c[key], low, high));
+    const body = el("div", {}, [
+      el("div", { className: "controls" }, AID_FIELDS.map(([, label], i) => el("label", { className: "inline", text: label + " " }, [inputs[i]]))),
+      el("p", { className: "muted small", text: "同群組的玩家互送作物（只限普通品質、沒有突變）或幫忙澆水，雙方各拿金幣獎勵。等級、農場天數與每日上限用來防止小號洗錢；同一對玩家同一種互助每天只能一次。獎勵不算進「淨賺金幣」排行。" }),
+    ]);
+    return featureCard("aid", "🤝 送禮與互助", body, () => {
+      const value = {};
+      AID_FIELDS.forEach(([key, label, low, high], i) => { value[key] = intIn(inputs[i], label, low, high); });
+      return [value, AID_FIELDS.map(([key, label]) => diffRow(label, fmtNum(c[key]), fmtNum(value[key]))).filter(Boolean)];
+    });
+  }
+
   const FEATURE_CARDS = [["checkin", checkinCard], ["pets", petsCard], ["special_shop", specialShopCard],
     ["achievements", achievementsCard], ["exploration", explorationCard], ["mushroom", mushroomCard],
-    ["seedlab", seedlabCard], ["autofish", autofishCard], ["hourglass", hourglassCard]];
+    ["seedlab", seedlabCard], ["autofish", autofishCard], ["hourglass", hourglassCard], ["aid", aidCard]];
 
   function renderFeatureSettings() {
     $("fs-body").replaceChildren(...FEATURE_CARDS.map(([, build]) => build()));

@@ -20,7 +20,7 @@ var allPages = []string{"main", "plots", "backpack", "shop", "prices", "genetics
 	"cave", "cave_area", "cave_log", "machines", "defense", "steal",
 	"board", "rewards", "quests", "history", "group", "log", "help",
 	"fishing", "fish_shop", "fish_basket", "fish_codex", "fish_rank",
-	"progress", "codex", "achievements", "titles", "shop_special", "pets", "ruins"}
+	"progress", "codex", "achievements", "titles", "shop_special", "pets", "ruins", "aid"}
 
 func TestEveryPageRenders(t *testing.T) {
 	e := setup(t)

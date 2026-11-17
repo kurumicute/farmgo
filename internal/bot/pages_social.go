@@ -162,6 +162,7 @@ func (p *Panel) buildSteal(_ context.Context, data any) (*ui.Embed, error) {
 	}, 2, "")
 	p.pageButtons("作物", &p.stealPage, pages, 3, "steal")
 	p.nav("重新整理", "steal", btn{emoji: "🔄", row: 3})
+	p.nav("送禮互助", "aid", btn{emoji: "🤝", row: 4})
 	p.navBack(4)
 	return e, nil
 }

@@ -232,7 +232,7 @@ func TestShopSingleSelectAndReadablePrices(t *testing.T) {
 		t.Fatal(p.Text)
 	}
 	p.goPage("genetics")
-	contains(t, p.Text, "傳說", "巨型作物")
+	contains(t, p.Text, "傳說", "巨型作物", "夜光作物**：售價 ×2", "豐收作物**：收成數量 +50%", "水晶作物**：收成時額外得到 💎 水晶 1–2 個")
 	if strings.Contains(p.Text, "```") {
 		t.Fatal(p.Text)
 	}

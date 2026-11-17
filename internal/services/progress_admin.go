@@ -19,6 +19,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/achievements"
+	"farmgm/internal/game/aid"
 	"farmgm/internal/game/autofish"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/checkin"
@@ -40,7 +41,7 @@ import (
 // FeatureKeys 管理網站可調整的規則（顯示順序）。
 var FeatureKeys = []string{checkin.ConfigKey, pets.ConfigKey, specialshop.ConfigKey, achievements.ConfigKey,
 	exploration.ConfigKey, mushroom.ConfigKey, seedlab.ConfigKey, autofish.ConfigKey,
-	hourglass.ConfigKey}
+	hourglass.ConfigKey, aid.ConfigKey}
 
 // CodexEditable 可在管理網站調整的圖鑑分類（魚類圖鑑來自 farm_fish，不能在這裡改）。
 var CodexEditable = []string{"crop", "animal", "goods", "material"}

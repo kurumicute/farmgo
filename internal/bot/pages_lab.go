@@ -373,6 +373,7 @@ func (p *Panel) buildLabHelp(_ context.Context, _ any) (*ui.Embed, error) {
 			"🔢 **世代**：培育出的新種子 = 兩顆種子中較大的世代 + 1",
 			"☢️ **突變**：讓種子帶上夜光、豐收等特性，之後培育會一直傳下去",
 		}},
+		Section{Title: "實驗室限定突變（只能從突變研究取得）", Lines: labMutationEffects()},
 		Section{Title: "基因效果（1 級沒有加成）", Lines: strings.Split(strings.ReplaceAll(geneEffects(), "　", "\n"), "\n")},
 		Section{Title: "培育時基因怎麼決定", Lines: []string{
 			fmt.Sprintf("每個基因有 %s%% 機率直接拿兩顆中**較高**的那個，其餘母本、父本各一半機率", bpPct(c.DominantBP)),
@@ -482,6 +483,9 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 	}
 	if sel != nil {
 		detail := []string{fmt.Sprintf("%s %s", cropEmoji(sel.CropCode), sel.Label()), sel.Genes.Text()}
+		if eff := labMutationEffect(sel.Mutation); eff != "" {
+			detail = append(detail, fmt.Sprintf("✨ %s：%s", sel.MutationName, eff))
+		}
 		if sel.Hybrid {
 			detail = append(detail, "🌟 雜交作物：商店買不到，只能自己培育或由朋友分享。")
 		}
@@ -951,6 +955,30 @@ func (p *Panel) buildLabRecords(_ context.Context, data any) (*ui.Embed, error) 
 	p.navBack(0)
 	p.pageButtons("", &p.labRecordPage, pages, 0, "lab_records")
 	return e, nil
+}
+
+// labMutationEffect 實驗室限定突變（夜光、豐收、水晶）的效果；其他突變回傳 ""（效果在「品質與突變」頁）。
+func labMutationEffect(m string) string {
+	switch m {
+	case "glow":
+		return fmt.Sprintf("售價 ×%s（和黃金作物一樣疊在品質倍率之後）", bpPct(balance.GlowPricePct))
+	case "bountiful":
+		return fmt.Sprintf("收成數量 +%d%%（無條件捨去，至少 +1）", balance.BountifulBonusPct)
+	case "crystal":
+		return fmt.Sprintf("收成時額外得到 💎 水晶 %d–%d 個（素材背包要有空位）", balance.CrystalDropMin, balance.CrystalDropMax)
+	}
+	return ""
+}
+
+// labMutationEffects 實驗室限定突變的說明列（2026-11-17 玩家反映沒寫屬性）。
+func labMutationEffects() []string {
+	var out []string
+	for _, m := range seedlab.LabMutations {
+		if eff := labMutationEffect(m); eff != "" {
+			out = append(out, fmt.Sprintf("**%s**：%s", balance.Mutations[m], eff))
+		}
+	}
+	return out
 }
 
 func labMutationNames() string {

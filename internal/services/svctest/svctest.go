@@ -13,6 +13,7 @@ import (
 	"farmgm/internal/game/featurecfg"
 	"farmgm/internal/game/fishing"
 	"farmgm/internal/game/seedlab"
+	"farmgm/internal/game/weather"
 	"farmgm/internal/repositories/featuresettings"
 	"farmgm/internal/repositories/repotest"
 )
@@ -36,6 +37,7 @@ func Prepare(t *testing.T, clearCaches func()) *db.DB {
 	t.Helper()
 	d := repotest.Setup(t)
 	exploration.ResetRareCrops()
+	weather.Fixed = weather.Cloudy // 每日天氣固定為沒有效果的陰天，結果不隨測試日期改變（天氣的測試會自己指定）
 	featurecfg.Apply(nil)
 	featuresettings.Invalidate()
 	oldTTL := db.CatalogTTL

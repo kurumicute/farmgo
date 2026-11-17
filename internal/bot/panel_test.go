@@ -68,6 +68,7 @@ type player struct {
 	name   string
 	panel  *Panel
 	Text   string
+	Footer string // 最後一個畫面的 footer（EmbedText 不含 footer）
 	opened *uitest.Interaction
 	// created 建立農場後第一個畫面（農田頁）的文字；makePlayer 之後會回到總覽，方便其他測試從總覽開始
 	created string
@@ -123,6 +124,7 @@ func (p *player) update(it *uitest.Interaction) *uitest.Interaction {
 	for _, en := range it.Entries() {
 		if en.Kind == "edit" && en.Message.Embed != nil {
 			p.Text = uitest.EmbedText(en.Message.Embed)
+			p.Footer = en.Message.Embed.Footer
 		}
 	}
 	return it

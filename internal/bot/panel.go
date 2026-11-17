@@ -94,7 +94,11 @@ type Panel struct {
 	stealPage       int
 	stealPlayerPage int
 	stealVictim     *int64
-	competitionID   *int64 // 競賽頁（Python self.detail）
+	// 送禮與互助（2026-11-17）：選中的對象與兩個選單的頁碼
+	aidTarget     *int64
+	aidTargetPage int
+	aidItemPage   int
+	competitionID *int64 // 競賽頁（Python self.detail）
 	// 山洞：目前查看的區域、最近一次探索結果
 	caveArea   string
 	caveResult *services.ExploreReward
