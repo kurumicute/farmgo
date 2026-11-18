@@ -49,6 +49,7 @@ func (p *Panel) registerPages() {
 		"pets":            {p.loadPets, p.buildPets},
 		"craft":           {p.loadCraft, p.buildCraft},
 		"build":           {p.loadBuild, p.buildBuild},
+		"craft_prices":    {p.loadCraftPrices, p.buildCraftPrices},
 		"defense":         {p.loadDefense, p.buildDefense},
 		"casino":          {p.loadCasino, p.buildCasino},
 		"steal":           {p.loadSteal, p.buildSteal},
@@ -478,7 +479,7 @@ func (p *Panel) collectEverything(ctx context.Context, plots, animals, crafts bo
 // todoGo 待辦區的「前往」按鈕。
 type todoGo struct{ label, page, emoji string }
 
-// todoHints 農田以外的待辦（2026-11-18 補齊）：動物、加工、魚簍、菇房、種子實驗室；
+// todoHints 農田以外的待辦（2026-11-18 補齊）：動物、加工、魚簍、菇房、種子實驗室、探險（2026-11-19）；
 // 有事要做的項目另外給「前往」按鈕（最多 5 顆，依列出的順序）。
 func todoHints(d mainData) (hints []string, goes []todoGo) {
 	add := func(g todoGo) {
@@ -527,6 +528,12 @@ func todoHints(d mainData) (hints []string, goes []todoGo) {
 		hints = append(hints, "🧪 研究下一項完成 "+ts(t.LabNextAt))
 	} else if t.LabBuilt && t.LabFreeSlots > 0 {
 		hints = append(hints, fmt.Sprintf("🧪 實驗室有 %d 個研究槽空著", t.LabFreeSlots))
+	}
+	if t.TripBack {
+		hints = append(hints, fmt.Sprintf("⛰️ **探險隊從%s回來了，可以領取獎勵**", t.TripArea))
+		add(todoGo{"領探險獎勵", "cave", "⛰️"})
+	} else if t.TripReturnAt != nil {
+		hints = append(hints, fmt.Sprintf("⛰️ 探險隊（%s）回來 %s", t.TripArea, ts(t.TripReturnAt)))
 	}
 	return hints, goes
 }

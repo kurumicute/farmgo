@@ -168,6 +168,7 @@ type LabShareTargetView struct {
 	PlayerID   int64
 	PlayerName string
 	FarmName   string
+	Full       bool // 今天已經收滿其他玩家的分享，不能再收自己的（2026-11-19）
 }
 
 // SeedLabView 種子實驗室畫面。種子庫、空地與分享紀錄不論是否建造都會讀取（沒有實驗室也能收分享的種子並種下）；
@@ -1498,13 +1499,13 @@ func (s *GameService) LabRecords(ctx context.Context, playerID int64, limit int)
 // LabShareTargets 群組中已建造實驗室的其他玩家（分享對象）。
 func (s *GameService) LabShareTargets(ctx context.Context, groupID, playerID int64) ([]LabShareTargetView, error) {
 	return inTx(ctx, s, func(t *db.Tx) ([]LabShareTargetView, error) {
-		rows, err := labrepo.ShareTargets(ctx, t, groupID, playerID)
+		rows, err := labrepo.ShareTargets(ctx, t, groupID, playerID, taipeiDay(s.now()))
 		if err != nil {
 			return nil, err
 		}
 		out := make([]LabShareTargetView, len(rows))
 		for i, r := range rows {
-			out[i] = LabShareTargetView{r.PlayerID, r.PlayerName, r.FarmName}
+			out[i] = LabShareTargetView{r.PlayerID, r.PlayerName, r.FarmName, !r.FromMe && r.Senders >= seedlab.Current().ShareReceiveSenders}
 		}
 		return out, nil
 	})

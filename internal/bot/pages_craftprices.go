@@ -1,0 +1,79 @@
+package bot
+
+// 加工品售價表（Go 版新增，2026-11-19 使用者要求）：加工頁的「📋 售價表」按鈕，依設施列出所有加工品的
+// 原料、時間、售價，以及和原料直接賣掉相比的損益（沒建造的設施也列出，方便規劃要先蓋哪一座）。
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"farmgm/internal/bot/ui"
+	"farmgm/internal/game/balance"
+	"farmgm/internal/services"
+)
+
+func (p *Panel) loadCraftPrices(ctx context.Context) (any, error) {
+	return p.svc().Recipes(ctx, &p.playerID)
+}
+
+// craftPriceLine 售價表的一行：成品、售價、損益，下一行是原料與時間。
+func craftPriceLine(r services.RecipeView) string {
+	price := "—"
+	if r.SellPrice != nil && *r.SellPrice != 0 {
+		price = money(*r.SellPrice*r.OutputQuantity) + " 金"
+	}
+	gain := ""
+	if r.SellPrice != nil && *r.SellPrice != 0 && r.InputValue != 0 {
+		diff := *r.SellPrice*r.OutputQuantity - r.InputValue
+		mark := "📈"
+		if diff < 0 {
+			mark = "📉"
+		}
+		gain = fmt.Sprintf("　%s %+d%%", mark, diff*100/r.InputValue)
+	}
+	out := ""
+	if r.OutputQuantity > 1 {
+		out = fmt.Sprintf(" ×%d", r.OutputQuantity)
+	}
+	inputs := make([]string, len(r.InputOrder))
+	for i, name := range r.InputOrder {
+		inputs[i] = fmt.Sprintf("%s ×%d", name, r.Inputs[name])
+	}
+	return fmt.Sprintf("**%s**%s　🏷️ **%s**%s\n　📥 %s　⏱️ %s", r.OutputName, out, price, gain,
+		strings.Join(inputs, "＋"), services.LongDuration(r.Seconds))
+}
+
+func (p *Panel) buildCraftPrices(_ context.Context, data any) (*ui.Embed, error) {
+	recipes := data.([]services.RecipeView)
+	byBuilding := map[string][]string{}
+	for _, r := range recipes {
+		byBuilding[r.BuildingCode] = append(byBuilding[r.BuildingCode], craftPriceLine(r))
+	}
+	var parts []any
+	for _, code := range balance.BuildingOrder {
+		lines := byBuilding[code]
+		if len(lines) == 0 {
+			continue
+		}
+		title := "🏭 " + balance.Buildings[code].Name
+		if i := indexRecipeBuilding(recipes, code); i >= 0 && !recipes[i].Built {
+			title += "（🔒 未建造）"
+		}
+		parts = append(parts, Section{Title: title, Lines: lines})
+	}
+	parts = append(parts, "📈／📉 是和「原料直接賣掉」相比的損益（普通品質、目前季節的價格）；售價是一份成品的價格。")
+	e := &ui.Embed{Title: "📋 ✦ 加工品售價表 ✦", Color: Blue, Description: runes(sections(parts...), 4000)}
+	p.nav("回加工", "craft", btn{emoji: "↩️", row: 0})
+	p.navBack(0)
+	return e, nil
+}
+
+func indexRecipeBuilding(recipes []services.RecipeView, code string) int {
+	for i, r := range recipes {
+		if r.BuildingCode == code {
+			return i
+		}
+	}
+	return -1
+}

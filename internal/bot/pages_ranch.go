@@ -617,6 +617,7 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 		p.act(ctx, it, p.collectCrafts, actOpts{})
 		return nil
 	}, btn{emoji: "📥", row: 2, disabled: ready == 0, style: ui.Success})
+	p.nav("售價表", "craft_prices", btn{emoji: "📋", row: 2}) // 2026-11-19：所有加工品的售價與損益
 	p.nav("機器", "machines", btn{emoji: "🔧", row: 2})
 	p.cancelCraftControls(d.orders)
 	p.navBack(4)

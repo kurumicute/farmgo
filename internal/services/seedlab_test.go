@@ -471,6 +471,24 @@ func TestSeedLabShareLimits(t *testing.T) {
 		t.Fatal(n)
 	}
 
+	// 預設每天可以收 3 位玩家的分享；這裡改成 1 位測上限（2026-11-19 從 1 位放寬成 3 位）
+	if seedlab.Current().ShareReceiveSenders != 3 {
+		t.Fatal(seedlab.Current().ShareReceiveSenders)
+	}
+	seedlab.Current().ShareReceiveSenders = 1
+	defer func() { seedlab.Current().ShareReceiveSenders = 3 }()
+	full := map[int64]bool{}
+	for _, tg := range must[[]LabShareTargetView](t)(e.s.LabShareTargets(e.ctx, g, c)) {
+		full[tg.PlayerID] = tg.Full
+	}
+	if !full[b] || full[a] || full[nolab] { // 阿華收滿了；阿明、新手還能收
+		t.Fatalf("%v", full)
+	}
+	for _, tg := range must[[]LabShareTargetView](t)(e.s.LabShareTargets(e.ctx, g, a)) {
+		if tg.Full { // 阿明今天已經分享給阿華過，可以再送
+			t.Fatalf("%+v", tg)
+		}
+	}
 	// 阿華今天已收過阿明的分享：阿強不能再分享給阿華
 	cs := e.identify(c, "corn")
 	_, err = e.s.ShareLabSeed(e.ctx, g, c, cs.ID, b)

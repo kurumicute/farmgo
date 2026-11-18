@@ -116,7 +116,7 @@ func DefaultConfig() *Config {
 		ResinSuccessBP: 1500, HerbTimePct: 30, CatalystUpBP: 3000,
 		GeneUpBP: 2500, GeneDownBP: 200, InheritMutationBP: 5000, CrossMutationPerLvBP: 100,
 		MutateCrystal: 2, MutateBaseBP: 3000, MutatePerLevelBP: 500, MutateMaxBP: 9000,
-		InheritBP: 8500, ShareSendPerDay: 5, ShareReceiveSenders: 1,
+		InheritBP: 8500, ShareSendPerDay: 5, ShareReceiveSenders: 3,
 		DominantBP: 7000, CloneFeePct: 50, CloneHerb: 1, CloneMinutes: 60,
 		CloneTwoBP: 3000, CloneThreeBP: 1000, CloneHerbBonusBP: 2000, CloneMaxBatches: 10,
 		GrowthPctPerLevel: 6, YieldPctPerLevel: 15, QualityBPPerLevel: 500, MutationBPPerLevel: 150,

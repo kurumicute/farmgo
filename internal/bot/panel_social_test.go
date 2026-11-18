@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"farmgm/internal/services"
 )
@@ -413,3 +414,32 @@ func TestLogPageListsRecentTransactions(t *testing.T) {
 }
 
 func fmt64(n int64) string { return fmt.Sprint(n) }
+
+// 2026-11-19：總覽待辦區顯示探險隊回來的時間，回來後提示領取並有「前往」按鈕。
+func TestOverviewTodoShowsExpedition(t *testing.T) {
+	e := setup(t)
+	fixedExplore(e)
+	p := e.makePlayer(alice, guildA, "玩家")
+	p.goPage("main")
+	notContains(t, p.Text, "探險隊")
+	p.choose("更多功能", "cave")
+	p.click("出發：青青草原")
+	p.goPage("main")
+	contains(t, p.Text, "⛰️ 探險隊（青青草原）回來 <t:")
+	e.clock.Advance((9 * time.Hour).Seconds())
+	p.goPage("main")
+	contains(t, p.Text, "探險隊從青青草原回來了，可以領取獎勵")
+	p.click("領探險獎勵")
+	contains(t, p.Text, "領取探險獎勵")
+}
+
+// 2026-11-19：加工頁的「📋 售價表」列出所有加工品（含還沒建造的設施）。
+func TestCraftPriceTable(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "玩家")
+	p.goPage("craft")
+	p.click("售價表")
+	contains(t, p.Text, "加工品售價表", "磨坊", "乳品工坊", "🔒 未建造", "起司", "草莓蛋糕", "綜合果醬", "📈")
+	p.click("回加工")
+	contains(t, p.Text, "設施狀態")
+}

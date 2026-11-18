@@ -587,7 +587,11 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 			groupID := *p.groupID
 			var targets []option
 			for _, tg := range d.targets {
-				targets = append(targets, option{fmt.Sprintf("分享給 %s", tg.PlayerName), fmt.Sprint(tg.PlayerID), tg.FarmName, "🎁"})
+				o := option{fmt.Sprintf("分享給 %s", tg.PlayerName), fmt.Sprint(tg.PlayerID), tg.FarmName, "🎁"}
+				if tg.Full { // 2026-11-19：今天收滿了先標出來，不用選了才知道送不出去
+					o.desc, o.emoji = fmt.Sprintf("%s｜今天已收滿 %d 位玩家的分享", tg.FarmName, cfg.ShareReceiveSenders), "🚫"
+				}
+				targets = append(targets, o)
 			}
 			left := max(0, cfg.ShareSendPerDay-v.SentToday)
 			if left > 0 {

@@ -443,6 +443,7 @@ func (p *Panel) buildFishResult(v services.FishingView) *ui.Embed {
 		p.button("再釣一次", again, btn{emoji: "🎣", style: ui.Success, row: 0})
 	}
 	p.nav("我的魚簍", "fish_basket", btn{emoji: "🎒", row: 0})
+	p.nav("釣具商店", "fish_shop", btn{emoji: "🛒", row: 0}) // 2026-11-19：結算後直接補魚餌、換裝備
 	p.nav("回釣魚中心", "fishing", btn{emoji: "🎣", row: 0})
 	e.AddField("🎒 剩餘資源", suppliesText(v), false)
 	return e

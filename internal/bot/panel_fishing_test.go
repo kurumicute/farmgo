@@ -256,6 +256,8 @@ func TestMissedBiteShowsFailure(t *testing.T) {
 	p.goPage("fish_game")
 	contains(t, p.Text, "沒有及時拉竿", "魚餌", "魚簍") // 沒釣到也顯示剩餘資源
 	p.button("再釣一次")
+	p.click("釣具商店") // 2026-11-19：結算畫面可以直接去釣具商店
+	contains(t, p.Text, "釣具商店")
 }
 
 func TestFishDoubleClickDoesNotRepeatAction(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 
 	"farmgm/internal/db"
 	"farmgm/internal/game/autofish"
+	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/seedlab"
 	fishrepo "farmgm/internal/repositories/fishing"
@@ -27,6 +28,9 @@ type TodoSummary struct {
 	LabFreeSlots   int // 空著的研究槽
 	BasketCount    int // 魚簍中的魚
 	BasketCapacity int
+	TripArea       string     // 進行中或待領取的探險區域名稱（沒有探險時為空字串）
+	TripReturnAt   *time.Time // 探險隊回來的時間（2026-11-19 待辦區新增）
+	TripBack       bool       // 探險隊已經回來、可以領取
 }
 
 func (s *GameService) TodoSummary(ctx context.Context, playerID int64) (TodoSummary, error) {
@@ -54,12 +58,19 @@ func (s *GameService) TodoSummary(ctx context.Context, playerID int64) (TodoSumm
 				}
 			}
 		}
-		// 實驗室等級與魚簍數量合成一條查詢（總覽頁每次重繪都會讀，SQL 次數有上限，見 bot/querycount_test.go）
+		// 實驗室等級、魚簍數量與探險回來時間合成一條查詢（總覽頁每次重繪都會讀，SQL 次數有上限，見 bot/querycount_test.go）
 		var labLevel, labExtra *int
+		var tripArea *string
 		if err := t.QueryRow(ctx, `SELECT l.level, l.extra_slots,
-				(SELECT count(*) FROM farm_fish f WHERE f.farm_id = $1 AND `+fishrepo.InBasket("f")+`)
-			FROM (SELECT 1) AS one LEFT JOIN seed_labs l ON l.farm_id = $1`, farm.ID).Scan(&labLevel, &labExtra, &v.BasketCount); err != nil {
+				(SELECT count(*) FROM farm_fish f WHERE f.farm_id = $1 AND `+fishrepo.InBasket("f")+`),
+				e.area_code, e.next_available_at
+			FROM (SELECT 1) AS one LEFT JOIN seed_labs l ON l.farm_id = $1
+			LEFT JOIN exploration_logs e ON e.farm_id = $1 AND e.claimed_at IS NULL`, farm.ID).Scan(&labLevel, &labExtra, &v.BasketCount, &tripArea, &v.TripReturnAt); err != nil {
 			return v, err
+		}
+		if tripArea != nil {
+			v.TripArea = exploration.AreaOf(*tripArea).Name
+			v.TripBack = v.TripReturnAt != nil && !now.Before(*v.TripReturnAt)
 		}
 		if labLevel != nil {
 			v.LabBuilt = true

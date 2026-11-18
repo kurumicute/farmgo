@@ -225,15 +225,21 @@ type ShareTarget struct {
 	PlayerName string `db:"display_name"`
 	FarmID     int64  `db:"farm_id"`
 	FarmName   string `db:"farm_name"`
+	Senders    int    `db:"senders"` // 這一天分享給對方的玩家數（不含 exceptPlayerID 自己）
+	FromMe     bool   `db:"from_me"` // 這一天自己已經分享給對方過
 }
 
-// ShareTargets 群組中有農場的其他玩家（依玩家名稱）。
-func ShareTargets(ctx context.Context, t *db.Tx, groupID, exceptPlayerID int64) ([]ShareTarget, error) {
+// ShareTargets 群組中有農場的其他玩家（依玩家名稱），附上 day 這一天對方已經收過幾位其他玩家的分享（2026-11-19）。
+func ShareTargets(ctx context.Context, t *db.Tx, groupID, exceptPlayerID int64, day time.Time) ([]ShareTarget, error) {
 	return db.QueryStructs[ShareTarget](ctx, t, `
-		SELECT p.id AS player_id, p.display_name, f.id AS farm_id, f.name AS farm_name
+		SELECT p.id AS player_id, p.display_name, f.id AS farm_id, f.name AS farm_name,
+			(SELECT count(DISTINCT s.sender_farm_id)::int FROM lab_seed_shares s JOIN farms sf ON sf.id = s.sender_farm_id
+				WHERE s.receiver_farm_id = f.id AND s.share_day = $3 AND sf.player_id <> $2) AS senders,
+			EXISTS (SELECT 1 FROM lab_seed_shares s JOIN farms sf ON sf.id = s.sender_farm_id
+				WHERE s.receiver_farm_id = f.id AND s.share_day = $3 AND sf.player_id = $2) AS from_me
 		FROM group_members m
 		JOIN players p ON p.id = m.player_id
 		JOIN farms f ON f.player_id = p.id
 		WHERE m.group_id = $1 AND m.player_id <> $2
-		ORDER BY p.display_name, p.id`, groupID, exceptPlayerID)
+		ORDER BY p.display_name, p.id`, groupID, exceptPlayerID, db.DateParam(day))
 }
