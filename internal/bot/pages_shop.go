@@ -511,6 +511,7 @@ func (p *Panel) buildGenetics(_ context.Context, data any) (*ui.Embed, error) {
 // sellRow 一項可以賣的東西（Python _sellables 的 dict）。prize 為賭場獎品（以 prizeID 販售）。
 type sellRow struct {
 	key, code, quality, mutation, name, emoji string
+	note                                      string // 單價加成說明（例如「基本價 34，非當季 +30%」；2026-11-18）
 	quantity, price                           int
 	prize                                     bool
 	prizeID                                   int64
@@ -533,7 +534,7 @@ func sellables(bp services.Backpack) []sellRow {
 		}
 		rows = append(rows, sellRow{key: fmt.Sprintf("p|%s|%s|%s", x.Code, x.Quality, x.Mutation), code: x.Code, quality: x.Quality,
 			mutation: mutation, name: x.Name + services.GeneticsLabel(x.Quality, x.Mutation), quantity: x.Quantity, price: x.Price,
-			emoji: cropEmoji(x.Code)})
+			emoji: cropEmoji(x.Code), note: x.PriceNote})
 	}
 	for _, x := range bp.Goods {
 		rows = append(rows, sellRow{key: "g|" + x.Code, code: x.Code, quality: "normal", mutation: "none", name: x.Name,
@@ -642,7 +643,11 @@ func (p *Panel) buildSell(_ context.Context, data any) (*ui.Embed, error) {
 		if r.key == selected {
 			mark = "▶ "
 		}
-		return fmt.Sprintf("%s%s **%s**　×**%d**\n　🏷️ 單價 %s　💰 小計 **%s**", mark, r.emoji, r.name, r.quantity, money(r.price), money(r.subtotal()))
+		s := fmt.Sprintf("%s%s **%s**　×**%d**\n　🏷️ 單價 %s　💰 小計 **%s**", mark, r.emoji, r.name, r.quantity, money(r.price), money(r.subtotal()))
+		if r.note != "" {
+			s += "\n　📈 " + r.note
+		}
+		return s
 	}
 	var lines []string
 	for _, r := range rows {
@@ -664,7 +669,11 @@ func (p *Panel) buildSell(_ context.Context, data any) (*ui.Embed, error) {
 		list, value, Section{Title: "🏆 賭場獎品（「全部賣出」不會賣掉，可以留著展示）", Lines: prizeLines, Sep: "\n\n"},
 	)}
 	if p.picker != nil {
-		e.AddField("🛒 已選擇", fmt.Sprintf("**%s**\n👇 按下方的數量按鈕販售", p.picker.Label), false)
+		text := fmt.Sprintf("**%s**", p.picker.Label)
+		if p.picker.PriceText != "" {
+			text += "\n" + p.picker.PriceText
+		}
+		e.AddField("🛒 已選擇", text+"\n👇 按下方的數量按鈕販售（按鈕上是預計收入）", false)
 	}
 
 	all := append(slices.Clone(rows), prizes...)
@@ -686,8 +695,14 @@ func (p *Panel) buildSell(_ context.Context, data any) (*ui.Embed, error) {
 				return r.Message, err
 			}
 		}
+		// 確認畫面顯示損益（2026-11-18）：數量按鈕直接標出收入，已選擇欄位列出全部賣出的金額與單價加成
+		price := fmt.Sprintf("💰 全部賣出預計 **+%s** 金", money(row.subtotal()))
+		if row.note != "" {
+			price += "（" + row.note + "）"
+		}
 		p.picker = &Picker{Key: row.key, Label: fmt.Sprintf("%s %s（持有 %d，單價 %s）", row.emoji, row.name, row.quantity, money(row.price)),
-			Verb: "賣", Max: row.quantity, Presets: presets, Run: run}
+			Verb: "賣", Max: row.quantity, Presets: presets, Run: run, PriceText: price,
+			LabelFor: func(q int) string { return fmt.Sprintf("賣 %d（+%s 金）", q, money(q*row.price)) }}
 	}
 	choices, page, pages := pageOf(all, p.sellPage)
 	p.sellPage = page

@@ -260,7 +260,8 @@
     "bakery": "buildings/bakery.png",
     "jam_workshop": "buildings/jam_workshop.png",
     "warehouse": "buildings/warehouse.png",
-    "_generic": "buildings/_generic.png"
+    "_generic": "buildings/_generic.png",
+    "dairy": "buildings/dairy.png"
   },
   "decor": {
     "tree": "decor/tree.png",
@@ -746,7 +747,8 @@
     "machine_order": [
       "mill",
       "bakery",
-      "jam_workshop"
+      "jam_workshop",
+      "dairy"
     ],
     "barn_slots": [
       {
@@ -846,6 +848,22 @@
           449,
           266
         ]
+      },
+      "dairy": {
+        "rect": [
+          248,
+          432,
+          392,
+          576
+        ],
+        "anchor": [
+          320,
+          576
+        ],
+        "bubble": [
+          304,
+          420
+        ]
       }
     },
     "animal_size": 44,
@@ -918,38 +936,70 @@
       ]
     ],
     "bases": {
-      "0-000": "yard/base_0_000.png",
-      "0-001": "yard/base_0_001.png",
-      "0-010": "yard/base_0_010.png",
-      "0-011": "yard/base_0_011.png",
-      "0-100": "yard/base_0_100.png",
-      "0-101": "yard/base_0_101.png",
-      "0-110": "yard/base_0_110.png",
-      "0-111": "yard/base_0_111.png",
-      "1-000": "yard/base_1_000.png",
-      "1-001": "yard/base_1_001.png",
-      "1-010": "yard/base_1_010.png",
-      "1-011": "yard/base_1_011.png",
-      "1-100": "yard/base_1_100.png",
-      "1-101": "yard/base_1_101.png",
-      "1-110": "yard/base_1_110.png",
-      "1-111": "yard/base_1_111.png",
-      "2-000": "yard/base_2_000.png",
-      "2-001": "yard/base_2_001.png",
-      "2-010": "yard/base_2_010.png",
-      "2-011": "yard/base_2_011.png",
-      "2-100": "yard/base_2_100.png",
-      "2-101": "yard/base_2_101.png",
-      "2-110": "yard/base_2_110.png",
-      "2-111": "yard/base_2_111.png",
-      "3-000": "yard/base_3_000.png",
-      "3-001": "yard/base_3_001.png",
-      "3-010": "yard/base_3_010.png",
-      "3-011": "yard/base_3_011.png",
-      "3-100": "yard/base_3_100.png",
-      "3-101": "yard/base_3_101.png",
-      "3-110": "yard/base_3_110.png",
-      "3-111": "yard/base_3_111.png"
+      "0-0000": "yard/base_0_000.png",
+      "0-0001": "yard/base_0_0001.png",
+      "0-0010": "yard/base_0_001.png",
+      "0-0011": "yard/base_0_0011.png",
+      "0-0100": "yard/base_0_010.png",
+      "0-0101": "yard/base_0_0101.png",
+      "0-0110": "yard/base_0_011.png",
+      "0-0111": "yard/base_0_0111.png",
+      "0-1000": "yard/base_0_100.png",
+      "0-1001": "yard/base_0_1001.png",
+      "0-1010": "yard/base_0_101.png",
+      "0-1011": "yard/base_0_1011.png",
+      "0-1100": "yard/base_0_110.png",
+      "0-1101": "yard/base_0_1101.png",
+      "0-1110": "yard/base_0_111.png",
+      "0-1111": "yard/base_0_1111.png",
+      "1-0000": "yard/base_1_000.png",
+      "1-0001": "yard/base_1_0001.png",
+      "1-0010": "yard/base_1_001.png",
+      "1-0011": "yard/base_1_0011.png",
+      "1-0100": "yard/base_1_010.png",
+      "1-0101": "yard/base_1_0101.png",
+      "1-0110": "yard/base_1_011.png",
+      "1-0111": "yard/base_1_0111.png",
+      "1-1000": "yard/base_1_100.png",
+      "1-1001": "yard/base_1_1001.png",
+      "1-1010": "yard/base_1_101.png",
+      "1-1011": "yard/base_1_1011.png",
+      "1-1100": "yard/base_1_110.png",
+      "1-1101": "yard/base_1_1101.png",
+      "1-1110": "yard/base_1_111.png",
+      "1-1111": "yard/base_1_1111.png",
+      "2-0000": "yard/base_2_000.png",
+      "2-0001": "yard/base_2_0001.png",
+      "2-0010": "yard/base_2_001.png",
+      "2-0011": "yard/base_2_0011.png",
+      "2-0100": "yard/base_2_010.png",
+      "2-0101": "yard/base_2_0101.png",
+      "2-0110": "yard/base_2_011.png",
+      "2-0111": "yard/base_2_0111.png",
+      "2-1000": "yard/base_2_100.png",
+      "2-1001": "yard/base_2_1001.png",
+      "2-1010": "yard/base_2_101.png",
+      "2-1011": "yard/base_2_1011.png",
+      "2-1100": "yard/base_2_110.png",
+      "2-1101": "yard/base_2_1101.png",
+      "2-1110": "yard/base_2_111.png",
+      "2-1111": "yard/base_2_1111.png",
+      "3-0000": "yard/base_3_000.png",
+      "3-0001": "yard/base_3_0001.png",
+      "3-0010": "yard/base_3_001.png",
+      "3-0011": "yard/base_3_0011.png",
+      "3-0100": "yard/base_3_010.png",
+      "3-0101": "yard/base_3_0101.png",
+      "3-0110": "yard/base_3_011.png",
+      "3-0111": "yard/base_3_0111.png",
+      "3-1000": "yard/base_3_100.png",
+      "3-1001": "yard/base_3_1001.png",
+      "3-1010": "yard/base_3_101.png",
+      "3-1011": "yard/base_3_1011.png",
+      "3-1100": "yard/base_3_110.png",
+      "3-1101": "yard/base_3_1101.png",
+      "3-1110": "yard/base_3_111.png",
+      "3-1111": "yard/base_3_1111.png"
     }
   },
   "scenes": {

@@ -18,6 +18,7 @@ import (
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/mushroom"
+	petrules "farmgm/internal/game/pets"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/repositories/catalog"
 	"farmgm/internal/repositories/farms"
@@ -302,14 +303,32 @@ func (r *RanchService) HarvestMushrooms(ctx context.Context, playerID int64) (Ac
 			return ActionResult{}, gameerr.Validationf("菇床還沒長好，還需要 %s。",
 				rules.FormatDuration(rules.RemainingSeconds(next, now)))
 		}
+		// 兔子（2026-11-18）：每個菇床收成數量 +X%（小數部分依機率多 1 朵）；幸運香包：稀有菇機率提高
+		rabbit, err := r.petPct(ctx, t, farm.ID, petrules.Rabbit)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		sachet, err := r.boostActive(ctx, t, farm.ID, balance.ItemLuckySachet, now)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		extraRare := 0
+		if sachet {
+			extraRare = balance.SachetRarePct
+		}
+		yields := make([]int, len(ready))
+		for k := range ready {
+			yields[k] = mushroom.Yield() + petrules.BonusQuantity(mushroom.Yield(), rabbit, r.PetRng())
+		}
 		// 倉庫空間：能收幾個菇床就收幾個
-		fit := 0
+		fit, need := 0, 0
 		var spaceErr error
 		for fit < len(ready) {
-			if err := r.ensureSpace(ctx, t, farm, (fit+1)*mushroom.Yield()); err != nil {
+			if err := r.ensureSpace(ctx, t, farm, need+yields[fit]); err != nil {
 				spaceErr = err
 				break
 			}
+			need += yields[fit]
 			fit++
 		}
 		if fit == 0 {
@@ -325,8 +344,8 @@ func (r *RanchService) HarvestMushrooms(ctx context.Context, playerID int64) (Ac
 		mix := mushroom.Mix(crops)
 		got := map[string]int{}
 		rare := 0
-		for _, i := range ready[:fit] {
-			for _, code := range mushroom.Roll(mix, beds[i].Sawdust, mushroom.Yield(), r.MushroomRng) {
+		for k, i := range ready[:fit] {
+			for _, code := range mushroom.RollWith(mix, beds[i].Sawdust, yields[k], extraRare, r.MushroomRng) {
 				got[code]++
 				if mushroom.SpeciesMap[code].Rare {
 					rare++

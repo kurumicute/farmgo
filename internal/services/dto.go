@@ -136,10 +136,12 @@ type BackpackLine struct {
 	Description string
 	Quality     string // 預設 normal
 	Mutation    string // 預設 none
+	// PriceNote 單價和基本售價不同的原因（農產品：品質突變加成、非當季 +30%；2026-11-18 確認畫面顯示損益），沒有加成時為空
+	PriceNote string
 }
 
 func line(code, name string, quantity, price int, desc string) BackpackLine {
-	return BackpackLine{code, name, quantity, price, desc, "normal", "none"}
+	return BackpackLine{Code: code, Name: name, Quantity: quantity, Price: price, Description: desc, Quality: "normal", Mutation: "none"}
 }
 
 type ToolStatus struct {

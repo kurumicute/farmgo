@@ -230,7 +230,9 @@ func TestPlayerPetsGreenhouseTitles(t *testing.T) {
 	view := must[AdminProgressView](t)(e.a.AdminProgress(e.ctx, pid))
 	levels := map[string]int{}
 	for _, p := range view.Pets {
-		levels[p.Code] = *p.Level
+		if p.Level != nil { // 沒有的寵物（2026-11-18 起有兔子、小鳥、刺蝟）等級是 nil
+			levels[p.Code] = *p.Level
+		}
 	}
 	if view.Greenhouse.Level != 3 || !maps.Equal(levels, map[string]int{"cat": 0, "dog": 2}) {
 		t.Fatalf("%+v %v", view.Greenhouse, levels)

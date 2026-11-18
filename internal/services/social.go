@@ -29,7 +29,6 @@ import (
 	"farmgm/internal/repositories/inventory"
 	"farmgm/internal/repositories/items"
 	"farmgm/internal/repositories/leaderboard"
-	"farmgm/internal/repositories/pets"
 	"farmgm/internal/repositories/players"
 	"farmgm/internal/repositories/rumors"
 	"farmgm/internal/repositories/steals"
@@ -679,11 +678,11 @@ func (s *SocialService) StealCrop(ctx context.Context, groupID, thiefPlayerID, v
 		}
 		if blockedBy == "" {
 			// 狗狗：設施都沒擋住時再判定一次（不受設施的整體上限限制）
-			lv, err := pets.Level(ctx, t, victimFarm.ID, petrules.Dog)
+			dog, err := s.petPct(ctx, t, victimFarm.ID, petrules.Dog) // 主人用了寵物零食時 ×1.5（2026-11-18）
 			if err != nil {
 				return ActionResult{}, err
 			}
-			if dog := petrules.BonusPct(lv); dog != 0 {
+			if dog != 0 {
 				dr := s.rng()
 				if dr < float64(dog)/100 {
 					c := float64(dog) / 100

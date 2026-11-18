@@ -478,6 +478,7 @@ type BackpackLineJSON struct {
 	Description string `json:"description"`
 	Quality     string `json:"quality"`
 	Mutation    string `json:"mutation"`
+	PriceNote   string `json:"price_note,omitempty"` // 2026-11-18：單價加成說明（與 BackpackLine 欄位一致才能直接轉換）
 }
 
 type ToolJSON struct {

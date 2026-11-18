@@ -231,6 +231,23 @@ func TestIdleYardUsesBaseFile(t *testing.T) {
 	}
 }
 
+// 乳品工坊（2026-11-18）：排在 machine_order 最後，底圖 key 多一位；加工中在建築上方畫泡泡。
+func TestYardDairy(t *testing.T) {
+	ws := workshop(1, 1, 0, 0, nil)
+	ws.Counts["dairy"] = 1
+	if key, err := YardKey(ws.Counts); err != nil || key != "1-1001" {
+		t.Fatal(key, err)
+	}
+	idle := must(t)(YardPNG(ws, nil))
+	if !bytes.Equal(idle, preset(t, "yard/base_1_1001.png")) {
+		t.Fatal("base_1_1001")
+	}
+	ws.Busy = map[string]*services.OrderView{"dairy": {State: "in_progress", OutputCode: "cheese"}}
+	if bytes.Equal(must(t)(YardPNG(ws, nil)), idle) {
+		t.Fatal("乳品工坊加工中應該畫出泡泡")
+	}
+}
+
 func fullYard() (map[string]*services.OrderView, []services.AnimalView) {
 	busy := map[string]*services.OrderView{"mill": {State: "in_progress", OutputCode: "flour"},
 		"bakery": {State: "ready", OutputCode: "bread"}, "jam_workshop": {State: "ready", OutputCode: "unknown_goods"}}

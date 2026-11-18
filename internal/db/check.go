@@ -11,7 +11,7 @@ import (
 )
 
 // AlembicHead Go 版程式對應的 Alembic 版本。
-const AlembicHead = "0044"
+const AlembicHead = "0045" // 0045：寵物新增兔子、小鳥、刺蝟（2026-11-18）
 
 // StartupCheckError 啟動檢查失敗。
 type StartupCheckError struct{ Msg string }

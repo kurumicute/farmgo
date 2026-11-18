@@ -7,6 +7,8 @@ import (
 	"farmgm/internal/game/seasons"
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"farmgm/internal/db"
@@ -16,6 +18,7 @@ import (
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/genetics"
 	"farmgm/internal/game/rules"
+	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/animals"
 	"farmgm/internal/repositories/community"
 	"farmgm/internal/repositories/crops"
@@ -82,9 +85,11 @@ func BuildBackpack(ctx context.Context, t *db.Tx, farm *models.Farm, now time.Ti
 			continue
 		}
 		c := entry.Crop
+		unit := genetics.UnitPrice(c.SellPrice, i.Quality, i.Mutation, settings)
 		l := line(i.ItemCode, genetics.ProduceName(c.Name, c.VariantName, i.Mutation), i.Quantity,
-			seasons.SellPrice(genetics.UnitPrice(c.SellPrice, i.Quality, i.Mutation, settings), c.Seasons, now), "")
+			seasons.SellPrice(unit, c.Seasons, now), "")
 		l.Quality, l.Mutation = i.Quality, i.Mutation
+		l.PriceNote = producePriceNote(c.SellPrice, unit, seasons.SellPct(c.Seasons, now))
 		bp.Produce = append(bp.Produce, l)
 	}
 	tools, err := items.ListTools(ctx, t, farm.ID)
@@ -396,4 +401,20 @@ func (s *GameService) UpdateCropGrowSeconds(ctx context.Context, actor, cropCode
 		n := s.now()
 		return cropInfo(updated, &n), nil
 	})
+}
+
+// producePriceNote 農產品單價的說明（2026-11-18 確認畫面顯示損益）：base 基本售價、unit 套用品質突變後的單價、
+// seasonPct 季節倍率（%）。沒有任何加成時回傳空字串。
+func producePriceNote(base, unit, seasonPct int) string {
+	var parts []string
+	if unit != base && base > 0 {
+		parts = append(parts, "品質突變 ×"+strconv.FormatFloat(numfmt.RoundN(float64(unit)/float64(base), 2), 'g', -1, 64))
+	}
+	if seasonPct != 100 {
+		parts = append(parts, fmt.Sprintf("非當季 %+d%%", seasonPct-100))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("基本價 %d，%s", base, strings.Join(parts, "、"))
 }

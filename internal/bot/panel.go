@@ -105,6 +105,7 @@ type Panel struct {
 	// 成就與圖鑑：目前查看的分類
 	achCategory   string
 	codexCategory string
+	usageItem     string // 背包頁「🔍 查詢物品用途」選中的物品（"c|代碼" 作物、"i|代碼" 其他；2026-11-18）
 	// 世界 Boss：目前活動、玩家切換查看的活動、捐獻流程（類別、選項、已選物品、待確認）
 	bossEventID      *int64
 	bossSelected     *int64
@@ -142,6 +143,7 @@ type Panel struct {
 	checkinNextAt time.Time
 	lastShareAt   time.Time // 最近一次公開分享（農場、魚卡）的時間，用來限制洗版
 	welcomed      bool
+	lastActiveAt  time.Time // 最後一次操作面板的時間：逾時時寫回「最後看到面板」（2026-11-18 離線摘要）
 	marks         *services.ProgressMarks
 
 	// 圖片：本次畫面要附上的檔案與內容雜湊；面板訊息上目前掛著的圖的雜湊（相同時沿用，不重新上傳）
@@ -180,12 +182,18 @@ func (p *Panel) interactionCheck(ctx context.Context, it ui.Interaction) bool {
 		_ = it.SendMessage(ctx, ui.Message{Content: ptr("這是別人的農場面板，請用 /farm 開啟自己的面板。"), Ephemeral: true})
 		return false
 	}
+	p.lastActiveAt = p.cmds.now()
 	return true
 }
 
 func (p *Panel) onTimeout(ctx context.Context) {
 	p.cancelFishTimer()
 	p.View.DisableAll()
+	if p.playerID != 0 && !p.lastActiveAt.IsZero() { // 下次「你不在的時候」從最後一次操作算起，不把自己的操作算進去
+		if err := p.svc().MarkSeen(ctx, p.playerID, p.lastActiveAt); err != nil {
+			logUnexpected(err, "記錄最後操作時間失敗", "player", p.playerID)
+		}
+	}
 	if p.message != nil {
 		msg := ui.Message{Content: ptr("面板已逾時，請重新輸入 /farm。"), View: p.View}
 		// 2026-11-16 按鈕停用後，按鈕正上方的 footer 也寫逾時說明（Content 在畫面最上方，玩家看按鈕時看不到）；附件不變

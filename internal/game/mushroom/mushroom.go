@@ -140,12 +140,17 @@ func pickNutrient(mix map[string]int, u float64) string {
 // Roll 擲骰決定一個菇床這一批收成的菇（長度 = yield）。每一朵先抽養分，再決定是不是稀有菇；
 // 前 GuaranteedRare 朵一定是稀有菇（仍會抽養分）。
 func Roll(mix map[string]int, sawdust, yield int, rng func() float64) []string {
+	return RollWith(mix, sawdust, yield, 0, rng)
+}
+
+// RollWith 同 Roll；extraRarePct 是額外的稀有菇機率（百分點，幸運香包，2026-11-18），加在木屑決定的機率上。
+func RollWith(mix map[string]int, sawdust, yield, extraRarePct int, rng func() float64) []string {
 	sawdust = clampSawdust(sawdust)
 	guaranteed := GuaranteedRare(sawdust, yield)
 	out := make([]string, 0, yield)
 	for i := 0; i < yield; i++ {
 		n := Nutrients[pickNutrient(mix, rng())]
-		rare := i < guaranteed || rng()*100 < float64(Current().RarePct[sawdust])
+		rare := i < guaranteed || rng()*100 < float64(Current().RarePct[sawdust]+extraRarePct)
 		if rare {
 			out = append(out, n.Rare)
 		} else {

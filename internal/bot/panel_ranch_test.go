@@ -171,7 +171,7 @@ func TestPanelAdoptAndUpgradePet(t *testing.T) {
 	e.setGold(pid, 100_000)
 	p.goPage("animals")
 	contains(t, p.Text, "寵物", "還沒有領養")
-	p.click("寵物（貓狗）")
+	p.click("寵物")
 	contains(t, p.Text, "🐾", "領養", "每格實際多收", "領養後（+5%）", "小麥（每格 2 個）：10% 機率 +1")
 	p.click("領養狗狗")
 	contains(t, p.Text, "再按一次")

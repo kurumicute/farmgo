@@ -517,7 +517,7 @@ func TestGuideHasPets(t *testing.T) {
 	e := setup(t)
 	a := e.app(Options{})
 	page := get(t, a, "/").Body.String()
-	for _, want := range []string{`id="g-pets"`, `id="g-pet-ladder"`, "寵物（貓狗）", `id="g-cat-odds"`, `id="g-cat-head"`, `id="g-cat-example"`} { // 表格在欄位打開時填入（表頭依最高等級產生）
+	for _, want := range []string{`id="g-pets"`, `id="g-pet-ladder"`, "「🐾 寵物」", `id="g-cat-odds"`, `id="g-cat-head"`, `id="g-cat-example"`} { // 表格在欄位打開時填入（表頭依最高等級產生）
 		if !strings.Contains(page, want) {
 			t.Fatal(want)
 		}

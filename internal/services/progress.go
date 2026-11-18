@@ -173,6 +173,8 @@ type ProgressMarks struct {
 	// 加入的順序（Python dict 的順序；面板列出「新圖鑑」「成就達成」時依此順序）
 	CodexOrder []string
 	ReadyOrder []string
+	// GuideStates 新手引導成就的狀態（achievements.GuideOrder → claimed／ready／progress；2026-11-18）
+	GuideStates map[string]string
 }
 
 type WelcomeBack struct {
@@ -718,7 +720,7 @@ func progressMarks(ctx context.Context, t *db.Tx, farm *models.Farm) (ProgressMa
 	if err != nil {
 		return ProgressMarks{}, err
 	}
-	m := ProgressMarks{Codex: map[string]string{}, Ready: map[string]string{}}
+	m := ProgressMarks{Codex: map[string]string{}, Ready: map[string]string{}, GuideStates: map[string]string{}}
 	for _, c := range cats {
 		m.CodexTotal += c.Total
 		for _, e := range c.Entries {
@@ -732,6 +734,9 @@ func progressMarks(ctx context.Context, t *db.Tx, farm *models.Farm) (ProgressMa
 		if r.State == "ready" {
 			m.Ready[r.Code] = r.Emoji + " " + r.Name
 			m.ReadyOrder = append(m.ReadyOrder, r.Code)
+		}
+		if r.Category == "guide" {
+			m.GuideStates[r.Code] = r.State
 		}
 	}
 	return m, nil
@@ -822,6 +827,11 @@ func awayLines(ctx context.Context, t *db.Tx, farm *models.Farm, since, now time
 	if back != 0 {
 		lines = append(lines, "⛰️ 探險隊回來了，到「山洞」領取戰利品")
 	}
+	more, err := awayActivity(ctx, t, farm, since, now)
+	if err != nil {
+		return nil, err
+	}
+	lines = append(lines, more...)
 	if len(marks.Ready) != 0 {
 		lines = append(lines, fmt.Sprintf("🏅 有 %d 個成就可以領取", len(marks.Ready)))
 	}
@@ -833,6 +843,62 @@ func awayLines(ctx context.Context, t *db.Tx, farm *models.Farm, since, now time
 		out = append(out, "・"+l)
 	}
 	return out, nil
+}
+
+// awayActivity 離開期間機器與其他玩家替你做的事（2026-11-18 離線收益摘要）：自動收割、自動販售與自動釣魚的收入、
+// 收到的互助、獎勵，以及完成的加工訂單。玩家不在時的交易紀錄都是機器、其他玩家或系統產生的。
+func awayActivity(ctx context.Context, t *db.Tx, farm *models.Farm, since, now time.Time) ([]string, error) {
+	type agg struct{ n, qty, gold int }
+	by := map[rules.EventType]agg{}
+	rows, err := t.Query(ctx, `SELECT event_type, count(*), coalesce(sum(quantity), 0), coalesce(sum(gold_delta), 0)
+		FROM game_transactions WHERE farm_id = $1 AND created_at > $2 AND created_at <= $3 GROUP BY event_type`, farm.ID, since, now)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var ev string
+		var a agg
+		if err := rows.Scan(&ev, &a.n, &a.qty, &a.gold); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		by[rules.EventType(ev)] = a
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var lines []string
+	if h := by[rules.EvHarvest]; h.qty > 0 {
+		lines = append(lines, fmt.Sprintf("🧺 自動收割了 %d 個作物", h.qty))
+	}
+	if income := max(0, by[rules.EvSell].gold) + max(0, by[rules.EvFishSell].gold); income > 0 {
+		lines = append(lines, fmt.Sprintf("💰 自動販售、自動釣魚賺了 %d 金", income))
+	}
+	if n := by[rules.EvAidGift].n + by[rules.EvAidWater].n; n > 0 {
+		lines = append(lines, fmt.Sprintf("🤝 收到 %d 次朋友的送禮或幫忙澆水", n))
+	}
+	rewards, gold := 0, 0
+	for _, ev := range []rules.EventType{rules.EvQuestReward, rules.EvCompetitionReward, rules.EvRankingReward, rules.EvBossReward} {
+		rewards += by[ev].n
+		gold += max(0, by[ev].gold)
+	}
+	if rewards > 0 {
+		text := fmt.Sprintf("🎁 獲得 %d 筆任務、競賽、排行或 Boss 獎勵", rewards)
+		if gold > 0 {
+			text += fmt.Sprintf("（金幣 +%d）", gold)
+		}
+		lines = append(lines, text)
+	}
+	var crafted int
+	if err := t.QueryRow(ctx, "SELECT count(*) FROM craft_orders WHERE farm_id = $1 AND status = 'in_progress' "+
+		"AND ready_at > $2 AND ready_at <= $3", farm.ID, since, now).Scan(&crafted); err != nil {
+		return nil, err
+	}
+	if crafted > 0 {
+		lines = append(lines, fmt.Sprintf("🏭 %d 張加工訂單完成了，可以領取", crafted))
+	}
+	return lines, nil
 }
 
 // ClaimAchievements 一次領取所有已達成但還沒領的成就獎勵（金幣、道具、稱號）。
@@ -1163,4 +1229,16 @@ func (p *ProgressService) BuyTitle(ctx context.Context, playerID int64, title st
 		}
 		return result(fmt.Sprintf("🎖️ 買到稱號「%s」！到「🏅 成就圖鑑 → 🎖️ 稱號」選用。", title), farm.Gold, -price, "", 0), nil
 	})
+}
+
+// MarkSeen 面板關閉（逾時）時記下最後一次操作的時間（2026-11-18）；只往後推，不影響其他面板記下的較新時間。
+func (p *ProgressService) MarkSeen(ctx context.Context, playerID int64, at time.Time) error {
+	_, err := inTx(ctx, p.GameService, func(t *db.Tx) (struct{}, error) {
+		farm, err := p.farmOf(ctx, t, playerID)
+		if err != nil {
+			return struct{}{}, err
+		}
+		return struct{}{}, feedback.MarkSeen(ctx, t, farm.ID, at)
+	})
+	return err
 }

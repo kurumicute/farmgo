@@ -33,7 +33,7 @@ func TestNewJamRecipesCraftAndSell(t *testing.T) {
 			jamWorkshop++
 		}
 	}
-	if jamWorkshop != 5 { // 草莓＋新增的 4 種
+	if jamWorkshop != 6 { // 草莓＋新增的 4 種＋綜合果醬（2026-11-18）
 		t.Fatal(jamWorkshop)
 	}
 	total := 0

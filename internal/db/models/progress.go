@@ -85,7 +85,7 @@ type WeeklyShopPurchase struct {
 func (WeeklyShopPurchase) TableName() string { return TableWeeklyShopPurchase }
 
 // FarmPet 農場的寵物（貓、狗）：購買後 Lv0，最高 Lv4；每種寵物每座農場一隻。數值在 game/pets。
-// 約束：主鍵 (farm_id, pet_code)、ck_farm_pets_pet_code_valid（cat／dog）、ck_farm_pets_level_valid（0–10）。
+// 約束：主鍵 (farm_id, pet_code)、ck_farm_pets_pet_code_valid（cat／dog／rabbit／bird／hedgehog，0045 起）、ck_farm_pets_level_valid（0–10）。
 type FarmPet struct {
 	FarmID   int64     `db:"farm_id"`
 	PetCode  string    `db:"pet_code"`

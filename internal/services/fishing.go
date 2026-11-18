@@ -35,7 +35,6 @@ import (
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/seasons"
-	"farmgm/internal/game/weather"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/groups"
 	"farmgm/internal/repositories/players"
@@ -621,7 +620,11 @@ func (f *FishingService) FishingOverview(ctx context.Context, playerID int64) (F
 		if b, ok := equipped["bait"]; ok {
 			ov.BaitQuantity, baitEffects = b.Owned.Quantity, b.Gear.Effects
 		}
-		ov.Chances = fishing.RarityChances(settings.RarityBP, weather.Today(now).FishEffects(baitEffects))
+		effects, err := f.fishEffects(ctx, t, farm.ID, now, baitEffects) // 天氣＋小鳥（2026-11-18）
+		if err != nil {
+			return FishingOverview{}, err
+		}
+		ov.Chances = fishing.RarityChances(settings.RarityBP, effects)
 		if ov.Basket, err = fishrepo.BasketCount(ctx, t, farm.ID); err != nil {
 			return FishingOverview{}, err
 		}
@@ -928,7 +931,11 @@ func (f *FishingService) cast(ctx context.Context, t *db.Tx, farm *models.Farm, 
 			pools[ft.Rarity] = append(pools[ft.Rarity], ft)
 		}
 	}
-	rarity := fishing.RollRarity(settings.RarityBP, weather.Today(now).FishEffects(bait.Gear.Effects), rng) // 雨天稀有魚機率提高
+	effects, err := f.fishEffects(ctx, t, farm.ID, now, bait.Gear.Effects) // 雨天、小鳥：稀有魚機率提高
+	if err != nil {
+		return FishingView{}, err
+	}
+	rarity := fishing.RollRarity(settings.RarityBP, effects, rng)
 	ftype, ok := pickFish(pools, rarity, rng)
 	if !ok {
 		return FishingView{}, gameerr.Validationf("目前沒有可以釣的魚，請稍後再試。")

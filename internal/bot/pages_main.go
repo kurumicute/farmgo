@@ -14,6 +14,7 @@ import (
 
 	"farmgm/internal/bot/ui"
 	"farmgm/internal/config"
+	"farmgm/internal/game/achievements"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
@@ -39,6 +40,7 @@ func (p *Panel) registerPages() {
 		"lab_records":     {p.loadLabRecords, p.buildLabRecords},
 		"lab_help":        {func(context.Context) (any, error) { return nil, nil }, p.buildLabHelp},
 		"backpack":        {p.loadBackpack, p.buildBackpack},
+		"boosts":          {p.loadBoosts, p.buildBoosts},
 		"shop":            {p.loadShop, p.buildShop},
 		"prices":          {p.loadPrices, p.buildPrices},
 		"genetics":        {p.loadGenetics, p.buildGenetics},
@@ -154,6 +156,7 @@ type mainData struct {
 	home    *services.HomeGroup
 	events  []services.ActiveEventView
 	news    *services.DailyNews
+	todo    services.TodoSummary // 菇房、實驗室、魚簍（2026-11-18 待辦區補齊）
 }
 
 func (p *Panel) loadMain(ctx context.Context) (any, error) {
@@ -173,6 +176,9 @@ func (p *Panel) loadMain(ctx context.Context) (any, error) {
 		return nil, err
 	}
 	if d.events, err = svc.ActiveEvents(ctx); err != nil {
+		return nil, err
+	}
+	if d.todo, err = svc.TodoSummary(ctx, pid); err != nil {
 		return nil, err
 	}
 	if d.home != nil { // 所屬群組昨天的日報（同一天會快取）
@@ -329,6 +335,8 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	if countState(s.Plots, rules.PlotEmpty) == len(s.Plots) {
 		hints = append(hints, "🌱 農田都空著，到「🌱 農田」選作物種下吧！")
 	}
+	more, goes := todoHints(d)
+	hints = append(hints, more...)
 	todo := strings.Join(hints, "\n")
 	if todo == "" {
 		todo = "一切就緒 👍"
@@ -342,6 +350,9 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	// 每日天氣（Go 版新增）：放在最底部（footer 第一行），每天台灣時間 0 點換
 	w := weather.Today(time.Now())
 	e.Footer = strings.TrimSuffix(fmt.Sprintf("%s 今日天氣：%s｜%s\n%s", w.Emoji, w.Name, w.EffectText(), e.Footer), "\n")
+	if g := guideHint(p.marks); g != "" { // 新手引導（2026-11-18）：footer 最後一行，緊貼按鈕
+		e.Footer += "\n" + g
+	}
 
 	p.button("全部澆水", p.waterAll, btn{emoji: "💧", style: ui.Primary, row: 0, disabled: waiting == 0})
 	p.button("全部收成", p.harvestAll, btn{emoji: "🧺", style: ui.Success, row: 0, disabled: ready == 0})
@@ -364,7 +375,160 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	p.nav("動物", "animals", btn{emoji: "🐔", row: 1})
 	p.moreMenu(2)
 	p.recentButtons(3)
+	// 最後一列緊貼待辦欄位（2026-11-18）：一鍵操作＋待辦的「前往」按鈕（一列最多 5 顆）
+	animalsReady, craftsReady := d.animals.Counts["ready"], 0
+	for _, o := range d.orders {
+		if o.State == "ready" {
+			craftsReady++
+		}
+	}
+	slots := 5
+	if ready > 0 {
+		p.button("收成並重種", p.harvestReplant, btn{emoji: "🔁", style: ui.Success, row: 4})
+		slots--
+	}
+	if kinds := btoi(ready > 0) + btoi(animalsReady > 0) + btoi(craftsReady > 0); kinds >= 2 {
+		p.button("一鍵收齊", func(ctx context.Context, it ui.Interaction) error {
+			p.act(ctx, it, func(ctx context.Context) (string, error) {
+				return p.collectEverything(ctx, ready > 0, animalsReady > 0, craftsReady > 0)
+			}, actOpts{})
+			return nil
+		}, btn{emoji: "🧺", style: ui.Success, row: 4})
+		slots--
+	}
+	for _, g := range goes[:min(len(goes), slots)] {
+		p.nav(g.label, g.page, btn{emoji: g.emoji, row: 4})
+	}
 	return e, nil
+}
+
+// guideHint 新手引導的下一步（footer 是純文字，不能用粗體）：第一個還沒領獎的步驟；全部領完後不顯示。
+func guideHint(m *services.ProgressMarks) string {
+	if m == nil || len(m.GuideStates) == 0 {
+		return ""
+	}
+	byCode := achievements.ByCode()
+	for i, code := range achievements.GuideOrder {
+		state, ok := m.GuideStates[code]
+		if !ok || state == "claimed" {
+			continue
+		}
+		name := byCode[code].Name
+		if state == "ready" {
+			return fmt.Sprintf("🔰 新手引導 %d/%d：「%s」完成！到「🧭 更多功能 → 🏅 成就圖鑑」領取獎勵", i+1, len(achievements.GuideOrder), name)
+		}
+		return fmt.Sprintf("🔰 新手引導 %d/%d「%s」：%s", i+1, len(achievements.GuideOrder), name, achievements.GuideHints[code])
+	}
+	return ""
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// harvestReplant 一鍵收成，並在收成的土地重種同一種作物（2026-11-18）。
+func (p *Panel) harvestReplant(ctx context.Context, it ui.Interaction) error {
+	p.act(ctx, it, p.call("harvest_and_replant", func(ctx context.Context) (services.ActionResult, error) {
+		return p.svc().HarvestAndReplant(ctx, p.playerID)
+	}), actOpts{})
+	return nil
+}
+
+// collectEverything 一鍵收齊（2026-11-18）：依序收成農田、收集動物產品、領取加工品（各自一筆交易）。
+// 某一項失敗（例如倉庫滿了）時，已完成的項目保留，失敗原因列在結果裡。
+func (p *Panel) collectEverything(ctx context.Context, plots, animals, crafts bool) (string, error) {
+	var parts []string
+	run := func(label string, fn func(ctx context.Context) (string, error)) error {
+		msg, err := fn(ctx)
+		if ge, ok := gameerr.As(err); ok {
+			parts = append(parts, fmt.Sprintf("⚠️ %s：%s", label, ge.Error()))
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		parts = append(parts, msg)
+		return nil
+	}
+	steps := []struct {
+		on    bool
+		label string
+		fn    func(ctx context.Context) (string, error)
+	}{
+		{plots, "收成", p.call("harvest_all", func(ctx context.Context) (services.ActionResult, error) {
+			return p.svc().HarvestAll(ctx, p.playerID)
+		})},
+		{animals, "收集動物產品", p.collectAll},
+		{crafts, "領取加工品", p.collectCrafts},
+	}
+	for _, s := range steps {
+		if !s.on {
+			continue
+		}
+		if err := run(s.label, s.fn); err != nil {
+			return "", err
+		}
+	}
+	return strings.Join(parts, "\n"), nil
+}
+
+// todoGo 待辦區的「前往」按鈕。
+type todoGo struct{ label, page, emoji string }
+
+// todoHints 農田以外的待辦（2026-11-18 補齊）：動物、加工、魚簍、菇房、種子實驗室；
+// 有事要做的項目另外給「前往」按鈕（最多 5 顆，依列出的順序）。
+func todoHints(d mainData) (hints []string, goes []todoGo) {
+	add := func(g todoGo) {
+		if len(goes) < 5 {
+			goes = append(goes, g)
+		}
+	}
+	a := d.animals
+	if n := a.Counts["ready"]; n > 0 {
+		hints = append(hints, fmt.Sprintf("🥚 **%d 隻動物可以收集**", n))
+	}
+	if n := a.Counts["hungry"]; n > 0 {
+		hints = append(hints, fmt.Sprintf("🍽️ %d 隻動物等待餵食", n))
+	}
+	if a.Counts["ready"]+a.Counts["hungry"] > 0 {
+		add(todoGo{"動物", "animals", "🐔"})
+	}
+	ready := 0
+	for _, o := range d.orders {
+		if o.State == "ready" {
+			ready++
+		}
+	}
+	if ready > 0 {
+		hints = append(hints, fmt.Sprintf("📦 **%d 張加工訂單可以領取**", ready))
+		add(todoGo{"領加工品", "craft", "🏭"})
+	}
+	t := d.todo
+	if t.BasketCapacity > 0 && t.BasketCount >= t.BasketCapacity {
+		hints = append(hints, fmt.Sprintf("🎣 **魚簍滿了（%d/%d）**，賣掉或升級魚簍才能再放", t.BasketCount, t.BasketCapacity))
+		add(todoGo{"魚簍", "fish_basket", "🎣"})
+	} else if t.BasketCapacity > 0 && t.BasketCount*5 >= t.BasketCapacity*4 {
+		hints = append(hints, fmt.Sprintf("🎣 魚簍快滿了（%d/%d）", t.BasketCount, t.BasketCapacity))
+		add(todoGo{"魚簍", "fish_basket", "🎣"})
+	}
+	if t.CellarReady > 0 {
+		hints = append(hints, fmt.Sprintf("🍄 **%d 個菇床可以採收**", t.CellarReady))
+		add(todoGo{"菇房", "cellar", "🍄"})
+	} else if t.CellarNextAt != nil {
+		hints = append(hints, "🍄 菇床下一批成熟 "+ts(t.CellarNextAt))
+	}
+	if t.LabReady > 0 {
+		hints = append(hints, fmt.Sprintf("🧪 **%d 項研究完成，可以領取**", t.LabReady))
+		add(todoGo{"實驗室", "lab", "🧪"})
+	} else if t.LabNextAt != nil {
+		hints = append(hints, "🧪 研究下一項完成 "+ts(t.LabNextAt))
+	} else if t.LabBuilt && t.LabFreeSlots > 0 {
+		hints = append(hints, fmt.Sprintf("🧪 實驗室有 %d 個研究槽空著", t.LabFreeSlots))
+	}
+	return hints, goes
 }
 
 // recentButtons 「更多功能」裡最近用過的入口（最多 3 個）放在最下面一列，常用的功能不用每次都打開選單。
@@ -398,21 +562,22 @@ func (p *Panel) openMore(ctx context.Context, it ui.Interaction, page string) {
 }
 
 // moreEntries 總覽「更多功能」選單的入口（依類型排列：生產 → 冒險 → 社交 → 紀錄）。
+// Discord 下拉選單沒有分隔線，分組標在說明的開頭（【生產】等；2026-11-18）；最近用過的入口另外放在最下面一列。
 var moreEntries = []struct{ page, label, desc, emoji string }{
-	{"craft", "加工", "磨坊、烘焙坊、果醬工坊", "🏭"},
-	{"steal", "偷菜", "偷同伺服器玩家成熟的作物", "🥷"},
-	{"defense", "防守", "稻草人、警戒犬、巡查券", "🛡️"},
-	{"aid", "送禮互助", "送朋友作物、幫忙澆水，雙方都有獎勵", "🤝"},
-	{"cave", "山洞", "探險收集素材、機器", "⛰️"},
-	{"fishing", "釣魚", "釣魚中心、魚簍、釣具商店", "🎣"},
-	{"casino", "賭場", "用作物比大小", "🎰"},
-	{"boss", "世界Boss", "伺服器共同活動、捐獻物資", "🐉"},
-	{"board", "排行榜", "個人、伺服器、群組排行", "🏆"},
-	{"quests", "任務競賽", "群組任務與競賽", "📜"},
-	{"group", "群組", "所屬群組、轉移農場", "👥"},
-	{"progress", "成就圖鑑", "成就、稱號、簽到、圖鑑", "🏅"},
-	{"prices", "作物價格", "今天的市場價格", "📈"},
-	{"log", "紀錄", "最近的操作紀錄", "🧾"},
+	{"craft", "加工", "【生產】磨坊、烘焙坊、果醬工坊、乳品工坊", "🏭"},
+	{"defense", "防守", "【生產】稻草人、警戒犬、巡查券", "🛡️"},
+	{"prices", "作物價格", "【生產】今天的市場價格", "📈"},
+	{"cave", "山洞", "【冒險】探險收集素材、機器", "⛰️"},
+	{"fishing", "釣魚", "【冒險】釣魚中心、魚簍、釣具商店", "🎣"},
+	{"casino", "賭場", "【冒險】用作物比大小", "🎰"},
+	{"boss", "世界Boss", "【冒險】伺服器共同活動、捐獻物資", "🐉"},
+	{"steal", "偷菜", "【社交】偷同伺服器玩家成熟的作物", "🥷"},
+	{"aid", "送禮互助", "【社交】送朋友作物、幫忙澆水，雙方都有獎勵", "🤝"},
+	{"quests", "任務競賽", "【社交】群組任務與競賽", "📜"},
+	{"group", "群組", "【社交】所屬群組、轉移農場", "👥"},
+	{"board", "排行榜", "【紀錄】個人、伺服器、群組排行", "🏆"},
+	{"progress", "成就圖鑑", "【紀錄】成就、稱號、簽到、圖鑑", "🏅"},
+	{"log", "紀錄", "【紀錄】最近的操作紀錄", "🧾"},
 }
 
 // moreMenu 「更多功能」選單：選了就換頁（作物價格、紀錄從第 1 頁開始）。
@@ -856,6 +1021,7 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 	p.nav("前往販售", "sell", btn{emoji: "💰", row: 1})
 	p.nav("商店", "shop", btn{emoji: "🏪", row: 1})
 	p.nav("魚簍", "fish_basket", btn{emoji: "🎣", row: 1})
+	p.nav("增益道具", "boosts", btn{emoji: "✨", row: 1, style: ui.Primary})
 	if coins := lineQty(bp.Materials, exploration.FakeCoin); coins > 0 {
 		p.button(fmt.Sprintf("兌換假幣（持有 %d）", coins), func(ctx context.Context, it ui.Interaction) error {
 			p.picker = &Picker{Key: "fake_coin", Label: fmt.Sprintf("💱 兌換假幣（1 個 = %s 金）", money(exploration.FakeCoinRate())),
@@ -871,6 +1037,9 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 			e.AddField("💱 兌換假幣", fmt.Sprintf("持有 **%d** 個，1 個 = **%s** 金\n👇 選擇兌換數量", coins, money(exploration.FakeCoinRate())), false)
 			p.quantityButtons(2)
 		}
+	}
+	if p.picker == nil || p.picker.Key != "fake_coin" { // 第 3 列：兌換假幣的數量按鈕和用途查詢選單共用，兌換時先收起選單
+		p.usageControls(e, bp, 2)
 	}
 	if sv := d.seller; sv.Owned {
 		// 自動販售機的販售項目（2026-11-15）：勾選要自動賣的東西，沒勾的作物收成後放進倉庫、魚放進魚簍

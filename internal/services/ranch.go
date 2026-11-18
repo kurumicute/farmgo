@@ -20,6 +20,7 @@ import (
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/genetics"
 	"farmgm/internal/game/rules"
+	"farmgm/internal/game/seasons"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/animals"
 	"farmgm/internal/repositories/catalog"
@@ -234,6 +235,8 @@ type RecipeView struct {
 	Seconds        int // 每份的加工秒數（已依設施等級縮短）
 	SellPrice      *int
 	CanMake        *int // 現有原料最多能做幾份（單張訂單上限內）；沒有指定玩家時為 nil
+	// InputValue 每份原料直接賣掉的價值（普通品質、目前季節的單價；2026-11-18 確認畫面顯示損益）
+	InputValue int
 }
 
 type PetCropOdds struct {
@@ -805,9 +808,13 @@ func (r *RanchService) ReleaseAnimal(ctx context.Context, playerID int64, animal
 // Recipes playerID 為 nil 時不標示是否已建造設施。
 func (r *RanchService) Recipes(ctx context.Context, playerID *int64) ([]RecipeView, error) {
 	counts, have, levels := map[string]int{}, map[string]int{}, map[string]int{}
+	var prices map[string]int
 	names, err := inTx(ctx, r.GameService, func(t *db.Tx) (map[string]string, error) {
 		names, err := catalog.ItemNames(ctx, t)
-		if err != nil || playerID == nil {
+		if err != nil {
+			return nil, err
+		}
+		if prices, err = r.unitSellPrices(ctx, t); err != nil || playerID == nil {
 			return names, err
 		}
 		farm, err := r.farmOf(ctx, t, *playerID)
@@ -847,6 +854,7 @@ func (r *RanchService) Recipes(ctx context.Context, playerID *int64) ([]RecipeVi
 			n := ItemName(item, names)
 			v.Inputs[n] = rc.Inputs[item]
 			v.InputOrder = append(v.InputOrder, n)
+			v.InputValue += prices[item] * rc.Inputs[item]
 		}
 		if g, ok := balance.Goods[rc.Output]; ok {
 			price := g.SellPrice
@@ -896,6 +904,30 @@ func (r *RanchService) StartCraft(ctx context.Context, playerID int64, key strin
 		return r.startOrder(ctx, t, farm, craftSpec{code, rc.Name, rc.Building, rc.Inputs, rc.InputOrder, rc.Output,
 			rc.OutputQty, rc.Seconds}, quantity, "")
 	})
+}
+
+// unitSellPrices 加工原料的單價（2026-11-18）：作物（普通品質、目前季節）、動物產品、加工品與菇類；山洞素材等不能賣的東西沒有價格。
+func (r *RanchService) unitSellPrices(ctx context.Context, t *db.Tx) (map[string]int, error) {
+	now := r.now()
+	out := map[string]int{}
+	cropList, err := crops.ListAll(ctx, t, false)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range cropList {
+		out[c.Code] = seasons.SellPrice(c.SellPrice, c.Seasons, now)
+	}
+	animalList, err := animals.ListAll(ctx, t, false)
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range animalList {
+		out[a.ProductCode] = a.ProductPrice
+	}
+	for code, g := range balance.Goods {
+		out[code] = g.SellPrice
+	}
+	return out, nil
 }
 
 // craftSpec 一張加工訂單的配方（加工配方或培育器配方）。

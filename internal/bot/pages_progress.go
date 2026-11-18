@@ -11,6 +11,8 @@ import (
 
 	"farmgm/internal/bot/ui"
 	"farmgm/internal/game/achievements"
+	"farmgm/internal/game/balance"
+	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/ruins"
 	"farmgm/internal/services"
@@ -360,7 +362,8 @@ func (p *Panel) buildCodex(_ context.Context, data any) (*ui.Embed, error) {
 			}
 			lines = append(lines, fmt.Sprintf("✅ **%s**　×%s%s", x.Name, money(x.Quantity), best))
 		} else {
-			lines = append(lines, "❔ ？？？")
+			// 2026-11-18：未取得的項目名稱仍然隱藏，但提示取得方式
+			lines = append(lines, "❔ ？？？　💡 "+codexHint(cat.Key, x))
 		}
 	}
 	list := strings.Join(lines, "\n")
@@ -368,8 +371,9 @@ func (p *Panel) buildCodex(_ context.Context, data any) (*ui.Embed, error) {
 		list = "這個分類目前沒有項目。"
 	}
 	e := &ui.Embed{Title: fmt.Sprintf("📖 ✦ 圖鑑｜%s %s ✦", cat.Emoji, cat.Name), Color: Gold, Description: runes(fmt.Sprintf(
-		"已收集 **%d/%d**　%s\n%s\n%s", cat.Discovered, cat.Total, bar(cat.Discovered, cat.Total, 10), Line, list), 4000),
-		Footer: "❔ 是還沒取得過的物品。數量是累計取得數（收成、偷菜、收集、加工、探險、釣魚）。"}
+		"已收集 **%d/%d**　%s **%d%%**\n📚 全部圖鑑 %d/%d（%d%%）\n%s\n%s", cat.Discovered, cat.Total, bar(cat.Discovered, cat.Total, 10),
+		donePct(cat.Discovered, cat.Total), d.Discovered, d.Total, donePct(d.Discovered, d.Total), Line, list), 4000),
+		Footer: "❔ 是還沒取得過的物品，💡 是取得方式。數量是累計取得數（收成、偷菜、收集、加工、探險、釣魚）。"}
 	options := make([]option, len(d.Categories))
 	for i, x := range d.Categories {
 		options[i] = option{fmt.Sprintf("%s（%d/%d）", x.Name, x.Discovered, x.Total), x.Key, "", x.Emoji}
@@ -385,6 +389,49 @@ func (p *Panel) buildCodex(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	p.nav("回總覽", "main", btn{emoji: "🏠", row: 1})
 	return e, nil
+}
+
+// donePct 完成百分比（無條件捨去；total 為 0 時為 0）。
+func donePct(value, total int) int {
+	if total <= 0 {
+		return 0
+	}
+	return value * 100 / total
+}
+
+// codexHint 圖鑑未取得項目的取得方式（不透露名稱；2026-11-18）。
+func codexHint(category string, x services.CodexEntry) string {
+	switch category {
+	case "crop":
+		if x.Variant {
+			return "收成時有機率突變出珍稀變種"
+		}
+		return "到商店買種子種植後收成（部分作物有季節限制）"
+	case "animal":
+		return "到「🐔 動物」養動物、餵食後收集"
+	case "goods":
+		for _, code := range balance.RecipeOrder {
+			if rc := balance.Recipes[code]; rc.Output == x.Code {
+				return "在" + balance.Buildings[rc.Building].Name + "加工製作"
+			}
+		}
+		return "加工或活動取得"
+	case "mushroom":
+		return "地下菇房栽培（投入木屑提高稀有菇機率）"
+	case "material":
+		if m, ok := exploration.Materials[x.Code]; ok && m.Rarity != "" {
+			return m.Rarity + "素材，到山洞探險取得"
+		}
+		return "到山洞探險取得"
+	case "fish":
+		return "到釣魚中心釣魚（稀有魚要好釣具和魚餌）"
+	case "lab":
+		if x.Variant {
+			return "在種子實驗室雜交培育"
+		}
+		return "在種子實驗室鑑定種子"
+	}
+	return "繼續遊玩就有機會取得"
 }
 
 // ======================================================================

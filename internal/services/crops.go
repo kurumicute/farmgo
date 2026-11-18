@@ -26,7 +26,6 @@ import (
 	"farmgm/internal/repositories/feedback"
 	"farmgm/internal/repositories/inventory"
 	"farmgm/internal/repositories/items"
-	"farmgm/internal/repositories/pets"
 	"farmgm/internal/repositories/steals"
 
 	eventrules "farmgm/internal/game/events"
@@ -212,6 +211,14 @@ func (s *GameService) plantWith(ctx context.Context, t *db.Tx, farm *models.Farm
 		qualityBonus += seedlab.QualityBonusBP(labSeed.GeneQuality)
 		mutationBonus += seedlab.MutationBonusBP(labSeed.GeneMutation)
 	}
+	// 幸運香包（2026-11-18）：效果期間種下的作物突變機率提高
+	sachet, err := s.boostActive(ctx, t, farm.ID, balance.ItemLuckySachet, now)
+	if err != nil {
+		return "", nil, err
+	}
+	if sachet {
+		mutationBonus += balance.SachetMutationBP
+	}
 	quality := genetics.RollQuality(genetics.EffectiveQualityBP(settings, farm.Level, qualityBonus), s.geneticsRng())
 	mutation := genetics.RollMutation(settings, s.geneticsRng(), mutationBonus)
 	if labSeed != nil && labSeed.Mutation != "none" {
@@ -362,7 +369,18 @@ func (s *GameService) water(ctx context.Context, t *db.Tx, farm *models.Farm, pl
 	if err != nil {
 		return 0, err
 	}
-	seconds := genetics.GrowSeconds(crop.GrowSeconds, mutation, earthworm, settings, grow.Value+greenhouse+labPct)
+	// 灑水器（2026-11-18）：效果期間不是晴天時，也有晴天的生長加速
+	sprinkler := 0
+	if w := weather.Today(now); w.Code != weather.Sunny {
+		on, err := s.boostActive(ctx, t, farm.ID, balance.ItemSprinkler, now)
+		if err != nil {
+			return 0, err
+		}
+		if on {
+			sprinkler = weather.Kinds[weather.Sunny].GrowReductionPct
+		}
+	}
+	seconds := genetics.GrowSeconds(crop.GrowSeconds, mutation, earthworm, settings, grow.Value+greenhouse+labPct+sprinkler)
 	if err := farms.Water(ctx, t, plot, now, rules.ReadyTime(now, seconds)); err != nil {
 		return 0, err
 	}
@@ -378,6 +396,9 @@ func (s *GameService) water(ctx context.Context, t *db.Tx, farm *models.Farm, pl
 	}
 	if labPct > 0 {
 		extra += fmt.Sprintf("（生長基因 -%d%%）", labPct)
+	}
+	if sprinkler > 0 {
+		extra += fmt.Sprintf("（灑水器 -%d%%）", sprinkler)
 	}
 	bonuses := []eventrules.Bonus{grow}
 	source := "澆水"
@@ -509,16 +530,24 @@ func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.
 			return "", 0, "", err
 		}
 		blocked = min(storm, guards*weather.StormDefenseBlock)
+		// 雨衣稻草人（2026-11-18）：效果期間暴風完全吹不壞（限時活動的大風照常）
+		guard, err := s.boostActive(ctx, t, farm.ID, balance.ItemStormGuard, s.now())
+		if err != nil {
+			return "", 0, "", err
+		}
+		if guard {
+			blocked = storm
+		}
 	}
 	remaining := *plot.RemainingQuantity
 	lost := min(max(0, wind.Value-blocked), max(0, remaining-1))
 	quantity := remaining - lost
 	// 貓咪趕走偷吃的老鼠：收成數量 +X%（只有主人收成時；被偷走的部分不會補回）
-	cat, err := db.Memo(t, petKey{farm.ID, petrules.Cat}, func() (*int, error) { return pets.Level(ctx, t, farm.ID, petrules.Cat) })
+	catPct, err := s.petPct(ctx, t, farm.ID, petrules.Cat) // 寵物零食生效時 ×1.5（2026-11-18）
 	if err != nil {
 		return "", 0, "", err
 	}
-	catBonus := petrules.BonusQuantity(quantity, petrules.BonusPct(cat), s.PetRng())
+	catBonus := petrules.BonusQuantity(quantity, catPct, s.PetRng())
 	quantity += catBonus
 	autoSell, err := s.autoSells(ctx, t, farm.ID, autoSellKey(crop.Code)) // 販售項目沒勾的作物放進倉庫
 	if err != nil {
@@ -662,6 +691,10 @@ func (s *GameService) ClearWithered(ctx context.Context, playerID int64, plotNum
 		if err != nil {
 			return ActionResult{}, err
 		}
+		saved, err := s.salvageWithered(ctx, t, farm, plot, crop)
+		if err != nil {
+			return ActionResult{}, err
+		}
 		if err := farms.Clear(ctx, t, plot); err != nil {
 			return ActionResult{}, err
 		}
@@ -672,7 +705,7 @@ func (s *GameService) ClearWithered(ctx context.Context, playerID int64, plotNum
 		if err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已清除第 %d 格乾枯的%s，土地恢復為空地。%s", plotNumber, crop.Name, auto), farm.Gold, 0, "", 0), nil
+		return result(fmt.Sprintf("已清除第 %d 格乾枯的%s，土地恢復為空地。%s%s", plotNumber, crop.Name, saved, auto), farm.Gold, 0, "", 0), nil
 	})
 }
 
@@ -716,80 +749,91 @@ func (s *GameService) PlantAll(ctx context.Context, playerID int64, cropKey stri
 		if len(plots) == 0 {
 			return ActionResult{}, gameerr.Validationf("沒有空地可以種植。")
 		}
-		item := rules.SeedItemCode(crop.Code)
-		have, err := inventory.GetQuantity(ctx, t, farm.ID, item, "normal", "none")
+		text, count, err := s.plantOnPlots(ctx, t, farm, crop, plots)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		bought := 0
-		if len(plots) > have && !crop.ShopBuyable {
-			if have <= 0 {
-				return ActionResult{}, gameerr.New(gameerr.InsufficientItems, "沒有%s種子（商店不販售，只能從山洞探索或培育取得）。", crop.Name)
-			}
-		} else if len(plots) > have {
-			bought = min(len(plots)-have, numfmt.FloorDiv(farm.Gold, crop.SeedPrice))
-			if bought <= 0 && have <= 0 {
-				return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：%s種子每顆 %d 金幣。", crop.Name, crop.SeedPrice)
-			}
-			if bought > 0 {
-				cost := crop.SeedPrice * bought
-				farm.Gold -= cost
-				if err := s.saveFarm(ctx, t, farm, db.C("gold", farm.Gold)); err != nil {
-					return ActionResult{}, err
-				}
-				if err := inventory.Add(ctx, t, farm.ID, item, bought, "normal", "none"); err != nil {
-					return ActionResult{}, err
-				}
-				if err := s.record(ctx, t, farm, rules.EvBuySeed, fmt.Sprintf("購買 %d 顆%s種子，金幣 -%d", bought, crop.Name, cost),
-					rec{ItemCode: item, Quantity: bought, GoldDelta: -cost}); err != nil {
-					return ActionResult{}, err
-				}
-			}
-		}
-		count := min(len(plots), have+bought)
-		watered := 0
-		// 種子一次扣完（have + bought ≥ count，一定扣得到）
-		if count > 0 {
-			ok, err := inventory.Remove(ctx, t, farm.ID, item, count, "normal", "none")
-			if err != nil {
-				return ActionResult{}, err
-			}
-			if !ok {
-				return ActionResult{}, gameerr.New(gameerr.InsufficientItems, "%s種子不足。", crop.Name)
-			}
-		}
-		if err := t.Bulk(ctx, func() error {
-			for _, plot := range plots[:count] {
-				_, seconds, err := s.plant(ctx, t, farm, plot, crop, "")
-				if err != nil {
-					return err
-				}
-				if seconds != nil {
-					watered++
-				}
-			}
-			return nil
-		}); err != nil {
-			return ActionResult{}, err
-		}
-		text := fmt.Sprintf("在 %d 格種下%s", count, crop.Name)
-		if bought > 0 {
-			text += fmt.Sprintf("（購買 %d 顆種子）", bought)
-		}
-		if count < len(plots) {
-			reason := "種子不夠"
-			if crop.ShopBuyable {
-				reason = "金幣不夠"
-			}
-			text += fmt.Sprintf("；%s，還有 %d 格空著", reason, len(plots)-count)
-		}
-		if watered == count {
-			text += "，已自動澆水。"
-		} else {
-			text += "。記得按「💧 全部澆水」。"
-		}
-		return result(text, farm.Gold, 0, item, count), nil
+		return result(text, farm.Gold, 0, rules.SeedItemCode(crop.Code), count), nil
 	})
+}
+
+// plantOnPlots 在指定的空地種下同一種作物（農場與土地必須已鎖定、季節已檢查）；種子不夠時用目前金幣自動補買，
+// 買不起或商店不賣時能種多少種多少。一顆都種不了時回傳遊戲錯誤（在扣款之前判斷，呼叫端可以直接略過）。
+// PlantAll 與收成並重種共用（2026-11-18 從 PlantAll 抽出）。
+func (s *GameService) plantOnPlots(ctx context.Context, t *db.Tx, farm *models.Farm, crop *models.CropType, plots []*models.FarmPlot) (string, int, error) {
+	item := rules.SeedItemCode(crop.Code)
+	have, err := inventory.GetQuantity(ctx, t, farm.ID, item, "normal", "none")
+	if err != nil {
+		return "", 0, err
+	}
+	bought := 0
+	if len(plots) > have && !crop.ShopBuyable {
+		if have <= 0 {
+			return "", 0, gameerr.New(gameerr.InsufficientItems, "沒有%s種子（商店不販售，只能從山洞探索或培育取得）。", crop.Name)
+		}
+	} else if len(plots) > have {
+		bought = min(len(plots)-have, numfmt.FloorDiv(farm.Gold, crop.SeedPrice))
+		if bought <= 0 && have <= 0 {
+			return "", 0, gameerr.New(gameerr.InsufficientGold, "金幣不足：%s種子每顆 %d 金幣。", crop.Name, crop.SeedPrice)
+		}
+		if bought > 0 {
+			cost := crop.SeedPrice * bought
+			farm.Gold -= cost
+			if err := s.saveFarm(ctx, t, farm, db.C("gold", farm.Gold)); err != nil {
+				return "", 0, err
+			}
+			if err := inventory.Add(ctx, t, farm.ID, item, bought, "normal", "none"); err != nil {
+				return "", 0, err
+			}
+			if err := s.record(ctx, t, farm, rules.EvBuySeed, fmt.Sprintf("購買 %d 顆%s種子，金幣 -%d", bought, crop.Name, cost),
+				rec{ItemCode: item, Quantity: bought, GoldDelta: -cost}); err != nil {
+				return "", 0, err
+			}
+		}
+	}
+	count := min(len(plots), have+bought)
+	watered := 0
+	// 種子一次扣完（have + bought ≥ count，一定扣得到）
+	if count > 0 {
+		ok, err := inventory.Remove(ctx, t, farm.ID, item, count, "normal", "none")
+		if err != nil {
+			return "", 0, err
+		}
+		if !ok {
+			return "", 0, gameerr.New(gameerr.InsufficientItems, "%s種子不足。", crop.Name)
+		}
+	}
+	if err := t.Bulk(ctx, func() error {
+		for _, plot := range plots[:count] {
+			_, seconds, err := s.plant(ctx, t, farm, plot, crop, "")
+			if err != nil {
+				return err
+			}
+			if seconds != nil {
+				watered++
+			}
+		}
+		return nil
+	}); err != nil {
+		return "", 0, err
+	}
+	text := fmt.Sprintf("在 %d 格種下%s", count, crop.Name)
+	if bought > 0 {
+		text += fmt.Sprintf("（購買 %d 顆種子）", bought)
+	}
+	if count < len(plots) {
+		reason := "種子不夠"
+		if crop.ShopBuyable {
+			reason = "金幣不夠"
+		}
+		text += fmt.Sprintf("；%s，還有 %d 格空著", reason, len(plots)-count)
+	}
+	if watered == count {
+		text += "，已自動澆水。"
+	} else {
+		text += "。記得按「💧 全部澆水」。"
+	}
+	return text, count, nil
 }
 
 func (s *GameService) WaterAll(ctx context.Context, playerID int64) (ActionResult, error) {
@@ -832,6 +876,17 @@ func (s *GameService) WaterAll(ctx context.Context, playerID int64) (ActionResul
 
 // HarvestAll 收成所有成熟的土地；倉庫放不下時停在那一格（之前收成的保留，之後的留在土地上），不會遺失作物。
 func (s *GameService) HarvestAll(ctx context.Context, playerID int64) (ActionResult, error) {
+	return s.harvestAll(ctx, playerID, false)
+}
+
+// HarvestAndReplant 一鍵收成並在收成的土地重種同一種作物（Go 版新增，2026-11-18）：同一筆交易中完成，
+// 種子不夠時自動補買（同「種滿空地」）；特殊種子（種子實驗室）種的土地、非當季或買不到種子的作物不重種，
+// 空著的土地之後再交給自動播種機。
+func (s *GameService) HarvestAndReplant(ctx context.Context, playerID int64) (ActionResult, error) {
+	return s.harvestAll(ctx, playerID, true)
+}
+
+func (s *GameService) harvestAll(ctx context.Context, playerID int64, replant bool) (ActionResult, error) {
 	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
 		farm, err := s.lockedFarm(ctx, t, playerID)
 		if err != nil {
@@ -844,14 +899,16 @@ func (s *GameService) HarvestAll(ctx context.Context, playerID int64) (ActionRes
 		if len(plots) == 0 {
 			return ActionResult{}, gameerr.Validationf("目前沒有可收成的作物。")
 		}
-		done, total, stopped, record, auto := 0, 0, "", "", ""
+		done, total, stopped, record, auto, replanted := 0, 0, "", "", "", ""
 		var details []HarvestDetail
+		var again []replantPlot // 收成後要重種的土地（依收成順序）
 		if err := t.Bulk(ctx, func() error {
 			for _, plot := range plots {
 				crop, err := crops.Get(ctx, t, *plot.CropTypeID)
 				if err != nil {
 					return err
 				}
+				fromLab := plot.LabSeedID != nil // 收成會清掉土地，先記下是不是特殊種子種的
 				_, quantity, _, err := s.harvestLocked(ctx, t, farm, plot, crop, &details)
 				if gameerr.Is(err, gameerr.WarehouseFull) {
 					stopped = fmt.Sprintf("\n⚠️ 還有 %d 格沒收：%s", len(plots)-done, err.Error())
@@ -862,6 +919,9 @@ func (s *GameService) HarvestAll(ctx context.Context, playerID int64) (ActionRes
 				}
 				done++
 				total += quantity
+				if replant && !fromLab {
+					again = append(again, replantPlot{plot.PlotNumber, crop})
+				}
 			}
 			if done == 0 {
 				return gameerr.New(gameerr.WarehouseFull, strings.TrimSpace(strings.ReplaceAll(stopped, "⚠️", "")))
@@ -870,17 +930,82 @@ func (s *GameService) HarvestAll(ctx context.Context, playerID int64) (ActionRes
 			if record, err = s.recordNote(ctx, t, farm, "harvest_quantity", total); err != nil {
 				return err
 			}
+			if replant {
+				if replanted, err = s.replantLocked(ctx, t, farm, again); err != nil {
+					return err
+				}
+			}
 			auto, err = s.autoPlant(ctx, t, farm)
 			return err
 		}); err != nil {
 			return ActionResult{}, err
 		}
 		msg := HarvestSummary(details) + record + stopped
+		if replanted != "" {
+			msg += "\n🌱 重種：" + replanted
+		}
 		if auto != "" {
 			msg += "\n" + strings.TrimSpace(auto)
 		}
 		return result(msg, farm.Gold, 0, "", total), nil
 	})
+}
+
+// replantPlot 收成後要重種的土地與原本的作物。
+type replantPlot struct {
+	plotNumber int
+	crop       *models.CropType
+}
+
+// replantLocked 在收成完的土地重種原本的作物（農場已鎖定）：同一種作物一起種（種子不夠時自動補買），
+// 非當季、停用、買不起或沒有種子的作物略過並說明原因；回傳結果說明（沒有要重種的土地時為空字串）。
+func (s *GameService) replantLocked(ctx context.Context, t *db.Tx, farm *models.Farm, again []replantPlot) (string, error) {
+	if len(again) == 0 {
+		return "", nil
+	}
+	all, err := farms.ListPlots(ctx, t, farm.ID, true)
+	if err != nil {
+		return "", err
+	}
+	empty := map[int]*models.FarmPlot{}
+	for i := range all {
+		if all[i].CropTypeID == nil {
+			empty[all[i].PlotNumber] = &all[i].FarmPlot
+		}
+	}
+	var order []*models.CropType
+	byCrop := map[int64][]*models.FarmPlot{}
+	for _, a := range again {
+		plot := empty[a.plotNumber]
+		if plot == nil {
+			continue
+		}
+		if _, ok := byCrop[a.crop.ID]; !ok {
+			order = append(order, a.crop)
+		}
+		byCrop[a.crop.ID] = append(byCrop[a.crop.ID], plot)
+	}
+	var parts []string
+	for _, crop := range order {
+		if !crop.Active {
+			parts = append(parts, crop.Name+"已停用，沒有重種")
+			continue
+		}
+		if err := s.checkSeason(crop); err != nil {
+			parts = append(parts, crop.Name+"現在不能種，沒有重種")
+			continue
+		}
+		text, _, err := s.plantOnPlots(ctx, t, farm, crop, byCrop[crop.ID])
+		if ge, ok := gameerr.As(err); ok { // 種子買不起、商店不賣：不影響收成，只說明
+			parts = append(parts, ge.Error())
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, text)
+	}
+	return strings.Join(parts, "\n"), nil
 }
 
 func (s *GameService) ClearAllWithered(ctx context.Context, playerID int64) (ActionResult, error) {
@@ -896,13 +1021,18 @@ func (s *GameService) ClearAllWithered(ctx context.Context, playerID int64) (Act
 		if len(plots) == 0 {
 			return ActionResult{}, gameerr.Validationf("沒有乾枯的作物。")
 		}
-		auto := ""
+		auto, saved := "", ""
 		if err := t.Bulk(ctx, func() error {
 			for _, plot := range plots {
 				crop, err := crops.Get(ctx, t, *plot.CropTypeID)
 				if err != nil {
 					return err
 				}
+				note, err := s.salvageWithered(ctx, t, farm, plot, crop)
+				if err != nil {
+					return err
+				}
+				saved += note
 				if err := farms.Clear(ctx, t, plot); err != nil {
 					return err
 				}
@@ -917,8 +1047,37 @@ func (s *GameService) ClearAllWithered(ctx context.Context, playerID int64) (Act
 		}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已清除 %d 格乾枯的作物。%s", len(plots), auto), farm.Gold, 0, "", len(plots)), nil
+		return result(fmt.Sprintf("已清除 %d 格乾枯的作物。%s%s", len(plots), saved, auto), farm.Gold, 0, "", len(plots)), nil
 	})
+}
+
+// salvageWithered 刺蝟（2026-11-18）：清除乾枯作物時救回原本收成數量的 X%（小數部分依機率多 1 個），
+// 放進倉庫（倉庫放不下時不救回）。要在清空土地之前呼叫；回傳附在結果後面的說明（沒有救回時為空字串）。
+func (s *GameService) salvageWithered(ctx context.Context, t *db.Tx, farm *models.Farm, plot *models.FarmPlot, crop *models.CropType) (string, error) {
+	pct, err := s.petPct(ctx, t, farm.ID, petrules.Hedgehog)
+	if err != nil || pct == 0 || plot.RemainingQuantity == nil {
+		return "", err
+	}
+	quantity := petrules.BonusQuantity(*plot.RemainingQuantity, pct, s.PetRng())
+	if quantity <= 0 {
+		return "", nil
+	}
+	if err := s.ensureSpace(ctx, t, farm, quantity); gameerr.Is(err, gameerr.WarehouseFull) {
+		return fmt.Sprintf(" 🦔 刺蝟想救回第 %d 格的%s，但倉庫放不下。", plot.PlotNumber, crop.Name), nil
+	} else if err != nil {
+		return "", err
+	}
+	quality, mutation := deref(plot.Quality), deref(plot.Mutation)
+	item := genetics.ProduceCode(crop.Code, crop.VariantCode, mutation)
+	if err := inventory.Add(ctx, t, farm.ID, item, quantity, quality, mutation); err != nil {
+		return "", err
+	}
+	t.Adjust(warehouseUsedKey{farm.ID}, quantity)
+	if err := s.record(ctx, t, farm, rules.EvClear, fmt.Sprintf("刺蝟從第 %d 格乾枯的%s救回 %d 個", plot.PlotNumber, crop.Name, quantity),
+		rec{ItemCode: item, Quantity: quantity, Quality: quality, Mutation: mutation}); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(" 🦔 刺蝟從第 %d 格救回 %d 個%s。", plot.PlotNumber, quantity, crop.Name), nil
 }
 
 // ---------- 販售與擴建 ----------

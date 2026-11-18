@@ -170,7 +170,7 @@ func TestErrorScreenHidesPageAndReturnsWithSelection(t *testing.T) {
 	if len(p.options("開始加工")) != 0 { // 沒有小麥：做不出來的配方不列出
 		t.Fatal(p.options("開始加工"))
 	}
-	contains(t, p.Text, "1 個原料不足")
+	contains(t, p.Text, "2 個原料不足") // 麵粉、幸運香包（2026-11-18 磨坊新增配方）
 	pid := p.panel.playerID
 	e.setInventory(pid, "wheat", 3)
 	p.goPage("craft")

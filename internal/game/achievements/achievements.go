@@ -84,6 +84,7 @@ type Category struct {
 }
 
 var Categories = []Category{
+	{"guide", "🔰", "新手引導"}, // Go 版新增（2026-11-18）
 	{"farm", "🌾", "農耕"},
 	{"wealth", "💰", "財富"},
 	{"ranch", "🐔", "牧場與加工"},
@@ -92,6 +93,17 @@ var Categories = []Category{
 	{"boss", "🐉", "世界 Boss"},
 	{"collect", "📖", "簽到與圖鑑"},
 	{"lab", "🧪", "實驗室與菇房"}, // Go 版新增
+}
+
+// GuideOrder 新手引導的步驟順序（BaseAchievements 中分類為 guide 的成就）；GuideHints 每一步要做什麼（面板 footer 顯示）。
+var GuideOrder = []string{"guide_harvest", "guide_sell", "guide_level2", "guide_animal", "guide_goods"}
+
+var GuideHints = map[string]string{
+	"guide_harvest": "到「🌱 農田」從選單選作物種下，澆水等成熟後收成",
+	"guide_sell":    "到「💰 販售」把收成的作物賣掉",
+	"guide_level2":  "到「🌱 農田」按「⬆️ 擴建」增加土地，農場會升到 2 級",
+	"guide_animal":  "到「🐔 動物」建造畜舍、買一隻雞，餵食後收集雞蛋",
+	"guide_goods":   "到「🏭 加工」蓋磨坊，用小麥磨出第一包麵粉",
 }
 
 // Achievement 成就定義（值型別；Items 不可修改，需要時用 Reward() 取得副本）。Title 為 "" 表示沒有稱號。
@@ -149,6 +161,12 @@ func ach(code, cat, emoji, name, metric string, target, gold int, items it, titl
 
 // BaseAchievements 預設的成就（程式內建）；實際生效的是 Active()（套用管理網站的設定）。
 var BaseAchievements = []Achievement{
+	// 新手引導（Go 版新增，2026-11-18）：總覽頁 footer 依 GuideOrder 提示下一步，完成後在成就頁領取獎勵
+	ach("guide_harvest", "guide", "🌱", "第一次收成", "crops", 1, 100, nil, ""),
+	ach("guide_sell", "guide", "💰", "第一筆生意", "crop_sales", 1, 100, nil, ""),
+	ach("guide_level2", "guide", "⭐", "農場升級", "level", 2, 0, it{f: 3}, ""),
+	ach("guide_animal", "guide", "🐔", "第一份動物產品", "animal_products", 1, 200, nil, ""),
+	ach("guide_goods", "guide", "🍞", "第一件加工品", "goods", 1, 0, it{e: 1}, ""),
 	// 農耕
 	ach("crops_100", "farm", "🌱", "初出茅廬", "crops", 100, 200, nil, ""),
 	ach("crops_1000", "farm", "🌾", "勤勞農夫", "crops", 1_000, 0, it{f: 10}, "勤勞農夫"),

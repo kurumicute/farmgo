@@ -110,3 +110,10 @@ func StealsAgainst(ctx context.Context, t *db.Tx, victimPlayerID int64, since ti
 	}
 	return out, nil
 }
+
+// MarkSeen 把最後一次看到面板的時間往後推到 at（2026-11-18：面板逾時時記下最後一次操作的時間，
+// 下次「你不在的時候」摘要從這裡算起，不把玩家自己的操作算進離開期間）；不會往前改。
+func MarkSeen(ctx context.Context, t *db.Tx, farmID int64, at time.Time) error {
+	_, err := t.Exec(ctx, "UPDATE farm_feedback SET last_seen_at = GREATEST(last_seen_at, $2) WHERE farm_id = $1", farmID, at)
+	return err
+}

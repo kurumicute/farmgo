@@ -167,7 +167,8 @@ func TestAchievementProgressCountsHistoryAndClaimOnce(t *testing.T) {
 	}
 	before := e.gold(pid)
 	r := e.ok(e.p.ClaimAchievements(e.ctx, pid))
-	if !strings.Contains(r.Message, "初出茅廬") || e.gold(pid) != before+200 || e.rewardGold() != 200 {
+	// 2026-11-18 新手引導：第一次收成（100 金）會和初出茅廬（200 金）一起領取
+	if !strings.Contains(r.Message, "初出茅廬") || !strings.Contains(r.Message, "第一次收成") || e.gold(pid) != before+300 || e.rewardGold() != 300 {
 		t.Fatalf("%s gold=%d", r.Message, e.gold(pid))
 	}
 	if e.achievement(pid, "crops_100").State != "claimed" {
@@ -222,7 +223,7 @@ func TestFullWarehouseConvertsAchievementItems(t *testing.T) {
 	e.exec("UPDATE farms SET warehouse_capacity = 1 WHERE player_id = $1", pid)
 	before := e.gold(pid)
 	r := e.ok(e.p.ClaimAchievements(e.ctx, pid))
-	gained := 3 * balance.Items[balance.ItemPatrolTicket].Price
+	gained := 3*balance.Items[balance.ItemPatrolTicket].Price + 100 // 加上新手引導「第一次收成」的 100 金（2026-11-18）
 	if !strings.Contains(r.Message, "改發等值金幣") || e.gold(pid) != before+gained || e.rewardGold() != gained {
 		t.Fatalf("%s gold=%d", r.Message, e.gold(pid))
 	}

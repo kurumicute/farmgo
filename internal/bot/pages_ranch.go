@@ -174,7 +174,7 @@ func (p *Panel) buildAnimals(_ context.Context, data any) (*ui.Embed, error) {
 		}), actOpts{})
 		return nil
 	}, btn{emoji: "🏚️", row: 0, disabled: barns >= barn.MaxPerFarm})
-	p.nav("寵物（貓狗）", "pets", btn{emoji: "🐾", row: 0, style: ui.Primary})
+	p.nav("寵物", "pets", btn{emoji: "🐾", row: 0, style: ui.Primary})
 
 	pick := func(ctx context.Context, it ui.Interaction, code string) error {
 		i := slices.IndexFunc(d.types, func(t services.AnimalTypeView) bool { return t.Code == code })
@@ -259,13 +259,14 @@ func parseAnimalNo(s string) (int, error) {
 }
 
 // ======================================================================
-// 寵物（貓、狗）：動物頁的子頁，購買與升級都要再按一次確認
+// 寵物（貓、狗、兔子、小鳥、刺蝟）：動物頁的子頁，購買與升級都要再按一次確認
 // ======================================================================
 
 type petsData struct {
 	pets   []services.PetView
 	gold   int
 	status services.FarmStatus // 圖片在組畫面時（交易外）產生
+	treat  services.BoostView  // 寵物零食（2026-11-18）
 }
 
 func (p *Panel) loadPets(ctx context.Context) (any, error) {
@@ -277,7 +278,17 @@ func (p *Panel) loadPets(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return petsData{list, status.Gold, status}, nil
+	boosts, err := p.svc().Boosts(ctx, p.playerID)
+	if err != nil {
+		return nil, err
+	}
+	d := petsData{pets: list, gold: status.Gold, status: status}
+	for _, b := range boosts {
+		if b.Code == balance.ItemPetTreat {
+			d.treat = b
+		}
+	}
+	return d, nil
 }
 
 func (p *Panel) buildPets(_ context.Context, data any) (*ui.Embed, error) {
@@ -313,10 +324,17 @@ func (p *Panel) buildPets(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		blocks = append(blocks, block)
 	}
+	// 寵物零食（2026-11-18）：在烘焙坊製作，餵了 6 小時內所有寵物效果 ×1.5
+	treat := fmt.Sprintf("🦴 寵物零食：持有 **%d** 個（%s；%s）", d.treat.Have, d.treat.Desc, d.treat.Recipe)
+	if d.treat.ActiveUntil != nil {
+		treat += fmt.Sprintf("\n　✨ 零食效果中，%s結束", ts(d.treat.ActiveUntil))
+	}
+	owned := slices.ContainsFunc(d.pets, func(x services.PetView) bool { return x.Owned })
 	// 價格階梯與加成規則已寫在每隻寵物與說明頁，不再整段重複；金幣放最後，貼近領養／升級按鈕
 	e := &ui.Embed{Title: "🐾 ✦ 寵物 ✦", Color: Green, Description: sections(
 		Section{Lines: blocks, Sep: "\n\n"},
-		"🐶 狗在農場圖左上、🐱 貓在右上，不佔畜舍欄位。",
+		"寵物會出現在農場圖上方的草地，不佔畜舍欄位。",
+		treat,
 		fmt.Sprintf("💰 你的金幣：**%s**", money(d.gold)),
 	)}
 	pending, hasPending := strings.CutPrefix(p.confirm, "pet:")
@@ -351,6 +369,12 @@ func (p *Panel) buildPets(_ context.Context, data any) (*ui.Embed, error) {
 			}, btn{emoji: x.Emoji, row: 0, disabled: d.gold < *x.NextPrice})
 		}
 	}
+	p.button(fmt.Sprintf("餵寵物零食（持有 %d）", d.treat.Have), func(ctx context.Context, it ui.Interaction) error {
+		p.act(ctx, it, p.call("use_boost", func(ctx context.Context) (services.ActionResult, error) {
+			return p.svc().UseBoost(ctx, p.playerID, balance.ItemPetTreat)
+		}), actOpts{})
+		return nil
+	}, btn{emoji: "🦴", row: 1, style: ui.Primary, disabled: d.treat.Have == 0 || !owned})
 	p.nav("回動物", "animals", btn{emoji: "🐔", row: 1})
 	p.navBack(1)
 	p.attachImage(e, p.farmImage(d.status)) // 圖片在交易外產生
@@ -420,6 +444,29 @@ func (p *Panel) collectCrafts(ctx context.Context) (string, error) {
 	return strings.Join(msgs, " "), nil
 }
 
+// craftProfit 每份加工的損益（2026-11-18）：原料直接賣掉的價值 vs 成品售價；原料或成品沒有售價時不顯示。
+func craftProfit(r services.RecipeView) string {
+	if r.SellPrice == nil || *r.SellPrice == 0 || r.InputValue == 0 {
+		return ""
+	}
+	out := *r.SellPrice * r.OutputQuantity
+	diff := out - r.InputValue
+	mark := "📈"
+	if diff < 0 {
+		mark = "📉"
+	}
+	return fmt.Sprintf("%s 每份：原料直接賣約 %s 金 → 成品 %s 金（%s 金，%+d%%）", mark, money(r.InputValue), money(out),
+		signedMoney(diff), diff*100/r.InputValue)
+}
+
+// signedMoney 帶正負號的金額，例如 +1,250、-30。
+func signedMoney(n int) string {
+	if n < 0 {
+		return "-" + money(-n)
+	}
+	return "+" + money(n)
+}
+
 func canMake(r services.RecipeView) int {
 	if r.CanMake == nil {
 		return 0
@@ -478,6 +525,9 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 		if r.SellPrice != nil && *r.SellPrice != 0 {
 			line += fmt.Sprintf("　🏷️ 售價 %d", *r.SellPrice)
 		}
+		if t := craftProfit(r); t != "" {
+			line += "\n　" + t
+		}
 		line += fmt.Sprintf("\n　🧮 現有原料可做 **%d** 份", canMake(r))
 		recipes = append(recipes, line)
 	}
@@ -525,6 +575,9 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 		if most != 0 {
 			h = fmt.Sprintf("現有原料最多可做 **%d** 份（單張上限 %d 份），👇 按下方的數量按鈕開始加工", most, balance.CraftMaxQuantity)
 		}
+		if p.picker.PriceText != "" {
+			h = p.picker.PriceText + "\n" + h
+		}
 		e.AddField("🛒 已選擇", fmt.Sprintf("**%s**\n%s\n設施忙碌時新訂單會排隊，完成後自動接著加工（每種設施最多 %d 張）",
 			p.picker.Label, h, balance.CraftQueueMax), false)
 	}
@@ -542,7 +595,7 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		r := d.recipes[i]
 		// 份數按鈕（Max／Most／Presets）在 buildCraft 依最新原料計算，只顯示做得出來的份數
-		p.picker = &Picker{Key: code, Label: fmt.Sprintf("🏭 %s（%s）", r.Name, r.BuildingName), Verb: "做", Max: 1,
+		p.picker = &Picker{Key: code, Label: fmt.Sprintf("🏭 %s（%s）", r.Name, r.BuildingName), Verb: "做", Max: 1, PriceText: craftProfit(r),
 			Run: p.callQty("start_craft", func(ctx context.Context, q int) (services.ActionResult, error) {
 				return p.svc().StartCraft(ctx, p.playerID, code, q)
 			})}

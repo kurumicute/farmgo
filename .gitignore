@@ -11,3 +11,6 @@
 *.swp
 Thumbs.db
 .DS_Store
+
+# Claude Code 個人設定（不提交）
+.claude/settings.local.json

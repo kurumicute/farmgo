@@ -162,8 +162,8 @@ type Item struct {
 }
 
 // ItemOrder 道具顯示順序（Python ITEMS 的 dict 順序）。
-var ItemOrder = []string{ItemFertilizer, ItemEarthworm, ItemHourglass, ToolAutoWaterer, ToolAutoPlanter, ToolAutoSeller, ToolAutoFisher,
-	ToolThiefGlove, ItemPatrolTicket}
+var ItemOrder = []string{ItemFertilizer, ItemEarthworm, ItemHourglass, ItemStormGuard, ItemSprinkler, ToolAutoWaterer, ToolAutoPlanter,
+	ToolAutoSeller, ToolAutoFisher, ToolThiefGlove, ItemPatrolTicket}
 
 // priceOverrides 可在管理網站調整價格的道具（自動釣魚機、加速沙漏，由各規則套件的 init 以 RegisterPrice 登記）。
 var priceOverrides = map[string]func() int{}
@@ -210,6 +210,11 @@ var Items = map[string]Item{
 		[]string{"手套", "扒手手套", "傳說扒手手套"}},
 	ItemPatrolTicket: {"巡查券", 60, "consumable",
 		"使用後查看自己農場近 7 天所有偷菜嘗試（成功與被阻止，含偷菜者）", []string{"巡查券", "patrol"}},
+	// Go 版新增（2026-11-18）：天氣的應對道具，在背包的「✨ 增益道具」使用
+	ItemStormGuard: {"雨衣稻草人", 300, "consumable", "使用後 24 小時內暴風不會吹壞作物（效果期間再次使用可延長）",
+		[]string{"雨衣稻草人", "雨衣"}},
+	ItemSprinkler: {"灑水器", 400, "consumable", "使用後 24 小時內，不是晴天時澆水的作物也有晴天的生長加速（效果期間再次使用可延長）",
+		[]string{"灑水器"}},
 }
 
 // ---------- 賭場 ----------
@@ -302,13 +307,15 @@ type Building struct {
 	Aliases    []string
 }
 
-var BuildingOrder = []string{"barn", "mill", "bakery", "jam_workshop"}
+var BuildingOrder = []string{"barn", "mill", "bakery", "jam_workshop", "dairy"}
 
 var Buildings = map[string]Building{
 	"barn":         {"畜舍", 1000, 3, []string{"畜舍"}},
 	"mill":         {"磨坊", 2000, 1, []string{"磨坊"}},
 	"bakery":       {"烘焙坊", 3500, 1, []string{"烘焙坊"}},
 	"jam_workshop": {"果醬工坊", 2500, 1, []string{"果醬工坊"}},
+	// Go 版新增（2026-11-18）：乳品工坊，把牛奶、雞蛋加工成乳製品（farm_buildings.building_code 沒有 CHECK，免 Migration）
+	"dairy": {"乳品工坊", 3000, 1, []string{"乳品工坊", "乳品坊"}},
 }
 
 const BarnSlots = 4 // 每座畜舍可安置的動物數（任一動物佔 1 欄位）
@@ -324,9 +331,9 @@ var BuildingUpgradeCutPct = []int{0, 15, 40, 60}
 // BuildingMaxLevel 加工設施最高等級。
 func BuildingMaxLevel() int { return len(BuildingUpgradePrices) }
 
-// Upgradable 可以升級的設施（磨坊、烘焙坊、果醬工坊；畜舍不能升級）。
+// Upgradable 可以升級的設施（磨坊、烘焙坊、果醬工坊、乳品工坊；畜舍不能升級）。
 func Upgradable(code string) bool {
-	return code == "mill" || code == "bakery" || code == "jam_workshop"
+	return code == "mill" || code == "bakery" || code == "jam_workshop" || code == "dairy"
 }
 
 // CraftSeconds 依設施等級縮短後的加工秒數（無條件進位，至少 1 秒）。
@@ -353,7 +360,8 @@ type Recipe struct {
 }
 
 var RecipeOrder = []string{"flour", "bread", "strawberry_jam", "tomato_jam", "grape_jam", "pumpkin_jam", "watermelon_jam",
-	"shiitake_bread", "mushroom_soup", "enoki_pancake", "lingzhi_cake", "truffle_bread", "glowcap_pie"}
+	"shiitake_bread", "mushroom_soup", "enoki_pancake", "lingzhi_cake", "truffle_bread", "glowcap_pie",
+	"mixed_jam", "cheese", "butter", "mayonnaise", "cake", "strawberry_cake", "lucky_sachet", "pet_treat"}
 
 var Recipes = map[string]Recipe{
 	"flour":          {"麵粉", "mill", map[string]int{"wheat": 3}, []string{"wheat"}, "flour", 1, 30 * 60, []string{"麵粉"}},
@@ -371,6 +379,18 @@ var Recipes = map[string]Recipe{
 	"lingzhi_cake":   {"靈芝養生糕", "bakery", map[string]int{"lingzhi": 2, "flour": 2}, []string{"lingzhi", "flour"}, "lingzhi_cake", 1, 120 * 60, []string{"靈芝養生糕", "靈芝糕"}},
 	"truffle_bread":  {"松露麵包", "bakery", map[string]int{"truffle": 2, "flour": 2}, []string{"truffle", "flour"}, "truffle_bread", 1, 150 * 60, []string{"松露麵包"}},
 	"glowcap_pie":    {"發光菇派", "bakery", map[string]int{"glowcap": 2, "flour": 2}, []string{"glowcap", "flour"}, "glowcap_pie", 1, 180 * 60, []string{"發光菇派"}},
+	// Go 版新增（2026-11-18）：綜合果醬要兩種作物，鼓勵輪種；售價約為原料售價的 3.3 倍（比單一果醬的 2.9 倍高一點）
+	"mixed_jam": {"綜合果醬", "jam_workshop", map[string]int{"strawberry": 2, "grape": 2}, []string{"strawberry", "grape"}, "mixed_jam", 1, 90 * 60, []string{"綜合果醬"}},
+	// Go 版新增（2026-11-18）：乳品工坊讓雞蛋、牛奶有加工用途；售價約為原料售價的 1.6 倍
+	"cheese":     {"起司", "dairy", map[string]int{"milk": 3}, []string{"milk"}, "cheese", 1, 90 * 60, []string{"起司", "乳酪"}},
+	"butter":     {"奶油", "dairy", map[string]int{"milk": 2}, []string{"milk"}, "butter", 1, 60 * 60, []string{"奶油"}},
+	"mayonnaise": {"美乃滋", "dairy", map[string]int{"egg": 3}, []string{"egg"}, "mayonnaise", 1, 45 * 60, []string{"美乃滋"}},
+	// Go 版新增（2026-11-18）：烘焙坊的組合配方，加工鏈變成兩、三層（小麥 → 麵粉 → 蛋糕 → 草莓蛋糕）
+	"cake":            {"蛋糕", "bakery", map[string]int{"flour": 2, "egg": 2, "milk": 1}, []string{"flour", "egg", "milk"}, "cake", 1, 90 * 60, []string{"蛋糕"}},
+	"strawberry_cake": {"草莓蛋糕", "bakery", map[string]int{"cake": 1, "strawberry_jam": 1}, []string{"cake", "strawberry_jam"}, "strawberry_cake", 1, 120 * 60, []string{"草莓蛋糕"}},
+	// Go 版新增（2026-11-18）：限時增益道具（balance/boosts.go），在背包的「✨ 增益道具」使用；也可以直接賣
+	"lucky_sachet": {"幸運香包", "mill", map[string]int{"herb": 3, "wool": 1}, []string{"herb", "wool"}, "lucky_sachet", 1, 60 * 60, []string{"幸運香包", "香包"}},
+	"pet_treat":    {"寵物零食", "bakery", map[string]int{"flour": 1, "egg": 1, "milk": 1}, []string{"flour", "egg", "milk"}, "pet_treat", 1, 30 * 60, []string{"寵物零食", "零食"}},
 }
 
 const (
@@ -389,7 +409,8 @@ type Good struct {
 
 var GoodOrder = []string{"flour", "bread", "strawberry_jam", "tomato_jam", "grape_jam", "pumpkin_jam", "watermelon_jam",
 	"shiitake", "button_mushroom", "enoki", "lingzhi", "truffle", "glowcap",
-	"shiitake_bread", "mushroom_soup", "enoki_pancake", "lingzhi_cake", "truffle_bread", "glowcap_pie"}
+	"shiitake_bread", "mushroom_soup", "enoki_pancake", "lingzhi_cake", "truffle_bread", "glowcap_pie",
+	"mixed_jam", "cheese", "butter", "mayonnaise", "cake", "strawberry_cake", "lucky_sachet", "pet_treat"}
 
 var Goods = map[string]Good{
 	"flour":          {"麵粉", 45, []string{"麵粉"}},
@@ -413,6 +434,16 @@ var Goods = map[string]Good{
 	"lingzhi_cake":   {"靈芝養生糕", 1350, []string{"靈芝養生糕", "靈芝糕"}},
 	"truffle_bread":  {"松露麵包", 1800, []string{"松露麵包"}},
 	"glowcap_pie":    {"發光菇派", 2300, []string{"發光菇派"}},
+	// Go 版新增（2026-11-18）：綜合果醬、乳製品、蛋糕（以資料庫售價計：草莓 34、葡萄 45、雞蛋 25、牛奶 60）
+	"mixed_jam":       {"綜合果醬", 520, []string{"綜合果醬"}},   // 草莓 ×2＋葡萄 ×2 = 158
+	"cheese":          {"起司", 290, []string{"起司", "乳酪"}}, // 牛奶 ×3 = 180
+	"butter":          {"奶油", 190, []string{"奶油"}},       // 牛奶 ×2 = 120
+	"mayonnaise":      {"美乃滋", 120, []string{"美乃滋"}},     // 雞蛋 ×3 = 75
+	"cake":            {"蛋糕", 340, []string{"蛋糕"}},       // 麵粉 ×2＋雞蛋 ×2＋牛奶 ×1 = 200
+	"strawberry_cake": {"草莓蛋糕", 900, []string{"草莓蛋糕"}},   // 蛋糕＋草莓果醬 = 640
+	// 增益道具的賣價刻意壓低（原料約 120／130），主要用途是使用
+	"lucky_sachet": {"幸運香包", 150, []string{"幸運香包", "香包"}}, // 藥草 ×3（不能賣）＋羊毛 ×1 = 120
+	"pet_treat":    {"寵物零食", 120, []string{"寵物零食", "零食"}}, // 麵粉＋雞蛋＋牛奶 = 130
 }
 
 // ---------- 群組共同任務 ----------

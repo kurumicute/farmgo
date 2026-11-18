@@ -642,7 +642,8 @@ func withPets(m *manifest, field *image.NRGBA, pets map[string]int) (*image.NRGB
 
 // ---------- 建築畫面 ----------
 
-// YardKey 建築數量 → 底圖 key，例如 {"barn": 2, "mill": 1, "bakery": 0, "jam_workshop": 1} → "2-101"。
+// YardKey 建築數量 → 底圖 key（畜舍數-machine_order 各設施有無），
+// 例如 {"barn": 2, "mill": 1, "bakery": 0, "jam_workshop": 1, "dairy": 0} → "2-1010"（乳品工坊 2026-11-18 加入）。
 func YardKey(counts map[string]int) (string, error) {
 	m, err := getManifest()
 	if err != nil {

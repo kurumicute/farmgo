@@ -35,12 +35,13 @@
 - 實驗室擴充與農場裝飾（Migration 0042）：`seed_labs.library_level`、`seed_labs.extra_slots`、新表 `farm_decorations`。
 - 送禮與互助（Migration 0044）：交易類型 `aid_gift`、`aid_water`，新表 `aid_logs`；同伺服器玩家互送一份作物、幫忙澆水，雙方各得少量金幣，有等級、農場天數與每日上限（管理網站可調整）。
 - 加工設施升級（Migration 0043）：`farm_buildings.level`，磨坊、烘焙坊、果醬工坊最多 3 級，加工時間 -15%／-40%／-60%。
+- 乳品工坊、限時增益道具、兔子／小鳥／刺蝟（Migration 0045）：放寬 `farm_pets.pet_code` 的 CHECK；乳品工坊與增益道具不需要 Migration。另有總覽待辦區、物品用途查詢、一鍵收成並重種、離線摘要、新手引導成就。
 - 音樂改寫成 Go（`internal/music`，Lavalink v4、16 個斜線指令）。
 - 細節見進度說明的「Go 版新增的功能」。
 
 ## 原則
 
-- **資料庫 schema**：與 Python 版共用同一個 PostgreSQL，Migration 仍由 Python 專案的 Alembic 管理（目前 head 0044；0039、0040 是種子實驗室、0041 是自動釣魚機與魚簍升級、0042 是實驗室擴充與農場裝飾、0043 是加工設施升級、0044 是送禮與互助，只有 Go 版使用）。Go 版只檢查 `alembic_version`，不自己建表。
+- **資料庫 schema**：與 Python 版共用同一個 PostgreSQL，Migration 仍由 Python 專案的 Alembic 管理（目前 head 0045；0039、0040 是種子實驗室、0041 是自動釣魚機與魚簍升級、0042 是實驗室擴充與農場裝飾、0043 是加工設施升級、0044 是送禮與互助、0045 是新寵物，只有 Go 版使用）。Go 版只檢查 `alembic_version`，不自己建表。
 - **逐行對照 Python**：錯誤訊息、常數、計算結果與 Python 相同（Python `round()`、`//`、`%` 用 `internal/numfmt`；字串長度以字元計算；dict 順序有意義時另外保留順序）。
 - **安全**：SQL 一律參數化；機密不寫入程式或日誌；網站只接受設定的 Host、管理 API 需要 CSRF 標頭與登入；管理員密碼雜湊與 Python 版互通。
 - **設定**：系統環境變數優先於 `.env`，空值視為未設定，未知設定會被忽略。機密欄位不會出現在 `Settings.String()`。
@@ -96,7 +97,7 @@ docker compose -f docker-compose.yml -f ../fmgonew/deploy/docker-compose.go-web.
 ```
 
 - **之後執行任何 `docker compose` 都要帶這四個 `-f`**，否則會被換回 Python 版。
-- 資料庫 Migration 仍由 Python 專案的 Alembic 管理（目前 0044）。
+- 資料庫 Migration 仍由 Python 專案的 Alembic 管理（目前 0045）。
 - 只要有玩家用過 Go 版新增的內容（新果醬、地下菇房的菇與料理、木屑、種子實驗室），就**不能再切回 Python 版 Bot**。
 - 詳細步驟、備份位置與改回 Python 的方法，見進度說明的「正式環境切換（2026-11-12）」。
 

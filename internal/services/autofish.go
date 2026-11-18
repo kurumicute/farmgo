@@ -22,6 +22,7 @@ import (
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/fishing"
 	"farmgm/internal/game/gameerr"
+	petrules "farmgm/internal/game/pets"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/seasons"
 	"farmgm/internal/game/weather"
@@ -238,6 +239,10 @@ func (s *GameService) autoCatch(ctx context.Context, t *db.Tx, farm *models.Farm
 		return err
 	}
 	rng := fishing.RNG(s.AutoFishRng)
+	bird, err := s.petPct(ctx, t, farm.ID, petrules.Bird) // 小鳥（2026-11-18）：自動釣魚機也適用
+	if err != nil {
+		return err
+	}
 	total, names := 0, map[string]bool{}
 	var nameOrder []string
 	for i := 1; i <= n; i++ {
@@ -251,7 +256,7 @@ func (s *GameService) autoCatch(ctx context.Context, t *db.Tx, farm *models.Farm
 				pools[ft.Rarity] = append(pools[ft.Rarity], ft)
 			}
 		}
-		rarity := fishing.RollRarity(settings.RarityBP, weather.Today(at).FishEffects(effects), rng) // 雨天稀有魚機率提高
+		rarity := fishing.RollRarity(settings.RarityBP, withBird(weather.Today(at).FishEffects(effects), bird), rng) // 雨天、小鳥：稀有魚機率提高
 		ftype, ok := pickFish(pools, rarity, rng)
 		if !ok {
 			continue // 這個時段沒有魚可以釣（不扣魚餌）
