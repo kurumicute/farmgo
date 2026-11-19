@@ -908,7 +908,12 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 				all = append(all, option{filterLabel, cropFilterPrefix, p.t("ui.plots.lab_filter_desc"), "🔎"})
 			}
 			for _, sv := range seeds {
-				all = append(all, option{seedOptionLabel(sv), fmt.Sprint(sv.ID), seedOptionDesc(sv), cropEmoji(sv.CropCode)})
+				// 2026-11-19 和一般作物一樣顯示種下澆水後實際的生長時間（含加速與生長基因），放在最前面才不會被 100 字截掉
+				desc := seedOptionDesc(sv)
+				if sv.GrowSeconds > 0 {
+					desc = "⏱️ " + services.DurationLang(p.lang, sv.GrowSeconds, true) + p.s("　") + desc
+				}
+				all = append(all, option{seedOptionLabel(sv), fmt.Sprint(sv.ID), desc, cropEmoji(sv.CropCode)})
 			}
 			opts, page, pages := pagedOptions(all, p.plotSeedPage)
 			p.plotSeedPage = page

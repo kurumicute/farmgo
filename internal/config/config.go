@@ -55,7 +55,9 @@ type Settings struct {
 	// DiscordMembersIntent 啟用特權 Intent GUILD_MEMBERS（需先在 Developer Portal 開啟 Server Members Intent），
 	// 成員退出伺服器時自動移除群組成員關係，避免離開後仍被偷菜。
 	DiscordMembersIntent bool
-	BotWorkerThreads     int
+	// TopGGToken 選用（Go 版新增，2026-11-19）：top.gg 的 API Token，設定時 Bot 每天台灣時間 00:00 上傳伺服器數。機密，不出現在 String()。
+	TopGGToken       string
+	BotWorkerThreads int
 
 	SiteHost       string
 	SitePort       int
@@ -185,6 +187,7 @@ func FromLookup(get func(string) string) (Settings, error) {
 		DiscordSyncCommands:          p.bool("DISCORD_SYNC_COMMANDS", true),
 		DiscordAdvancedCommands:      p.bool("DISCORD_ADVANCED_COMMANDS", false),
 		DiscordMembersIntent:         p.bool("DISCORD_MEMBERS_INTENT", false),
+		TopGGToken:                   p.str("TOPGG_TOKEN", ""),
 		BotWorkerThreads:             p.int("BOT_WORKER_THREADS", 16, 1, 64),
 		SiteHost:                     p.str("SITE_HOST", "127.0.0.1"),
 		SitePort:                     p.int("SITE_PORT", 24444, 1, 65535),

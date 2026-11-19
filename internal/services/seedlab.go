@@ -46,6 +46,7 @@ type LabSeedView struct {
 	Hybrid       bool   // 雜交作物
 	OffSeason    string // 現在不是這個作物的季節時，說明為什麼不能種（可以種時為 ""）
 	CloneFee     int    // 每次育苗的費用（seedlab.CloneFee：作物售價 × 一次收成數量 × %，2026-11-16）
+	GrowSeconds  int    // 種下澆水後實際的生長秒數（含所有加速與生長基因；只有 PlantableLabSeeds 會填，其他為 0，2026-11-19）
 }
 
 // Label 例如「紫莓 第 3 代 ✨夜光作物」。
@@ -1337,6 +1338,10 @@ func (s *GameService) PlantableLabSeeds(ctx context.Context, playerID int64) ([]
 			return nil, err
 		}
 		now := s.now()
+		g, err := s.growBoostsOf(ctx, t, farm, now)
+		if err != nil {
+			return nil, err
+		}
 		var out []LabSeedView
 		for i := range seeds {
 			c := cropsByCode[seeds[i].CropCode]
@@ -1344,7 +1349,10 @@ func (s *GameService) PlantableLabSeeds(ctx context.Context, playerID int64) ([]
 				!seasons.Available(c.Seasons, c.HourStart, c.HourEnd, now) {
 				continue
 			}
-			out = append(out, seedView(&seeds[i], cropsByCode))
+			v := seedView(&seeds[i], cropsByCode)
+			// 和澆水時相同的算法（plantWith：種子本身有突變時就是那個突變，否則種下時才抽，這裡當成沒有突變）
+			v.GrowSeconds, _ = g.seconds(c, seeds[i].Mutation, seedlab.GrowthReductionPct(seeds[i].GeneGrowth))
+			out = append(out, v)
 		}
 		return out, nil
 	})

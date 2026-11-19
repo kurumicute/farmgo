@@ -90,7 +90,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	}
 	defer b.S.Close()
 	var wg sync.WaitGroup
-	loops := []func(context.Context){func(ctx context.Context) { b.Reg.Run(ctx, SweepInterval) }, b.latencyLoop, b.memberSweepLoop}
+	loops := []func(context.Context){func(ctx context.Context) { b.Reg.Run(ctx, SweepInterval) }, b.latencyLoop, b.memberSweepLoop, b.topggLoop}
 	if b.Settings.BackgroundTasksRunner == "bot" {
 		b.Log.Info("背景結算由 Bot 執行", "interval_seconds", b.Settings.RankingSettleIntervalSeconds)
 		loops = append(loops, b.settleLoop)

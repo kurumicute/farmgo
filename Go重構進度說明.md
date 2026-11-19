@@ -213,6 +213,9 @@
   - **農田主題改版**（`farmimage/field_theme.go`、`farm/field/masks/`）：柵欄內側的草、泥土格邊框、柵欄與樁頂都換成主題素材；主題改為雪地、夜景、海灘（100,000）、城堡（200,000），**櫻花移除**（已套用的農場顯示預設外觀，不退費）。舊的 6 張主題素材已刪除。
   - **效能修正**：英文的逐詞補翻譯原本是 2111 組詞的大型正規表示式，英文玩家多時吃滿 CPU（壓測 1000 人只有 191 次／秒），改用 `strings.Replacer`（結果相同）後 1,031 次／秒、P95 1.5 秒；主題農田圖的庭院背景依主題與尺寸快取。新增壓測 `bot/stress_test.go`（`FARMGM_STRESS_TODAY=1`）、`site/stress_test.go`。
   - **套用時修正**：`.dockerignore` 原本只放行 `cmd/`、`internal/`，移植包的 `Dockerfile` 新增的 `COPY i18n ./i18n` 會建置失敗，補上 `!i18n/`。
+- **2026-11-19 晚（使用者要求，Go 版新增）**：
+  - **特殊種子顯示生長時間**：農田頁的特殊種子選單原本只顯示基因星等，現在和一般作物一樣在說明欄最前面顯示「⏱️ 種下澆水後實際的時間」（`LabSeedView.GrowSeconds`，只有 `PlantableLabSeeds` 會填：所有加速＋生長基因＋種子本身的突變，和澆水時的 `growBoosts.seconds` 同一個算法）。測試 `TestLabSeedGrowTimeMatchesWatering` 確認顯示的時間等於澆水後實際的成熟時間。
+  - **上傳伺服器數到 top.gg**（`discordio/topgg.go`）：設定 `TOPGG_TOKEN` 時，Bot 每天台灣時間 00:00 上傳所在的伺服器數。先用 v1 `PATCH /api/v1/projects/@me/metrics`（`Bearer`），認證失敗（401／403）再改用 legacy v0 `POST /api/bots/{bot_id}/stats`；失敗隔 1 分鐘重試，最多 3 次。Token 不寫進日誌，沒設定時不執行。
 
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
@@ -612,7 +615,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 
 ## 附錄：檔案清單與 SHA-256
 
-共 395 列（2026-11-19 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
+共 397 列（2026-11-19 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
 
 | 檔案 | SHA-256 |
 | --- | --- |
@@ -620,7 +623,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `.gitattributes` | `63ca547940a6eb8d6d98f5cdaf558d8b1ca507683405a68162bcc98a0399bafc` |
 | `.gitignore` | `ed067cba1c2cd0c55afd8095173c8430273d1ab5645a95e4861da299abfcd289` |
 | `Dockerfile` | `e183be482a0e542f490e216f581bdeda06b5909d1e4c209794b62277fe53bc15` |
-| `README.md` | `790d85615d674ebfab5f845c38e07b3ef5c836e4a0e76459ec9477e2d87de73a` |
+| `README.md` | `3ea3eb4d0cff2fe0f535be27db488f89a4fceaa8f6e5780fcf3b4d2d423156d0` |
 | `cmd/farmgm-bot/main.go` | `f022462d9640374d3a3aae0fe9114ad23aa368b3dc783e1e14c25f831d6182ba` |
 | `cmd/farmgm-bot/main_test.go` | `857646c725d083c0075aade2272e386f86ac915f61e37c75bb3c9e8849b9ccc6` |
 | `cmd/farmgm-hash-password/echo_linux.go` | `c5bf2bd0fe6941167625dd003fdabf2a4225cbe1b784f00a50dbd6994d0a53a0` |
@@ -648,13 +651,15 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/auth/auth.go` | `55bc1edd9db87504cf98860cc91194cee22f0fe6f3a1efcba35e5907c4b88605` |
 | `internal/auth/auth_test.go` | `5fceb18103f2cb1ec8ced5bf79854cccaedbd732fac5de4fb8e0f1bd507c192b` |
 | `internal/bot/commands.go` | `4fdd7649574635f58c7e054eed8a6a7fe0a7087a9e0c023e3b861f1d570d4517` |
-| `internal/bot/discordio/bot.go` | `60cfee392636699167de2910033275dcc5a6497d53183eab2a44cfc82de58e63` |
+| `internal/bot/discordio/bot.go` | `3c16e3cbca0905bd378a2642b22dfed156817834c91e1b60756da48033e49050` |
 | `internal/bot/discordio/bot_test.go` | `19fc4e759501aa7e9d9010094f710e0eea340aad16981b7ee7b13eef6731de7c` |
 | `internal/bot/discordio/discordio_test.go` | `d0c08b322d8d1bd5625d5ce65e2c597c2bb0ef35e09f77a18df0d867c93a4108` |
 | `internal/bot/discordio/interaction.go` | `3bc05d14ea19228ef9ea24d82dc25fc0abda6d78405e1bcdc8a5914e48c33780` |
 | `internal/bot/discordio/members.go` | `54bb6c9f1d635694ef5e6947759f0c10eaf9659a747d99cbde604ca2f64c5cc1` |
 | `internal/bot/discordio/members_test.go` | `a0567a8f1ad18ce1f95a6f210aee92aad92990b4c0c8248c560d6ebf52600f75` |
 | `internal/bot/discordio/music.go` | `1a9e9d3d4ae3a55a450492fd2367caf9f1a0a7b5a7b8d31208e50c76c6da2d2d` |
+| `internal/bot/discordio/topgg.go` | `5360eb31da4c2690ee74e94a38481f4804ef27226b8db9b9451155d9f039cf5a` |
+| `internal/bot/discordio/topgg_test.go` | `86ebff0ea66e401f3da172db1f0489d3d5c77b4a815f2843c7b69bb7c40e216a` |
 | `internal/bot/discordio/wire.go` | `77678a836b80bd6fb95faafd2fdc82661eba818da178d750942ba1d1ef12d04b` |
 | `internal/bot/farmimage/cellar.go` | `e10745fcd7fe90db8c12fb2b266eae249859c983720f98671afead9a46766e42` |
 | `internal/bot/farmimage/cellar_test.go` | `99925428cc76f070969820f22ff1fb25823847f234dee6bdd0a8d132456135e0` |
@@ -685,7 +690,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/pages_fishing.go` | `b1500a15827efa00e81bc12ea14825599db1336cf3ffea82593c65aa0f12cadc` |
 | `internal/bot/pages_goldsink.go` | `cd668c59605874f98c71ca4933ca1bc25a1eecd2c04fde9111e553c2c465d125` |
 | `internal/bot/pages_lab.go` | `9bb14be34458bab445b1fe8183bdb8a2181ad27f009d4ca92ca87166ada8e5d6` |
-| `internal/bot/pages_main.go` | `2a529b0ab392ca243f23185e7a742df58c0c23bf5fed9130babbb5124b2f92aa` |
+| `internal/bot/pages_main.go` | `11c817742c3133f855cc6f0b6ca7c033b78f1848059cf86f802f3675f8d5266f` |
 | `internal/bot/pages_progress.go` | `92ce6fbf8d0c1fc0643ea75161ee6075598e739b842f83eb7e5840ee9d6a6914` |
 | `internal/bot/pages_ranch.go` | `a25b657a5b5be502da196ab99551eedb52494ffe8fa03a454d8993f2eb872692` |
 | `internal/bot/pages_seedmaker.go` | `cc7b54eecc2b5987b27529b060185f92957edd1c931685bb683d5539d8d4e341` |
@@ -722,7 +727,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/cachebus/cachebus.go` | `6d5d4b825383dc1d20509d859e7ad5cf6b9f7f9aa2cfc82899c655646193053a` |
 | `internal/cachebus/cachebus_test.go` | `b33d1ad0c0783797170a18aba19508056bc9229745c6ee3ab600c8d345d2a1da` |
 | `internal/clock/clock.go` | `0017235591ecf1d508aecc3c361e4d7c4a51258fea9c78d7e1049e61e8a4c7be` |
-| `internal/config/config.go` | `deae00bb350448ba5b15b83c759d0f94a3f305a31b51e1057946eaefe85af3bf` |
+| `internal/config/config.go` | `ecebda0b7be4669a695f879233fb4f69c9302dd2bab960ca03222e241c378976` |
 | `internal/config/config_test.go` | `1b6ad60f0ea2703b97ed3afdaf171d4fbbb6c9058e587734a54e4435d3c49989` |
 | `internal/db/catalog.go` | `911a747fb253112b8f2363225e2dad82997330ed40a407edabe39f26a11c5d57` |
 | `internal/db/check.go` | `a1a9f12b7f84ceb823a4b722dbeed5e4ffc78c1b402f8d8b224d6e25c3817d8c` |
@@ -908,7 +913,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/craftprice.go` | `7ff1bd7ca7b6f44adb75bb7a2ab831cfba2adeb556346e585355167b5bb895d4` |
 | `internal/services/craftprice_test.go` | `9da8799ec1702f914c9fd9fd223bf8e8e494f3656b00ca90b587c365985a5a35` |
 | `internal/services/crops.go` | `5e4dba8fcbb43aab5f11ccb7924ad3426c7ad640ccd6608a068c044a8f82a526` |
-| `internal/services/crops_grow_test.go` | `fe74355f89f411340f05625fdd514f44d3cb22a8c39cd9948cdc7307ea448d79` |
+| `internal/services/crops_grow_test.go` | `ef34a6cae2f8a31df2b005d6e5e194e52868dfd01dbadc9aeeacd413820837fc` |
 | `internal/services/dairy_test.go` | `7cd35d9db5c259fdfa296e33b8e96274b8bd8709e52612aa85e239b52943054e` |
 | `internal/services/database_test.go` | `7f9087209119e70b912f4ac1a70e43014276d3a8b211db9b6645982d201f83c3` |
 | `internal/services/decor.go` | `d3b91e298de58f960935da20175512e2253f09d0c485eeeda53da446ae3e3e73` |
@@ -962,7 +967,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/ranking_test.go` | `0701621de69f1f78ef54108dc123efa9c5f917f9875463da86f74801f01b8c94` |
 | `internal/services/retry.go` | `ba146e2ae2ceca83016f2af28ee78a44af39f946325459e372dc994c267c5385` |
 | `internal/services/ruins_test.go` | `80565e5b64a40c7d283bb7ecfaad5cafd3c4a1ac34853a216d38d609618d40d6` |
-| `internal/services/seedlab.go` | `fd977fed6e65beb2592ce69cdae20147e619323cd4ebb7b3b717d1a880f8e0f5` |
+| `internal/services/seedlab.go` | `adedc4de1ffef46c83c3a76f56d8a597fe7876e93680ba7aa9d132b2fec4ebee` |
 | `internal/services/seedlab_test.go` | `52625b90459e861daf0f40189c9e96e41d43816d9f764adfb7d527effff3a55b` |
 | `internal/services/service.go` | `7ad6a76d60f6ef80199ff389788aba720c7f0caaf8ec40382f7de31ea3d1361c` |
 | `internal/services/site.go` | `2e20ee7553c05eef586e56eceb1e30e87c25130b0a7c1d1465b39298cb755180` |
