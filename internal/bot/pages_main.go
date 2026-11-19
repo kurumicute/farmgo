@@ -576,6 +576,7 @@ func (p *Panel) openMore(ctx context.Context, it ui.Interaction, page string) {
 // Discord 下拉選單沒有分隔線，分組標在說明的開頭（【生產】等；2026-11-18）；最近用過的入口另外放在最下面一列。
 var moreEntries = []struct{ page, label, desc, emoji string }{
 	{"craft", "加工", "【生產】磨坊、烘焙坊、果醬工坊、乳品工坊", "🏭"},
+	{"lab", "種子實驗室", "【生產】鑑定、雜交、改良特殊種子", "🧪"}, // 2026-11-19 使用者要求：總覽也能直接進種子實驗室（農田頁的按鈕保留）
 	{"defense", "防守", "【生產】稻草人、警戒犬、巡查券", "🛡️"},
 	{"prices", "作物價格", "【生產】今天的市場價格", "📈"},
 	{"cave", "山洞", "【冒險】探險收集素材、機器", "⛰️"},

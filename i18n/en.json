@@ -482,6 +482,8 @@
     "todo.go_trip": "Expedition Rewards",
     "more.craft": "Processing",
     "more.craft_desc": "[Production] Mill, Bakery, Jam Workshop, Dairy",
+    "more.lab": "Seed Lab",
+    "more.lab_desc": "[Production] Appraise, crossbreed and improve special seeds",
     "more.defense": "Defense",
     "more.defense_desc": "[Production] Scarecrow, Guard Dog, Patrol Pass",
     "more.prices": "Crop Prices",

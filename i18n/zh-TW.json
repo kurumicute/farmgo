@@ -482,6 +482,8 @@
     "todo.go_trip": "領探險獎勵",
     "more.craft": "加工",
     "more.craft_desc": "【生產】磨坊、烘焙坊、果醬工坊、乳品工坊",
+    "more.lab": "種子實驗室",
+    "more.lab_desc": "【生產】鑑定、雜交、改良特殊種子",
     "more.defense": "防守",
     "more.defense_desc": "【生產】稻草人、警戒犬、巡查券",
     "more.prices": "作物價格",

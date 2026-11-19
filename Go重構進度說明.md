@@ -216,6 +216,7 @@
 - **2026-11-19 晚（使用者要求，Go 版新增）**：
   - **特殊種子顯示生長時間**：農田頁的特殊種子選單原本只顯示基因星等，現在和一般作物一樣在說明欄最前面顯示「⏱️ 種下澆水後實際的時間」（`LabSeedView.GrowSeconds`，只有 `PlantableLabSeeds` 會填：所有加速＋生長基因＋種子本身的突變，和澆水時的 `growBoosts.seconds` 同一個算法）。測試 `TestLabSeedGrowTimeMatchesWatering` 確認顯示的時間等於澆水後實際的成熟時間。
   - **上傳伺服器數到 top.gg**（`discordio/topgg.go`）：設定 `TOPGG_TOKEN` 時，Bot 重開（登入）時與每天台灣時間 00:00 各上傳一次所在的伺服器數。先用 v1 `PATCH /api/v1/projects/@me/metrics`（`Bearer`），認證失敗（401／403）再改用 legacy v0 `POST /api/bots/{bot_id}/stats`；失敗隔 1 分鐘重試，最多 3 次。Token 不寫進日誌，沒設定時不執行。
+  - **種子實驗室加進總覽的「更多功能」選單**：放在【生產】組的「加工」後面（`moreEntries`、`ui.more.lab`），也會出現在最近用過的入口；農田頁原本的「🧪 種子實驗室」按鈕保留。
 
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
@@ -619,7 +620,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 
 | 檔案 | SHA-256 |
 | --- | --- |
-| `.dockerignore` | `2c4d08e384b50727c6e2625aaf05baf0e2dab0673745fb76cf08cb86e138a3a0` |
+| `.dockerignore` | `3ae74a77b80803dc35916f7006852ba58e21ff8c10f10c80a6c8744b39d34738` |
 | `.gitattributes` | `63ca547940a6eb8d6d98f5cdaf558d8b1ca507683405a68162bcc98a0399bafc` |
 | `.gitignore` | `ed067cba1c2cd0c55afd8095173c8430273d1ab5645a95e4861da299abfcd289` |
 | `Dockerfile` | `e183be482a0e542f490e216f581bdeda06b5909d1e4c209794b62277fe53bc15` |
