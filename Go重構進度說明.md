@@ -215,7 +215,7 @@
   - **套用時修正**：`.dockerignore` 原本只放行 `cmd/`、`internal/`，移植包的 `Dockerfile` 新增的 `COPY i18n ./i18n` 會建置失敗，補上 `!i18n/`。
 - **2026-11-19 晚（使用者要求，Go 版新增）**：
   - **特殊種子顯示生長時間**：農田頁的特殊種子選單原本只顯示基因星等，現在和一般作物一樣在說明欄最前面顯示「⏱️ 種下澆水後實際的時間」（`LabSeedView.GrowSeconds`，只有 `PlantableLabSeeds` 會填：所有加速＋生長基因＋種子本身的突變，和澆水時的 `growBoosts.seconds` 同一個算法）。測試 `TestLabSeedGrowTimeMatchesWatering` 確認顯示的時間等於澆水後實際的成熟時間。
-  - **上傳伺服器數到 top.gg**（`discordio/topgg.go`）：設定 `TOPGG_TOKEN` 時，Bot 每天台灣時間 00:00 上傳所在的伺服器數。先用 v1 `PATCH /api/v1/projects/@me/metrics`（`Bearer`），認證失敗（401／403）再改用 legacy v0 `POST /api/bots/{bot_id}/stats`；失敗隔 1 分鐘重試，最多 3 次。Token 不寫進日誌，沒設定時不執行。
+  - **上傳伺服器數到 top.gg**（`discordio/topgg.go`）：設定 `TOPGG_TOKEN` 時，Bot 重開（登入）時與每天台灣時間 00:00 各上傳一次所在的伺服器數。先用 v1 `PATCH /api/v1/projects/@me/metrics`（`Bearer`），認證失敗（401／403）再改用 legacy v0 `POST /api/bots/{bot_id}/stats`；失敗隔 1 分鐘重試，最多 3 次。Token 不寫進日誌，沒設定時不執行。
 
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
@@ -623,7 +623,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `.gitattributes` | `63ca547940a6eb8d6d98f5cdaf558d8b1ca507683405a68162bcc98a0399bafc` |
 | `.gitignore` | `ed067cba1c2cd0c55afd8095173c8430273d1ab5645a95e4861da299abfcd289` |
 | `Dockerfile` | `e183be482a0e542f490e216f581bdeda06b5909d1e4c209794b62277fe53bc15` |
-| `README.md` | `3ea3eb4d0cff2fe0f535be27db488f89a4fceaa8f6e5780fcf3b4d2d423156d0` |
+| `README.md` | `bd79291fa737bfc83760a76adf8135337938a16aef32b4f49fe6fc49baf9c71d` |
 | `cmd/farmgm-bot/main.go` | `f022462d9640374d3a3aae0fe9114ad23aa368b3dc783e1e14c25f831d6182ba` |
 | `cmd/farmgm-bot/main_test.go` | `857646c725d083c0075aade2272e386f86ac915f61e37c75bb3c9e8849b9ccc6` |
 | `cmd/farmgm-hash-password/echo_linux.go` | `c5bf2bd0fe6941167625dd003fdabf2a4225cbe1b784f00a50dbd6994d0a53a0` |
@@ -658,7 +658,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/discordio/members.go` | `54bb6c9f1d635694ef5e6947759f0c10eaf9659a747d99cbde604ca2f64c5cc1` |
 | `internal/bot/discordio/members_test.go` | `a0567a8f1ad18ce1f95a6f210aee92aad92990b4c0c8248c560d6ebf52600f75` |
 | `internal/bot/discordio/music.go` | `1a9e9d3d4ae3a55a450492fd2367caf9f1a0a7b5a7b8d31208e50c76c6da2d2d` |
-| `internal/bot/discordio/topgg.go` | `5360eb31da4c2690ee74e94a38481f4804ef27226b8db9b9451155d9f039cf5a` |
+| `internal/bot/discordio/topgg.go` | `3e5fce617f94d8542344bab51d659278bc1d86023c96f38ddbf77a2331653617` |
 | `internal/bot/discordio/topgg_test.go` | `86ebff0ea66e401f3da172db1f0489d3d5c77b4a815f2843c7b69bb7c40e216a` |
 | `internal/bot/discordio/wire.go` | `77678a836b80bd6fb95faafd2fdc82661eba818da178d750942ba1d1ef12d04b` |
 | `internal/bot/farmimage/cellar.go` | `e10745fcd7fe90db8c12fb2b266eae249859c983720f98671afead9a46766e42` |
@@ -727,7 +727,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/cachebus/cachebus.go` | `6d5d4b825383dc1d20509d859e7ad5cf6b9f7f9aa2cfc82899c655646193053a` |
 | `internal/cachebus/cachebus_test.go` | `b33d1ad0c0783797170a18aba19508056bc9229745c6ee3ab600c8d345d2a1da` |
 | `internal/clock/clock.go` | `0017235591ecf1d508aecc3c361e4d7c4a51258fea9c78d7e1049e61e8a4c7be` |
-| `internal/config/config.go` | `ecebda0b7be4669a695f879233fb4f69c9302dd2bab960ca03222e241c378976` |
+| `internal/config/config.go` | `13addd779cd625d59d61763b461d55de62fd74afa054e4104d2382029789fcc3` |
 | `internal/config/config_test.go` | `1b6ad60f0ea2703b97ed3afdaf171d4fbbb6c9058e587734a54e4435d3c49989` |
 | `internal/db/catalog.go` | `911a747fb253112b8f2363225e2dad82997330ed40a407edabe39f26a11c5d57` |
 | `internal/db/check.go` | `a1a9f12b7f84ceb823a4b722dbeed5e4ffc78c1b402f8d8b224d6e25c3817d8c` |

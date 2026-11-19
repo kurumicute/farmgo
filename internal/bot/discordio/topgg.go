@@ -1,6 +1,6 @@
 package discordio
 
-// 上傳伺服器數到 top.gg（Go 版新增，2026-11-19）：設定 TOPGG_TOKEN 時，每天台灣時間 00:00 上傳一次 Bot 所在的伺服器數。
+// 上傳伺服器數到 top.gg（Go 版新增，2026-11-19）：設定 TOPGG_TOKEN 時，Bot 登入（重開）時與每天台灣時間 00:00 各上傳一次 Bot 所在的伺服器數。
 // API（docs.top.gg，2026-11-19 查過）：先用 v1 的 PATCH /v1/projects/@me/metrics（Authorization: Bearer <Token>），
 // 認證失敗（401／403，舊版 Token 不能用在 v1）時改用 legacy v0 的 POST /bots/{bot_id}/stats（Authorization: <Token>）；
 // 本文都是 {"server_count": N}。限制每分鐘 60 次，每天只送一次不會碰到。
@@ -23,7 +23,7 @@ const (
 	topggTimeout  = 15 * time.Second
 )
 
-// topggLoop 等 Bot 登入後，每天台灣時間 00:00 上傳伺服器數；沒有設定 TOPGG_TOKEN 時不執行。
+// topggLoop 等 Bot 登入後先上傳一次，之後每天台灣時間 00:00 上傳伺服器數；沒有設定 TOPGG_TOKEN 時不執行。
 func (b *Bot) topggLoop(ctx context.Context) {
 	if b.Settings.TopGGToken == "" {
 		return
@@ -34,6 +34,7 @@ func (b *Bot) topggLoop(ctx context.Context) {
 	case <-b.readyCh:
 	}
 	client := &http.Client{Timeout: topggTimeout}
+	b.uploadTopGG(ctx, client, topggBaseURL) // Bot 重開（登入）時先上傳一次（使用者要求，2026-11-19）
 	for {
 		now := time.Now()
 		if !sleep(ctx, nextTaipeiMidnight(now).Sub(now)) {
