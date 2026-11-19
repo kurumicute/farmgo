@@ -1,4 +1,4 @@
-// Package farmimage 農場圖片（對應 Python app/discord_bot/farm_image.py）：依狀態拼出農田（4～16 格）、建築畫面與
+// Package farmimage 農場圖片（對應 Python app/discord_bot/farm_image.py）：依狀態拼出農田（4～16 格，第 17 格以上畫成下方的第二塊）、建築畫面與
 // 固定場景（商店、賭場、山洞、世界 Boss）的 PNG。素材與規則見 farm/manifest.json（Python app/discord_bot/farm 的原樣複製，
 // 不含說明檔），以 go:embed 打包。
 //
@@ -105,6 +105,7 @@ type petSprite struct {
 	Anchor string `json:"anchor"`
 	Margin int    `json:"margin"`
 	Bottom int    `json:"bottom"`
+	Hat    [2]int `json:"hat"` // 帽子左上角相對寵物圖左上角的位置（2026-11-19 寵物造型）
 }
 
 type machine struct {
@@ -513,50 +514,97 @@ func presetFor(m *manifest, plots []Plot) (*presetHit, error) {
 	return &presetHit{rel, badges}, nil
 }
 
+// plainField 一塊農田（最多 16 格）的畫面，一律回傳畫布（預先產生的圖也會複製一份並補上標記）。
+func plainField(m *manifest, plots []Plot) (*image.NRGBA, error) {
+	hit, err := presetFor(m, plots)
+	if err != nil {
+		return nil, err
+	}
+	if hit != nil {
+		base, err := img(hit.rel)
+		if err != nil {
+			return nil, err
+		}
+		canvas := clone(base)
+		if hit.badges {
+			for k, p := range plots {
+				if err := drawAttrBadges(m, canvas, m.Field.Cells[k].Rect, p); err != nil {
+					return nil, err
+				}
+			}
+		}
+		return canvas, nil
+	}
+	n := min(max(len(plots), m.Field.MinPlots), m.Field.Slots) // 底圖 4～16
+	base, err := img(m.Field.Bases[strconv.Itoa(n)])
+	if err != nil {
+		return nil, err
+	}
+	canvas := clone(base)
+	for k, p := range plots { // 第 k 塊土地放第 k 格（plot_number 可能不連續）
+		if err := drawPlot(m, canvas, m.Field.Cells[k].Rect, p); err != nil {
+			return nil, err
+		}
+	}
+	return canvas, nil
+}
+
+// fieldGap 第一塊與第二塊農田之間的草地高度。
+const fieldGap = 16
+
+// stackFields 第二塊農田（第 17 格以上，2026-11-19）畫在第一塊下方，置中，中間與兩側鋪草地。
+func stackFields(m *manifest, first, second *image.NRGBA) (*image.NRGBA, error) {
+	w := max(first.Rect.Dx(), second.Rect.Dx())
+	h := first.Rect.Dy() + fieldGap + second.Rect.Dy()
+	canvas := newCanvas(w, h)
+	tile, err := img(m.Pets.BandTile)
+	if err != nil {
+		return nil, err
+	}
+	for x := 0; x < w; x += tile.Rect.Dx() {
+		for y := 0; y < h; y += tile.Rect.Dy() {
+			alphaComposite(canvas, tile, x, y)
+		}
+	}
+	alphaComposite(canvas, first, (w-first.Rect.Dx())/2, 0)
+	alphaComposite(canvas, second, (w-second.Rect.Dx())/2, first.Rect.Dy()+fieldGap)
+	return canvas, nil
+}
+
 // fieldCanvas 拼好、減色前的農田畫面（Python farm_png 中 encode 之前的 canvas）；cached 不為 nil 時表示可以直接
-// 回傳的快取 PNG（預先產生的圖，不必重拼）。
+// 回傳的快取 PNG（預先產生的圖，不必重拼）。超過 16 格時第 17 格以後畫成第二塊農田（最多再 16 格）。
 func fieldCanvas(plots []Plot, pets map[string]int) (canvas *image.NRGBA, cached func() ([]byte, error), err error) {
 	m, err := getManifest()
 	if err != nil {
 		return nil, nil, err
 	}
 	if len(plots) > m.Field.Slots {
-		plots = plots[:m.Field.Slots] // 最多畫 16 格（超過上限的舊農場只畫前 16 格）
-	}
-	hit, err := presetFor(m, plots)
-	if err != nil {
-		return nil, nil, err
-	}
-	if hit != nil && !hit.badges {
-		// 預先產生的圖：沒有寵物直接用快取；有寵物時依「有哪幾隻」快取（圖上不畫等級）
-		if len(pets) > 0 {
-			codes := slices.Sorted(maps.Keys(pets))
-			return nil, func() ([]byte, error) { return presetWithPetsPNG(hit.rel, codes) }, nil
-		}
-		return nil, func() ([]byte, error) { return FilePNG(hit.rel) }, nil
-	}
-	if hit != nil { // 預先產生的圖 + 補標記
-		base, err := img(hit.rel)
+		first, err := plainField(m, plots[:m.Field.Slots])
 		if err != nil {
 			return nil, nil, err
 		}
-		canvas = clone(base)
-		for k, p := range plots {
-			if err := drawAttrBadges(m, canvas, m.Field.Cells[k].Rect, p); err != nil {
-				return nil, nil, err
-			}
+		second, err := plainField(m, plots[m.Field.Slots:min(len(plots), 2*m.Field.Slots)])
+		if err != nil {
+			return nil, nil, err
+		}
+		if canvas, err = stackFields(m, first, second); err != nil {
+			return nil, nil, err
 		}
 	} else {
-		n := min(max(len(plots), m.Field.MinPlots), m.Field.Slots) // 底圖 4～16
-		base, err := img(m.Field.Bases[strconv.Itoa(n)])
+		hit, err := presetFor(m, plots)
 		if err != nil {
 			return nil, nil, err
 		}
-		canvas = clone(base)
-		for k, p := range plots { // 第 k 塊土地放第 k 格（plot_number 可能不連續）
-			if err := drawPlot(m, canvas, m.Field.Cells[k].Rect, p); err != nil {
-				return nil, nil, err
+		if hit != nil && !hit.badges {
+			// 預先產生的圖：沒有寵物直接用快取；有寵物時依「有哪幾隻」快取（圖上不畫等級）
+			if len(pets) > 0 {
+				codes := slices.Sorted(maps.Keys(pets))
+				return nil, func() ([]byte, error) { return presetWithPetsPNG(hit.rel, codes) }, nil
 			}
+			return nil, func() ([]byte, error) { return FilePNG(hit.rel) }, nil
+		}
+		if canvas, err = plainField(m, plots); err != nil {
+			return nil, nil, err
 		}
 	}
 	if len(pets) > 0 {
@@ -581,7 +629,14 @@ func FarmPNG(plots []Plot, pets map[string]int) ([]byte, error) {
 
 // FarmPNGFromStatus 農田圖片（有擺裝飾時下方加庭院擺飾區）。
 func FarmPNGFromStatus(st services.FarmStatus) ([]byte, error) {
-	return FarmPNGWithDecor(PlotsFromStatus(st), st.Pets, st.Decor)
+	look := Look{Theme: st.Theme}
+	for code, s := range st.PetSkins {
+		if look.Skins == nil {
+			look.Skins = map[string]PetSkin{}
+		}
+		look.Skins[code] = PetSkin{Hat: s.Hat, Color: s.Color}
+	}
+	return FarmPNGStyled(PlotsFromStatus(st), st.Pets, st.Decor, look)
 }
 
 // presetWithPetsPNG 預先產生的農田圖加上寵物（寵物組合只有幾種，快取後不必每次重新合成）。

@@ -11,6 +11,7 @@ import (
 	"farmgm/internal/game/decor"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/mushroom"
+	"farmgm/internal/game/seasons"
 	"farmgm/internal/game/seedlab"
 )
 
@@ -124,7 +125,7 @@ func TestDecorations(t *testing.T) {
 		t.Fatal(st.Decor)
 	}
 	v := must[DecorView](t)(e.s.Decorations(e.ctx, pid))
-	if len(v.Items) != len(decor.Catalog) || v.Items[0].Owned {
+	if len(v.Items) != len(decor.Catalog)-10 || v.Items[0].Owned { // 不在本季的 6 件限定裝飾、4 件拍賣限定不列出
 		t.Fatalf("%+v", v)
 	}
 	_, err := e.s.BuyDecor(e.ctx, pid, "scarecrow")
@@ -168,5 +169,46 @@ func TestDecorations(t *testing.T) {
 	if r := e.ok(e.s.BuyDecor(e.ctx, pid, "sakura")); !strings.Contains(r.Message, "擺飾區滿了") {
 		t.Fatal(r.Message)
 	}
+	e.invariant()
+}
+
+// 季節限定裝飾（2026-11-19）：只在那一季買得到；換季後沒有的人看不到，買過的標示已絕版、照樣可以擺。
+func TestSeasonalDecor(t *testing.T) {
+	e := setup(t)
+	pid := e.player()
+	e.setGoldRecorded(pid, 500_000)
+	season := seasons.SeasonOf(e.clock.Now())
+	var mine, other string
+	for _, it := range decor.Catalog {
+		switch {
+		case it.Season == season && mine == "":
+			mine = it.Code
+		case it.Season != "" && it.Season != season && other == "":
+			other = it.Code
+		}
+	}
+	_, err := e.s.BuyDecor(e.ctx, pid, other)
+	wantMsg(t, err, gameerr.Validation, "已經下架")
+	if r := e.ok(e.s.BuyDecor(e.ctx, pid, mine)); r.GoldDelta != -decor.SeasonalPrice {
+		t.Fatal(r.GoldDelta)
+	}
+	if n := e.scalar("SELECT count(*) FROM game_transactions WHERE description LIKE '購買限定裝飾%'"); n != 1 {
+		t.Fatal(n)
+	}
+	e.clock.Advance(float64(seasons.NextChange(e.clock.Now()).Sub(e.clock.Now()).Seconds()) + 1)
+	v := must[DecorView](t)(e.s.Decorations(e.ctx, pid))
+	found := false
+	for _, it := range v.Items {
+		if it.Code == mine {
+			found = it.Owned && !it.OnSale
+		}
+		if it.Season != "" && it.Season != v.Season && !it.Owned {
+			t.Fatal("不在本季、沒有擁有的限定裝飾不列出", it.Code)
+		}
+	}
+	if !found || v.Season == season {
+		t.Fatalf("%+v", v)
+	}
+	e.ok(e.s.PlaceDecor(e.ctx, pid, 2, mine)) // 已絕版的照樣可以擺
 	e.invariant()
 }

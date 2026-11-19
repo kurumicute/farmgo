@@ -1546,6 +1546,7 @@ type WorldBossSettlement struct {
 	BackgroundSettlement
 	WorldBoss        []int64
 	WorldBossSpawned []int64
+	Auctions         int // 這次結算的每週拍賣場數（2026-11-19）
 }
 
 // RunBackgroundSettlement 排名獎勵、競賽與世界 Boss 的背景結算；取不到鎖時回傳 nil。
@@ -1558,7 +1559,10 @@ func (w *WorldBossService) RunBackgroundSettlement(ctx context.Context, actor st
 	if out.WorldBoss, err = w.FinalizeDueWorldBosses(ctx); err != nil {
 		return nil, err
 	}
-	out.WorldBossSpawned, err = w.SpawnDueWorldBosses(ctx)
+	if out.WorldBossSpawned, err = w.SpawnDueWorldBosses(ctx); err != nil {
+		return nil, err
+	}
+	out.Auctions, err = w.SettleAuctions(ctx) // 每週拍賣：結標發獎、開這一週的拍賣
 	return out, err
 }
 

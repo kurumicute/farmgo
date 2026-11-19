@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"farmgm/internal/game/rules"
+	"farmgm/internal/repositories/pets"
 )
 
 type PlayerInfo struct {
@@ -70,9 +71,11 @@ type FarmStatus struct {
 	WarehouseCapacity int
 	Plots             []PlotInfo
 	Now               time.Time
-	Title             *string        // 目前選用的稱號
-	Pets              map[string]int // 寵物代碼 → 等級（農場圖左上、右上顯示）
-	Decor             []string       // 庭院擺飾區 1–6 號位置的裝飾代碼（"" = 空；沒有擺任何東西時為 nil，Go 版新增）
+	Title             *string              // 目前選用的稱號
+	Pets              map[string]int       // 寵物代碼 → 等級（農場圖左上、右上顯示）
+	Decor             []string             // 庭院擺飾區 1–6 號位置的裝飾代碼（"" = 空；沒有擺任何東西時為 nil，Go 版新增）
+	Theme             string               // 農場外觀主題（"" = 預設，2026-11-19）
+	PetSkins          map[string]pets.Skin // 寵物造型（2026-11-19）
 }
 
 func (f FarmStatus) countState(state rules.PlotState) int {
@@ -194,6 +197,7 @@ type Backpack struct {
 	Materials        []BackpackLine // 山洞探索素材與假幣（Price 為假幣兌換價，素材為 0）
 	MaterialUsed     int            // 素材背包（不佔倉庫）
 	MaterialCapacity int
+	MaterialBagLevel int  // 素材背包擴充等級（2026-11-19）
 	SeedMaker        bool // 已製作種子製造機（農田頁顯示「🌱 種子製造」入口）
 }
 

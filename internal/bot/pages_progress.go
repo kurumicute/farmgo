@@ -71,6 +71,9 @@ func (p *Panel) buildShopSpecial(_ context.Context, data any) (*ui.Embed, error)
 		if t.Owned {
 			own = "✅ 已擁有"
 		}
+		if t.EndsAt != nil {
+			own += "　⏳ 限定，" + ts(t.EndsAt) + "下架"
+		}
 		titles[i] = fmt.Sprintf("%s🎖️ **%s**　%s", mark("title:"+t.Title), t.Title, own)
 	}
 	dealText := strings.Join(deals, "\n")
@@ -219,6 +222,10 @@ func (p *Panel) buildProgress(_ context.Context, data any) (*ui.Embed, error) {
 	p.nav("稱號", "titles", btn{emoji: "🎖️", row: 0})
 	p.nav("圖鑑", "codex", btn{emoji: "📖", row: 0})
 	p.nav("回總覽", "main", btn{emoji: "🏠", row: 0})
+	p.nav("名牌", "badges", btn{emoji: "📛", row: 1}) // 2026-11-19 金幣回收第二波
+	p.nav("農會", "reputation", btn{emoji: "🏛️", row: 1})
+	p.nav("農場外觀", "looks", btn{emoji: "🖼️", row: 1})
+	p.nav("每週拍賣", "auction", btn{emoji: "🔨", row: 1})
 	return e, nil
 }
 

@@ -3,13 +3,13 @@ package services
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"farmgm/internal/game/gameerr"
-	"farmgm/internal/game/rules"
 )
 
-// 送禮與互助（Go 版新增，2026-11-17）：門檻、每日上限、作物轉移、雙方獎勵與幫忙澆水。
-func TestAidGiftAndWater(t *testing.T) {
+// 送禮與互助（Go 版新增，2026-11-17）：門檻、每日上限、作物轉移、雙方獎勵與幫忙拔草。
+func TestAidGiftAndWeed(t *testing.T) {
 	e := setup(t)
 	g := e.group("主群組")
 	a, b, c := e.farmer("阿明", g), e.farmer("小美", g), e.farmer("小華", g)
@@ -43,28 +43,45 @@ func TestAidGiftAndWater(t *testing.T) {
 	_, err = e.s.SendGift(e.ctx, g, a, a, "wheat", 1)
 	wantMsg(t, err, gameerr.Validation, "自己")
 
-	// 幫忙澆水：把對方所有等待澆水的土地澆好，算一次
+	// 幫忙拔草：對方所有生長中作物的剩餘生長時間 -10%，算一次
+	_, err = e.s.HelpWeed(e.ctx, g, a, b)
+	wantMsg(t, err, gameerr.Validation, "沒有生長中的作物")
 	e.ok(e.s.BuySeeds(e.ctx, b, "wheat", 2))
 	e.ok(e.s.PlantCrop(e.ctx, b, 1, "wheat"))
 	e.ok(e.s.PlantCrop(e.ctx, b, 2, "wheat"))
-	if r := e.ok(e.s.HelpWater(e.ctx, g, a, b)); !strings.Contains(r.Message, "澆了 2 格") || !strings.Contains(r.Message, "各得 20 金幣") {
+	e.ok(e.s.WaterCrop(e.ctx, b, 1))
+	e.ok(e.s.WaterCrop(e.ctx, b, 2))
+	left := func(n int) time.Duration { return e.plot(b, n).ReadyAt.Sub(e.clock.Now()) }
+	before := left(1)
+	if r := e.ok(e.s.HelpWeed(e.ctx, g, a, b)); !strings.Contains(r.Message, "2 格作物的剩餘生長時間減少 10%") || !strings.Contains(r.Message, "各得 20 金幣") {
 		t.Fatal(r.Message)
 	}
-	if e.plot(b, 1).State != rules.PlotGrowing || e.plot(b, 2).State != rules.PlotGrowing {
-		t.Fatal("沒有澆到水")
+	if got, want := left(1), before*9/10; got < want-time.Second || got > want+time.Second || left(2) != got {
+		t.Fatal(before, left(1), left(2))
 	}
-	_, err = e.s.HelpWater(e.ctx, g, c, b)
-	wantMsg(t, err, gameerr.Validation, "沒有需要澆水")
-	e.ok(e.s.BuySeeds(e.ctx, b, "wheat", 1))
-	e.ok(e.s.PlantCrop(e.ctx, b, 3, "wheat"))
-	_, err = e.s.HelpWater(e.ctx, g, a, b)
-	wantMsg(t, err, gameerr.Validation, "今天已經幫 小美 澆過水")
-	e.ok(e.s.HelpWater(e.ctx, g, c, b))
+	// 每人每天只能被拔草一次（不論是誰幫的）
+	_, err = e.s.HelpWeed(e.ctx, g, c, b)
+	wantMsg(t, err, gameerr.Validation, "每人每天只能被拔草 1 次")
+	_, err = e.s.HelpWeed(e.ctx, g, a, b)
+	wantMsg(t, err, gameerr.Validation, "今天已經幫 小美 拔過草")
+	v = must[AidView](t)(e.s.AidOverview(e.ctx, g, c))
+	found := false
+	for _, tg := range v.Targets {
+		if tg.Name == "小美" {
+			found = true
+			if !tg.WeedTaken || tg.WeededToday || tg.Growing != 2 {
+				t.Fatalf("%+v", tg)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("%+v", v.Targets)
+	}
 
 	// 隔天（台灣日期）重新計算
 	e.clock.Advance(24 * 3600)
 	e.ok(e.s.SendGift(e.ctx, g, a, c, "wheat", 3))
-	if n := e.scalar("SELECT count(*) FROM game_transactions WHERE event_type IN ('aid_gift', 'aid_water')"); n != 8 {
+	if n := e.scalar("SELECT count(*) FROM game_transactions WHERE event_type IN ('aid_gift', 'aid_water')"); n != 6 {
 		t.Fatal(n)
 	}
 	e.invariant()

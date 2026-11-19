@@ -64,7 +64,8 @@ func TestDairyAndCakeChainCraftAndSell(t *testing.T) {
 		if n := e.qty(f, c.code); n != 1 {
 			t.Fatal(c.code, n)
 		}
-		if r := e.ok(e.r.SellGoods(e.ctx, f, c.name, 1)); r.GoldDelta != c.price {
+		// 2026-11-19 起加工品售價浮動（總成本 -50%～+100%），c.price 是內建的參考售價，實際以這一期的價格計算
+		if r := e.ok(e.r.SellGoods(e.ctx, f, c.name, 1)); r.GoldDelta != e.goodPrice(c.code) {
 			t.Fatal(c.code, r.GoldDelta)
 		}
 	}

@@ -6,27 +6,32 @@ package services
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/decor"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
+	"farmgm/internal/game/seasons"
 	"farmgm/internal/numfmt"
 )
 
 // DecorItemView 一種裝飾與玩家的擁有狀態。
 type DecorItemView struct {
 	decor.Item
-	Owned bool
-	Slot  int // 擺放的位置（1–6）；0 = 收起來或沒有
+	Owned  bool
+	Slot   int  // 擺放的位置（1–6）；0 = 收起來或沒有
+	OnSale bool // 現在買得到（季節限定只在那一季）
 }
 
 // DecorView 庭院擺設頁。
 type DecorView struct {
-	Gold   int
-	Items  []DecorItemView     // 依目錄順序
-	Placed [decor.Slots]string // 每個位置擺的裝飾代碼（"" = 空）
+	Gold         int
+	Items        []DecorItemView     // 依目錄順序；不在本季的限定裝飾只列出已擁有的（已絕版）
+	Placed       [decor.Slots]string // 每個位置擺的裝飾代碼（"" = 空）
+	Season       string              // 目前的季節（seasons.SeasonOf）
+	SeasonEndsAt time.Time           // 本季限定下架的時間（下一次換季）
 }
 
 func farmDecorations(ctx context.Context, t *db.Tx, farmID int64) ([]models.FarmDecoration, error) {
@@ -64,9 +69,13 @@ func (s *GameService) Decorations(ctx context.Context, playerID int64) (DecorVie
 		for i := range rows {
 			owned[rows[i].DecorCode] = &rows[i]
 		}
-		v := DecorView{Gold: farm.Gold}
+		now := s.now()
+		v := DecorView{Gold: farm.Gold, Season: seasons.SeasonOf(now), SeasonEndsAt: seasons.NextChange(now)}
 		for _, it := range decor.Catalog {
-			iv := DecorItemView{Item: it}
+			iv := DecorItemView{Item: it, OnSale: it.OnSale(v.Season)}
+			if _, has := owned[it.Code]; !has && !iv.OnSale {
+				continue // 不在本季的限定裝飾：沒有的人看不到
+			}
 			if r, ok := owned[it.Code]; ok {
 				iv.Owned = true
 				if r.Slot != nil {
@@ -104,6 +113,10 @@ func (s *GameService) BuyDecor(ctx context.Context, playerID int64, code string)
 				used[*r.Slot] = true
 			}
 		}
+		if season := seasons.SeasonOf(s.now()); !it.OnSale(season) { // 購買當下再檢查一次季節
+			return ActionResult{}, gameerr.Validationf("%s是%s季限定，已經下架了，下次%s季再來。", it.Name,
+				seasons.SeasonNames[it.Season], seasons.SeasonNames[it.Season])
+		}
 		if farm.Gold < it.Price {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：%s需要 %d，目前只有 %d。", it.Name, it.Price, farm.Gold)
 		}
@@ -123,7 +136,11 @@ func (s *GameService) BuyDecor(ctx context.Context, playerID int64, code string)
 			db.C("acquired_at", s.now())); err != nil {
 			return ActionResult{}, err
 		}
-		if err := s.record(ctx, t, farm, rules.EvBuyItem, fmt.Sprintf("購買裝飾%s，金幣 -%d", it.Name, it.Price),
+		kind := "裝飾"
+		if it.Season != "" {
+			kind = "限定裝飾"
+		}
+		if err := s.record(ctx, t, farm, rules.EvBuyItem, fmt.Sprintf("購買%s%s，金幣 -%d", kind, it.Name, it.Price),
 			rec{ItemCode: "decor_" + code, Quantity: 1, GoldDelta: -it.Price}); err != nil {
 			return ActionResult{}, err
 		}

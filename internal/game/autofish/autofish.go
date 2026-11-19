@@ -45,12 +45,14 @@ func defaults() featurecfg.Value {
 		"interval_minutes":    5,
 		"auto_sell_fish":      1,
 		"auto_sell_max_hours": 24,
-		"basket_capacities":   []int{40, 60, 80, 100},
-		"basket_prices":       []int{30_000, 50_000, 100_000, 200_000},
-		"consume_bait":        1,
-		"bait_per_catch":      1,
-		"speed_intervals":     []int{4, 3},
-		"speed_prices":        []int{50_000, 120_000},
+		// Lv.5～10 是 2026-11-19 金幣回收第二波新增：每級 +20 格，價格每級 ×2
+		"basket_capacities": []int{40, 60, 80, 100, 120, 140, 160, 180, 200, 220},
+		"basket_prices": []int{30_000, 50_000, 100_000, 200_000, 400_000, 800_000, 1_600_000, 3_200_000, 6_400_000,
+			12_800_000},
+		"consume_bait":    1,
+		"bait_per_catch":  1,
+		"speed_intervals": []int{4, 3},
+		"speed_prices":    []int{50_000, 120_000},
 	}
 }
 

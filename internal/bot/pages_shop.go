@@ -14,6 +14,7 @@ import (
 	"farmgm/internal/bot/farmimage"
 	"farmgm/internal/bot/ui"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/seasons"
 	"farmgm/internal/game/seedlab"
@@ -47,6 +48,8 @@ type shopData struct {
 	used     int
 	held     map[string]int
 	image    []byte
+	// 素材背包（2026-11-19 可以擴充）
+	matUsed, matCap, matLevel int
 }
 
 func (p *Panel) loadShop(ctx context.Context) (any, error) {
@@ -84,6 +87,7 @@ func (p *Panel) loadShop(ctx context.Context) (any, error) {
 		return nil, err
 	}
 	d.gold, d.capacity, d.used = status.Gold, status.WarehouseCapacity, status.WarehouseUsed
+	d.matUsed, d.matCap, d.matLevel = bp.MaterialUsed, bp.MaterialCapacity, bp.MaterialBagLevel
 	d.image = p.image("商店", farmimage.ShopPNG)
 	return d, nil
 }
@@ -224,18 +228,31 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 				it.Name, money(it.Price), have, it.Desc))
 		}
 	}
-	expandPrice, canExpand := balance.WarehouseExpansionPrice(d.capacity)
+	expandPrice, canExpand := expansion.WarehousePrice(d.capacity)
 	ladder := make([]string, len(balance.WarehouseExpansionPrices))
 	for i, x := range balance.WarehouseExpansionPrices {
 		ladder[i] = money(x)
+	}
+	if xc := expansion.Current(); xc.WarehouseMax > balance.WarehouseMaxCapacity {
+		ladder = append(ladder, fmt.Sprintf("%d 格後 %s 起每次 ×%s", balance.WarehouseMaxCapacity, money(xc.WarehouseLateBase),
+			pctFactor(xc.WarehouseLateGrowthPct)))
 	}
 	priceText := "✅ 已達最大容量"
 	if canExpand {
 		priceText = fmt.Sprintf("💰 **%s** 金", money(expandPrice))
 	}
 	warehouse := fmt.Sprintf("%s📦 **倉庫擴大卷**　%s　🎒 倉庫 **%d/%d**\n　📝 立即 +%d 格（最大 %d 格），價格逐次提高：%s",
-		mark("special:warehouse"), priceText, d.used, d.capacity, balance.WarehouseExpansionStep, balance.WarehouseMaxCapacity,
+		mark("special:warehouse"), priceText, d.used, d.capacity, balance.WarehouseExpansionStep, expansion.WarehouseMax(),
 		strings.Join(ladder, " → "))
+	bagPrice, canBag := expansion.MaterialBagPrice(d.matLevel)
+	bagText := "✅ 已達最高等級"
+	if canBag {
+		bagText = fmt.Sprintf("💰 **%s** 金", money(bagPrice))
+	}
+	xc := expansion.Current()
+	bag := fmt.Sprintf("%s🎒 **素材背包擴充**（Lv.%d/%d）　%s　🎒 素材背包 **%d/%d**\n　📝 每級 +%d 格（山洞素材、假幣與種子放這裡），價格每級 ×%s",
+		mark("special:material_bag"), d.matLevel, xc.MaterialBagLevels, bagText, d.matUsed, d.matCap, xc.MaterialBagStep,
+		pctFactor(xc.MaterialBagGrowthPct))
 	var events []string
 	for _, ev := range d.events {
 		name, _ := ev.View["name"].(string)
@@ -267,7 +284,7 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 	case shopTabItems:
 		parts = []any{Section{Title: "🧪 道具", Lines: consumables, Sep: "\n\n"}, head}
 	default:
-		parts = []any{Section{Title: "📦 倉庫", Lines: []string{warehouse}},
+		parts = []any{Section{Title: "📦 倉庫", Lines: []string{warehouse, bag}, Sep: "\n\n"},
 			Section{Title: "💎 工具與奢侈品", Lines: tools, Sep: "\n\n"}, head}
 	}
 	// 金幣放在最後，貼近購買按鈕
@@ -278,6 +295,17 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 		kind, code, _ := strings.Cut(key, ":")
 		switch kind {
 		case "special":
+			if code == "material_bag" {
+				price := 0
+				if canBag {
+					price = bagPrice
+				}
+				pk = &Picker{Key: key, Label: "🎒 素材背包擴充", PriceText: money(price) + " 金", Confirm: true, Max: 1, Short: shortOf(d.gold, price),
+					Run: p.callQty("expand_material_bag", func(ctx context.Context, _ int) (services.ActionResult, error) {
+						return p.svc().ExpandMaterialBag(ctx, p.playerID)
+					})}
+				break
+			}
 			price := 0
 			if canExpand {
 				price = expandPrice
@@ -360,6 +388,10 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 		if canExpand && expandPrice != 0 {
 			options = append(options, option{"倉庫擴大卷", "special:warehouse",
 				fmt.Sprintf("📦 +%d 格｜💰 %s 金", balance.WarehouseExpansionStep, money(expandPrice)), "📦"})
+		}
+		if canBag {
+			options = append(options, option{"素材背包擴充", "special:material_bag",
+				fmt.Sprintf("🎒 +%d 格｜💰 %s 金", expansion.Current().MaterialBagStep, money(bagPrice)), "🎒"})
 		}
 		for _, code := range balance.ItemOrder {
 			if it := balance.ItemOf(code); it.Kind == "tool" && held["item:"+code] == 0 {

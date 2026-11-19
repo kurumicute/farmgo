@@ -22,6 +22,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
@@ -363,7 +364,7 @@ func (s *GameService) ensureMaterialSpace(ctx context.Context, t *db.Tx, farm *m
 	if err != nil {
 		return err
 	}
-	capacity := exploration.BagCapacity()
+	capacity := expansion.MaterialBagCapacity(farm.MaterialBagLevel, exploration.BagCapacity())
 	if incoming > 0 && used+incoming > capacity {
 		return gameerr.New(gameerr.WarehouseFull, "素材背包空間不足：目前 %d/%d，需要再放入 %d 個。", used, capacity, incoming)
 	}

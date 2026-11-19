@@ -651,7 +651,7 @@ func TestGoodsSales(t *testing.T) {
 	if stat(f, "crop_sold_quantity") != 0 || stat(rival, "crop_sold_quantity") != 3 || stat(rival, "crop_sales_income") != 45 {
 		t.Fatal("作物販售統計不對")
 	}
-	if stat(f, "goods_sold_quantity") != 5 || stat(f, "goods_sales_income") != 100+balance.Goods["bread"].SellPrice {
+	if stat(f, "goods_sold_quantity") != 5 || stat(f, "goods_sales_income") != 100+e.goodPrice("bread") {
 		t.Fatal("商品販售統計不對")
 	}
 	_, err = e.r.Sell(e.ctx, f, "雞蛋", 1, "rare", "none")
@@ -674,7 +674,7 @@ func TestRecipesAndWorkshopViews(t *testing.T) {
 	e.ok(e.r.Build(e.ctx, f, "磨坊"))
 	rows := must[[]RecipeView](t)(e.r.Recipes(e.ctx, &f))
 	if rows[0].Code != "flour" || !rows[0].Built || rows[1].Built || rows[0].Inputs["小麥"] != 3 ||
-		rows[0].OutputName != "麵粉" || *rows[0].SellPrice != balance.Goods["flour"].SellPrice {
+		rows[0].OutputName != "麵粉" || *rows[0].SellPrice != e.goodPrice("flour") {
 		t.Fatalf("%+v", rows[0])
 	}
 	e.give(f, "wheat", 3)

@@ -6,9 +6,11 @@ package services
 import (
 	"context"
 	"maps"
+	"slices"
 	"strings"
 	"testing"
 
+	"farmgm/internal/clock"
 	"farmgm/internal/db"
 	"farmgm/internal/game/achievements"
 	"farmgm/internal/game/balance"
@@ -195,7 +197,7 @@ func TestFeatureSettingsView(t *testing.T) {
 			t.Fatal(k.Key)
 		}
 	}
-	if strings.Join(keys, ",") != "checkin,pets,special_shop,achievements,exploration,mushroom,seedlab,autofish,hourglass,aid" {
+	if strings.Join(keys, ",") != "checkin,pets,special_shop,achievements,exploration,mushroom,seedlab,autofish,hourglass,aid,expansion,cosmetics,reputation,auction" {
 		t.Fatal(keys)
 	}
 	if len(view.Achievements) != len(achievements.BaseAchievements) || len(view.Items) != len(balance.Items) {
@@ -399,4 +401,43 @@ func TestExplorationAndMushroomSettings(t *testing.T) {
 	if exploration.FakeCoinRate() != exploration.FakeCoinValue || mushroom.Unlock() != mushroom.UnlockLevel {
 		t.Fatal("還原後沒有回到預設值")
 	}
+}
+
+// 限定稱號（2026-11-19）：只在販售期間（台灣日期，含結束當天）出現在商店、買得到；買過的人永久保留。
+func TestLimitedTitles(t *testing.T) {
+	e := setup(t)
+	pid := e.progressFarmer()
+	today := e.clock.Now().In(clock.TaipeiTZ)
+	day := func(d int) string { return today.AddDate(0, 0, d).Format("2006-01-02") }
+	titles := []any{
+		map[string]any{"title": "一般大亨", "price": 100},
+		map[string]any{"title": "本月限定", "price": 200, "start": day(-1), "end": day(0)},
+		map[string]any{"title": "下月限定", "price": 300, "start": day(1)},
+	}
+	e.mustFeature("special_shop", shopConfig("titles", titles))
+	shown := func() []string {
+		var out []string
+		for _, x := range must[SpecialShopView](t)(e.p.SpecialShop(e.ctx, pid)).Titles {
+			out = append(out, x.Title)
+		}
+		return out
+	}
+	if got := shown(); !slices.Equal(got, []string{"一般大亨", "本月限定"}) {
+		t.Fatal(got)
+	}
+	_, err := e.p.BuyTitle(e.ctx, pid, "下月限定")
+	wantMsg(t, err, gameerr.Validation, "目前沒有販售")
+	e.ok(e.p.BuyTitle(e.ctx, pid, "本月限定"))
+	e.clock.Advance(2 * 86400) // 過了結束日期：下架，已買的保留
+	if got := shown(); !slices.Equal(got, []string{"一般大亨", "下月限定"}) {
+		t.Fatal(got)
+	}
+	if !slices.ContainsFunc(must[TitlesView](t)(e.p.Titles(e.ctx, pid)).Owned, func(o TitleInfo) bool { return o.Title == "本月限定" }) {
+		t.Fatal("已買的限定稱號要保留")
+	}
+	bad := []any{map[string]any{"title": "錯", "price": 1, "start": day(2), "end": day(1)}}
+	if err := e.updateFeature("special_shop", shopConfig("titles", bad)); err == nil {
+		t.Fatal("結束日期早於開始日期")
+	}
+	e.invariant()
 }

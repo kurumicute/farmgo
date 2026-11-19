@@ -115,9 +115,14 @@ type Farm struct {
 	// 溫室等級（0 = 沒有溫室）：每一級讓之後澆水的作物生長時間減少 specialshop.GreenhousePctPerLevel()%（server_default 0）
 	GreenhouseLevel int `db:"greenhouse_level"`
 	// 魚簍升級等級（Migration 0041，Go 版新增；0 = 沒有升級，容量見 autofish.BasketCapacity）
-	FishBasketLevel int       `db:"fish_basket_level"`
-	CreatedAt       time.Time `db:"created_at"` // server_default now()
-	UpdatedAt       time.Time `db:"updated_at"` // server_default now()；Python onupdate=now()
+	FishBasketLevel int `db:"fish_basket_level"`
+	// Migration 0046（金幣回收第二波，Go 版新增）
+	Badge            *string   `db:"badge"`              // 裝備的名牌代碼（game/cosmetics），NULL 不顯示
+	Theme            *string   `db:"theme"`              // 套用的農場主題代碼，NULL = 預設外觀
+	MaterialBagLevel int       `db:"material_bag_level"` // 素材背包擴充等級 0～10
+	Reputation       int       `db:"reputation"`         // 農場聲望（捐給農會的累積金幣）
+	CreatedAt        time.Time `db:"created_at"`         // server_default now()
+	UpdatedAt        time.Time `db:"updated_at"`         // server_default now()；Python onupdate=now()
 }
 
 func (Farm) TableName() string { return TableFarm }

@@ -1,6 +1,6 @@
 package bot
 
-// 送禮與互助（Go 版新增，2026-11-17）：選一位同群組的玩家，送他一份作物或幫他澆水，雙方都拿少量金幣。
+// 送禮與互助（Go 版新增，2026-11-17）：選一位同群組的玩家，送他一份作物或幫他拔草（2026-11-19 由幫忙澆水改成），雙方都拿少量金幣。
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"farmgm/internal/bot/ui"
+	"farmgm/internal/game/aid"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/services"
 )
@@ -35,28 +36,31 @@ func (p *Panel) buildAid(_ context.Context, data any) (*ui.Embed, error) {
 	rules := []string{
 		fmt.Sprintf("🎁 **送禮**：送同伺服器的玩家一份作物（普通品質、沒有突變，最多 %d 個、價值 %s 金以內），雙方各得 **%d** 金",
 			c.GiftMaxQuantity, money(c.GiftMaxValue), c.GiftRewardGold),
-		fmt.Sprintf("💧 **幫忙澆水**：把對方所有等待澆水的土地一次澆好，雙方各得 **%d** 金", c.WaterRewardGold),
+		fmt.Sprintf("🌿 **幫忙拔草**：對方所有生長中作物的剩餘生長時間 **-%d%%**，雙方各得 **%d** 金；每人每天只能被拔草 **%d** 次",
+			aid.WeedGrowPct, c.WeedRewardGold, aid.WeedReceivePerDay),
 		fmt.Sprintf("🔒 雙方都要 **Lv.%d** 以上、農場建立滿 **%d** 天；同一個人同一種互助每天只能一次", c.MinLevel, c.MinFarmDays),
 	}
 	today := []string{
 		fmt.Sprintf("🎁 送出 %d／%d 份　📥 收到 %d／%d 份", v.GiftSent, c.GiftSendPerDay, v.GiftReceived, c.GiftReceivePerDay),
-		fmt.Sprintf("💧 幫忙 %d／%d 位　🙏 被幫忙 %d／%d 位", v.WaterSent, c.WaterSendPerDay, v.WaterReceived, c.WaterReceivePerDay),
+		fmt.Sprintf("🌿 幫忙拔草 %d／%d 位　🙏 被拔草 %d／%d 次", v.WeedSent, c.WeedSendPerDay, v.WeedReceived, aid.WeedReceivePerDay),
 	}
-	parts := []any{"用正面互動代替偷菜：每天可以送朋友一份作物、幫忙澆水，雙方都有獎勵。",
+	parts := []any{"用正面互動代替偷菜：每天可以送朋友一份作物、幫忙拔草，雙方都有獎勵。",
 		Section{Title: "規則", Lines: rules}, Section{Title: "今天（台灣時間 0 點重新計算）", Lines: today}}
 	if v.Blocked != "" {
 		parts = append(parts, "⚠️ "+v.Blocked+"。")
 	}
 	if target != nil {
-		lines := []string{fmt.Sprintf("👤 **%s**（%s）Lv.%d　💧 %d 格待澆水", escapeMD(target.Name), escapeMD(target.FarmName), target.Level, target.Waiting)}
+		lines := []string{fmt.Sprintf("👤 **%s**（%s）Lv.%d　🌱 %d 格生長中", escapeMD(target.Name), escapeMD(target.FarmName), target.Level, target.Growing)}
 		if target.Blocked != "" {
 			lines = append(lines, "⚠️ "+target.Blocked)
 		}
 		if target.GiftedToday {
 			lines = append(lines, "✅ 今天已經送過禮物給他")
 		}
-		if target.WateredToday {
-			lines = append(lines, "✅ 今天已經幫他澆過水")
+		if target.WeededToday {
+			lines = append(lines, "✅ 今天已經幫他拔過草")
+		} else if target.WeedTaken {
+			lines = append(lines, "🌿 今天已經有人幫他拔過草了")
 		}
 		parts = append(parts, Section{Title: "選擇的對象", Lines: lines})
 	} else {
@@ -68,21 +72,23 @@ func (p *Panel) buildAid(_ context.Context, data any) (*ui.Embed, error) {
 	// 第 1 列：選對象（超過 25 人時選單內翻頁）
 	var people []option
 	for _, t := range v.Targets {
-		desc, emoji := fmt.Sprintf("Lv.%d｜💧 %d 格待澆水", t.Level, t.Waiting), "👤"
+		desc, emoji := fmt.Sprintf("Lv.%d｜🌱 %d 格生長中", t.Level, t.Growing), "👤"
 		var done []string
 		if t.GiftedToday {
 			done = append(done, "已送禮")
 		}
-		if t.WateredToday {
-			done = append(done, "已幫忙澆水")
+		if t.WeededToday {
+			done = append(done, "已幫忙拔草")
+		} else if t.WeedTaken {
+			done = append(done, "已被拔草")
 		}
 		switch {
 		case t.Blocked != "":
 			desc, emoji = fmt.Sprintf("Lv.%d｜還不能互助", t.Level), "🔒"
 		case len(done) > 0:
 			desc += "｜今天" + strings.Join(done, "、")
-		case t.Waiting > 0:
-			emoji = "💧"
+		case t.Growing > 0:
+			emoji = "🌿"
 		}
 		people = append(people, option{t.Name, strconv.FormatInt(t.PlayerID, 10), desc, emoji})
 	}
@@ -140,14 +146,14 @@ func (p *Panel) buildAid(_ context.Context, data any) (*ui.Embed, error) {
 		} else if canGift {
 			e.Description += "\n\n🎁 倉庫裡沒有可以當禮物的作物（只能送普通品質、沒有突變的作物）。"
 		}
-		// 第 3 列：幫忙澆水
-		canWater := v.Blocked == "" && target.Blocked == "" && !target.WateredToday && target.Waiting > 0 && v.WaterSent < c.WaterSendPerDay
-		p.button(fmt.Sprintf("幫 %s 澆水（%d 格）", name, target.Waiting), func(ctx context.Context, it ui.Interaction) error {
-			p.act(ctx, it, p.call("help_water", func(ctx context.Context) (services.ActionResult, error) {
-				return p.svc().HelpWater(ctx, *p.groupID, p.playerID, victim)
+		// 第 3 列：幫忙拔草
+		canWeed := v.Blocked == "" && target.Blocked == "" && !target.WeedTaken && target.Growing > 0 && v.WeedSent < c.WeedSendPerDay
+		p.button(fmt.Sprintf("幫 %s 拔草（%d 格）", name, target.Growing), func(ctx context.Context, it ui.Interaction) error {
+			p.act(ctx, it, p.call("help_weed", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().HelpWeed(ctx, *p.groupID, p.playerID, victim)
 			}), actOpts{})
 			return nil
-		}, btn{emoji: "💧", style: ui.Primary, row: 2, disabled: !canWater})
+		}, btn{emoji: "🌿", style: ui.Primary, row: 2, disabled: !canWeed})
 	}
 	p.nav("重新整理", "aid", btn{emoji: "🔄", row: 3})
 	p.nav("偷菜", "steal", btn{emoji: "🥷", row: 3})

@@ -44,9 +44,9 @@ func TestLabPageFlow(t *testing.T) {
 	e.setInventory(pid, "seed_wheat", 2)
 	e.setInventory(pid, "seed_corn", 1)
 	p.goPage("lab")
-	p.choose("鑑定一般種子", "wheat")
+	p.chooseModal("鑑定一般種子", "wheat", "1") // 有 2 顆可以鑑定：跳出數量輸入框（2026-11-19 批量鑑定）
 	contains(t, p.Text, "鑑定完成：小麥種子")
-	p.choose("鑑定一般種子", "wheat")
+	p.choose("鑑定一般種子", "wheat") // 只剩 1 顆：直接鑑定
 	p.choose("鑑定一般種子", "corn")
 	contains(t, p.Text, "種子庫 3／25 顆")
 	p.button("種子庫（3）")
@@ -231,10 +231,9 @@ func TestLabSeedPages(t *testing.T) {
 	p.click("建造實驗室")
 	p.click("確認建造")
 	e.setInventory(pid, "seed_wheat", 30)
-	for i := 0; i < 30; i++ {
-		p.goPage("lab")
-		p.choose("鑑定一般種子", "wheat")
-	}
+	p.goPage("lab")
+	p.chooseModal("鑑定一般種子", "wheat", "30") // 批量鑑定（2026-11-19）：一次鑑定 30 顆
+	contains(t, p.Text, "鑑定完成：30 顆小麥種子")
 	p.goPage("lab_seeds")
 	contains(t, p.Text, "特殊種子 30／30（第 1/2 頁）")
 	if got := p.options("選擇種子"); len(got) != 25 {

@@ -12,13 +12,13 @@ func TestDefaultsAndBasket(t *testing.T) {
 	featurecfg.Reset()
 	defer featurecfg.Reset()
 	c := Current()
-	if c.MachinePrice != 100_000 || c.IntervalMinutes != 5 || !c.AutoSellFish || len(c.BasketCapacities) != 4 {
+	if c.MachinePrice != 100_000 || c.IntervalMinutes != 5 || !c.AutoSellFish || len(c.BasketCapacities) != MaxBasketLevel {
 		t.Fatalf("%+v", c)
 	}
 	if balance.ItemPrice(balance.ToolAutoFisher) != 100_000 || balance.ItemPrice(balance.ToolAutoSeller) != 150_000 {
 		t.Fatal("自動釣魚機的價格要讀設定，其他道具不變")
 	}
-	for _, x := range []struct{ level, want int }{{0, 20}, {1, 40}, {2, 60}, {4, 100}, {9, 100}} {
+	for _, x := range []struct{ level, want int }{{0, 20}, {1, 40}, {2, 60}, {4, 100}, {9, 200}, {10, 220}, {12, 220}} {
 		if got := BasketCapacity(x.level, 20); got != x.want {
 			t.Errorf("Lv.%d：%d，應該是 %d", x.level, got, x.want)
 		}
@@ -26,7 +26,10 @@ func TestDefaultsAndBasket(t *testing.T) {
 	if capacity, price, ok := NextBasket(0); !ok || capacity != 40 || price != 30_000 {
 		t.Fatal(capacity, price, ok)
 	}
-	if _, _, ok := NextBasket(4); ok {
+	if capacity, price, ok := NextBasket(4); !ok || capacity != 120 || price != 400_000 {
+		t.Fatal(capacity, price, ok)
+	}
+	if _, _, ok := NextBasket(MaxBasketLevel); ok {
 		t.Fatal("滿級")
 	}
 	raw, _ := featurecfg.DeepCopy(defaults())

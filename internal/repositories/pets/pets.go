@@ -9,6 +9,41 @@ import (
 )
 
 // Levels 寵物代碼 → 等級（沒有的寵物不列出）。
+// Skin 寵物造型（Migration 0046；"" = 沒有）。
+type Skin struct {
+	Hat, Color string
+}
+
+// LevelsAndSkins 寵物代碼 → 等級與造型（農場狀態一次讀取）。
+func LevelsAndSkins(ctx context.Context, t *db.Tx, farmID int64) (map[string]int, map[string]Skin, error) {
+	rows, err := t.Query(ctx, "SELECT pet_code, level, hat, color FROM farm_pets WHERE farm_id = $1", farmID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	levels, skins := map[string]int{}, map[string]Skin{}
+	for rows.Next() {
+		var code string
+		var lv int
+		var hat, color *string
+		if err := rows.Scan(&code, &lv, &hat, &color); err != nil {
+			return nil, nil, err
+		}
+		levels[code] = lv
+		if hat != nil || color != nil {
+			s := Skin{}
+			if hat != nil {
+				s.Hat = *hat
+			}
+			if color != nil {
+				s.Color = *color
+			}
+			skins[code] = s
+		}
+	}
+	return levels, skins, rows.Err()
+}
+
 func Levels(ctx context.Context, t *db.Tx, farmID int64) (map[string]int, error) {
 	rows, err := t.Query(ctx, "SELECT pet_code, level FROM farm_pets WHERE farm_id = $1", farmID)
 	if err != nil {
@@ -39,5 +74,5 @@ func Level(ctx context.Context, t *db.Tx, farmID int64, petCode string) (*int, e
 
 func Get(ctx context.Context, t *db.Tx, farmID int64, petCode string) (*models.FarmPet, error) {
 	return db.QueryStruct[models.FarmPet](ctx, t,
-		"SELECT farm_id, pet_code, level, bought_at FROM farm_pets WHERE farm_id = $1 AND pet_code = $2", farmID, petCode)
+		"SELECT farm_id, pet_code, level, bought_at, hat, color FROM farm_pets WHERE farm_id = $1 AND pet_code = $2", farmID, petCode)
 }

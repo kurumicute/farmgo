@@ -595,19 +595,19 @@ func (p *Panel) bossConfirm(ctx context.Context, it ui.Interaction) error {
 
 type bossBoardData struct {
 	board       *services.BossLeaderboard
-	titles      map[int64]string
+	titles      nameTags
 	currentName string
 }
 
-func (p *Panel) withTitles(ctx context.Context, b *services.BossLeaderboard) (map[int64]string, error) {
+func (p *Panel) withTitles(ctx context.Context, b *services.BossLeaderboard) (nameTags, error) {
 	if b == nil {
-		return nil, nil
+		return nameTags{}, nil
 	}
 	ids := make([]int64, len(b.Rows))
 	for i, r := range b.Rows {
 		ids[i] = r.PlayerID
 	}
-	return p.svc().PlayerTitles(ctx, ids)
+	return p.loadNameTags(ctx, ids)
 }
 
 func (p *Panel) loadBossBoard(ctx context.Context) (any, error) {
@@ -664,12 +664,15 @@ func (p *Panel) buildBossLiveBoard(_ context.Context, data any) (*ui.Embed, erro
 	return e, nil
 }
 
-func (p *Panel) boardEmbed(b *services.BossLeaderboard, titles map[int64]string, title, head string, image bool) *ui.Embed {
+func (p *Panel) boardEmbed(b *services.BossLeaderboard, tags nameTags, title, head string, image bool) *ui.Embed {
 	var lines []string
 	for _, r := range b.Rows {
 		name := r.FarmName
-		if badge := titles[r.PlayerID]; badge != "" {
-			name = fmt.Sprintf("%s〔%s〕", name, badge)
+		if t := tags.titles[r.PlayerID]; t != "" {
+			name = fmt.Sprintf("%s〔%s〕", name, t)
+		}
+		if badge := tags.badges[r.PlayerID]; badge != "" {
+			name = badge + " " + name
 		}
 		lines = append(lines, fmt.Sprintf("%s **%s**　🏅 %s 分　📦 %s 個", medalOr(r.Rank, fmt.Sprintf("`%2d.`", r.Rank)), name, money(r.Points), money(r.Quantity)))
 	}

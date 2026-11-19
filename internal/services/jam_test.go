@@ -58,7 +58,7 @@ func TestNewJamRecipesCraftAndSell(t *testing.T) {
 			t.Fatal(j.recipe, e.qty(f, j.recipe), e.qty(f, j.crop))
 		}
 		r := e.ok(e.r.SellGoods(e.ctx, f, j.name, 1))
-		if r.GoldDelta != j.price {
+		if r.GoldDelta != e.goodPrice(j.recipe) { // 2026-11-19 起加工品售價浮動，以這一期的價格計算
 			t.Fatal(j.recipe, r.GoldDelta)
 		}
 	}

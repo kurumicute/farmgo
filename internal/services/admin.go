@@ -29,6 +29,7 @@ import (
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
 	eventrules "farmgm/internal/game/events"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/featurecfg"
 	"farmgm/internal/game/fishing"
 	"farmgm/internal/game/gameerr"
@@ -1527,8 +1528,8 @@ func (a *AdminService) AddPlots(ctx context.Context, actor string, playerID int6
 		if err != nil {
 			return PlotsAdded{}, err
 		}
-		if total+count > balance.AdminMaxPlots {
-			return PlotsAdded{}, gameerr.Validationf("每座農場最多 %d 格土地（目前 %d 格）。", balance.AdminMaxPlots, total)
+		if limit := expansion.MaxPlots(); total+count > limit {
+			return PlotsAdded{}, gameerr.Validationf("每座農場最多 %d 格土地（目前 %d 格）。", limit, total)
 		}
 		numbers, err := farms.AddPlots(ctx, t, farm.ID, count)
 		if err != nil {

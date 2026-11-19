@@ -144,7 +144,7 @@ func TestMushroomBakeryRecipes(t *testing.T) {
 	if e.qty(pid, "glowcap_pie") != 1 || e.qty(pid, "glowcap") != 0 {
 		t.Fatal(e.qty(pid, "glowcap_pie"))
 	}
-	if r := e.ok(e.r.SellGoods(e.ctx, pid, "發光菇派", 1)); r.GoldDelta != balance.Goods["glowcap_pie"].SellPrice {
+	if r := e.ok(e.r.SellGoods(e.ctx, pid, "發光菇派", 1)); r.GoldDelta != e.goodPrice("glowcap_pie") {
 		t.Fatal(r.GoldDelta)
 	}
 	for _, code := range []string{"shiitake_bread", "mushroom_soup", "enoki_pancake", "lingzhi_cake", "truffle_bread", "glowcap_pie"} {

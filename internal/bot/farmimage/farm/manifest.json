@@ -287,7 +287,19 @@
     "wishing_well": "decor/wishing_well.png",
     "jack_o_lantern": "decor/jack_o_lantern.png",
     "snowman": "decor/snowman.png",
-    "xmas_tree": "decor/xmas_tree.png"
+    "xmas_tree": "decor/xmas_tree.png",
+    "sakura_arch": "decor/sakura_arch.png",
+    "tulip_cart": "decor/tulip_cart.png",
+    "watermelon_stand": "decor/watermelon_stand.png",
+    "beach_umbrella": "decor/beach_umbrella.png",
+    "maple_tree": "decor/maple_tree.png",
+    "harvest_cart": "decor/harvest_cart.png",
+    "ice_sculpture": "decor/ice_sculpture.png",
+    "snow_lantern": "decor/snow_lantern.png",
+    "golden_windmill": "decor/golden_windmill.png",
+    "crystal_fountain": "decor/crystal_fountain.png",
+    "rainbow_arch": "decor/rainbow_arch.png",
+    "dragon_statue": "decor/dragon_statue.png"
   },
   "badges": {
     "need_water": "badges/need_water.png",
@@ -1034,16 +1046,39 @@
         "file": "pets/dog.png",
         "anchor": "left",
         "margin": 28,
-        "bottom": 4
+        "bottom": 4,
+        "hat": [10, -10]
       },
       "cat": {
         "file": "pets/cat.png",
         "anchor": "right",
         "margin": 28,
-        "bottom": 2
+        "bottom": 2,
+        "hat": [9, -12]
+      },
+      "rabbit": {
+        "file": "pets/rabbit.png",
+        "anchor": "left",
+        "margin": 107,
+        "bottom": 2,
+        "hat": [14, 8]
+      },
+      "bird": {
+        "file": "pets/bird.png",
+        "anchor": "left",
+        "margin": 177,
+        "bottom": 2,
+        "hat": [2, -14]
+      },
+      "hedgehog": {
+        "file": "pets/hedgehog.png",
+        "anchor": "right",
+        "margin": 119,
+        "bottom": 2,
+        "hat": [6, -2]
       }
     },
-    "note": "有寵物時在農田圖上方加一條草地（band_height），狗在左上、貓在右上，不壓到欄杆；素材由根目錄 dogcat.png 切出縮小（64 色）"
+    "note": "有寵物時在農田圖上方加一條草地（band_height），狗在左上、貓在右上，不壓到欄杆；素材由根目錄 dogcat.png 切出縮小（64 色）。2026-11-19：兔子、小鳥接在狗的右邊，刺蝟接在貓的左邊（素材由根目錄 eee.png 切出）"
   },
   "decor_sides": {
     "width": 96,

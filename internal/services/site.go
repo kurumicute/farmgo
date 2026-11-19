@@ -25,6 +25,7 @@ import (
 	"farmgm/internal/game/checkin"
 	"farmgm/internal/game/decor"
 	eventrules "farmgm/internal/game/events"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/fishing"
 	"farmgm/internal/game/hourglass"
@@ -239,15 +240,19 @@ func guideOK(v any) (any, error)     { return v, nil }
 func guideStart() map[string]any {
 	return map[string]any{
 		"gold": balance.InitialGold, "plots": balance.InitialPlots, "warehouse": balance.InitialWarehouseCapacity,
-		"rename_cost": balance.RenameFarmCost, "upgrade_prices": balance.UpgradePrices,
-		"upgrade_plots": balance.UpgradePlotsAdded, "max_plots": balance.MaxPlots,
+		"rename_cost": expansion.Current().RenameBase, "rename_max": expansion.Current().RenameMax,
+		"rename_first_free": expansion.Current().RenameFirstFree, "rename_decay_days": expansion.Current().RenameDecayDays,
+		"upgrade_prices": balance.UpgradePrices,
+		"upgrade_plots":  balance.UpgradePlotsAdded, "max_plots": expansion.MaxPlots(),
+		"land_base": expansion.Current().LandBase, "land_growth_pct": expansion.Current().LandGrowthPct,
 		"wither_minutes": balance.WitherSeconds / 60, "steal_max": balance.StealMaxPerAction,
 		"steal_plots_per_day": balance.StealPlotsPerVictimPerDay, "steal_thieves_per_day": balance.StealThievesPerVictimPerDay,
 		"transfer_cooldown_days": balance.GroupTransferCooldownSeconds / 86400,
 		"max_block_pct":          numfmt.Round(balance.DefenseMaxBlockChance * 100), "patrol_days": balance.PatrolDays,
 		"barn_slots": balance.BarnSlots, "craft_max": balance.CraftMaxQuantity,
 		"warehouse_step": balance.WarehouseExpansionStep, "warehouse_prices": balance.WarehouseExpansionPrices,
-		"warehouse_max": balance.WarehouseMaxCapacity,
+		"warehouse_max": expansion.WarehouseMax(), "warehouse_late_base": expansion.Current().WarehouseLateBase,
+		"warehouse_late_growth_pct": expansion.Current().WarehouseLateGrowthPct,
 		// 所有種子和探險素材一樣放素材背包（Go 版新增）
 		"material_bag_capacity": exploration.BagCapacity(),
 	}
@@ -356,6 +361,10 @@ var guideKeys = []guideKey{
 	}},
 	{"recipes", []func(*guideEnv) error{needCrops}, func(e *guideEnv) (any, error) {
 		recipes := []map[string]any{}
+		prices, err := goodPrices(e.ctx, e.t, e.now) // 加工品是這一期的浮動售價
+		if err != nil {
+			return nil, err
+		}
 		for _, code := range balance.RecipeOrder {
 			rc := balance.Recipes[code]
 			inputs := []siteNameQty{}
@@ -364,7 +373,7 @@ var guideKeys = []guideKey{
 			}
 			recipes = append(recipes, map[string]any{"name": rc.Name, "building": balance.Buildings[rc.Building].Name,
 				"building_price": balance.Buildings[rc.Building].Price, "inputs": inputs, "output_quantity": rc.OutputQty,
-				"seconds": rc.Seconds, "sell_price": balance.Goods[rc.Output].SellPrice})
+				"seconds": rc.Seconds, "sell_price": prices[rc.Output]})
 		}
 		return recipes, nil
 	}},
@@ -586,9 +595,10 @@ func buildCards(e *guideEnv) (any, error) {
 		"achievements":  len(achievements.Active()),
 		"checkin_days":  len(checkin.Rewards()),
 		"codex":         codexNames(),
-		"rename_cost":   balance.RenameFarmCost,
-		"cellar_level":  mushroom.Current().UnlockLevel,
-		"lab_level":     seedlab.Unlock(),
+		"rename_cost":   expansion.Current().RenameBase, "rename_max": expansion.Current().RenameMax,
+		"rename_first_free": expansion.Current().RenameFirstFree, "rename_decay_days": expansion.Current().RenameDecayDays,
+		"cellar_level": mushroom.Current().UnlockLevel,
+		"lab_level":    seedlab.Unlock(),
 	}, nil
 }
 
@@ -687,7 +697,7 @@ func buildExploration(names map[string]string) map[string]any {
 		unlocks = append(unlocks, map[string]any{"level": n.Level, "text": n.Text})
 	}
 	return map[string]any{
-		"max_level":             balance.InitialLevel + (balance.MaxPlots-balance.InitialPlots)/balance.UpgradePlotsAdded,
+		"max_level":             balance.InitialLevel + (expansion.MaxPlots()-balance.InitialPlots)/balance.UpgradePlotsAdded,
 		"fake_coin_value":       exploration.FakeCoinRate(),
 		"material_bag_capacity": exploration.BagCapacity(),
 		"reward_types":          map[string]any{"normal": typePct("normal"), "advanced": typePct("advanced")},
@@ -1041,8 +1051,12 @@ func buildSpecialShop(activeCrops []models.CropType, now time.Time) map[string]a
 			"original_price": o.OriginalPrice, "limit": o.Limit, "rare": o.Rare})
 	}
 	titles := []map[string]any{}
-	for _, x := range specialshop.TitleShop() {
-		titles = append(titles, map[string]any{"title": x.Title, "price": x.Price})
+	for _, x := range specialshop.TitlesOnSale(now) {
+		item := map[string]any{"title": x.Title, "price": x.Price}
+		if x.End != nil {
+			item["end"] = x.End.Format("2006-01-02") // 販售到這一天（含）
+		}
+		titles = append(titles, item)
 	}
 	return map[string]any{
 		"greenhouse": map[string]any{"per_level": specialshop.GreenhousePctPerLevel(), "prices": specialshop.GreenhousePrices()},
@@ -1146,13 +1160,17 @@ func buildMushroom(names map[string]string) map[string]any {
 // decorGuide 庭院擺設依等級分組：[{emoji, name, price, items}]（同一等級價格相同；不同時取最低價）。
 func decorGuide() []map[string]any {
 	out := []map[string]any{}
-	for _, tier := range []decor.Tier{decor.Common, decor.Fine, decor.Rare, decor.Festival} {
+	for _, tier := range []decor.Tier{decor.Common, decor.Fine, decor.Rare, decor.Festival, decor.Seasonal} {
 		names, price := []string{}, 0
 		for _, it := range decor.Catalog {
-			if it.Tier != tier {
+			if it.Tier != tier || it.Tier == decor.Auction { // 拍賣限定不在說明網站的商店價格表
 				continue
 			}
-			names = append(names, it.Name)
+			name := it.Name
+			if it.Season != "" {
+				name = seasons.SeasonEmoji[it.Season] + seasons.SeasonNames[it.Season] + "：" + name
+			}
+			names = append(names, name)
 			if price == 0 || it.Price < price {
 				price = it.Price
 			}

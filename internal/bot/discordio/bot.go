@@ -45,6 +45,10 @@ type Bot struct {
 	known    map[string]bool // 登入時已加入的伺服器（之後的 GUILD_CREATE 才是新加入）
 	ready    bool
 
+	readyCh   chan struct{} // 第一次 READY 時關閉（清除離開成員的排程等登入後才開始）
+	readyOnce sync.Once
+	sweepMu   sync.Mutex // 清除離開成員同時只執行一次
+
 	// 音樂（沒有設定時為 nil）：登入後才知道 Bot 的使用者 ID，所以在第一次 READY 時建立並連線 Lavalink
 	music     *music.Music
 	musicOnce sync.Once
@@ -61,14 +65,19 @@ func New(settings config.Settings, cmds *bot.Commands, svc *services.AdminServic
 	if musicEnabled(settings) {
 		s.Identify.Intents |= discordgo.IntentsGuildVoiceStates // 加入語音頻道、偵測頻道沒人時自動離開（非特權）
 	}
+	if settings.DiscordMembersIntent {
+		s.Identify.Intents |= discordgo.IntentsGuildMembers // 特權：接收成員退出事件（需在 Developer Portal 開啟 Server Members Intent）
+	}
 	s.StateEnabled = true
-	b := &Bot{S: s, Settings: settings, Cmds: cmds, Svc: svc, Reg: cmds.Registry, Log: slog.Default(), known: map[string]bool{}}
+	b := &Bot{S: s, Settings: settings, Cmds: cmds, Svc: svc, Reg: cmds.Registry, Log: slog.Default(), known: map[string]bool{},
+		readyCh: make(chan struct{})}
 	s.AddHandler(b.onReady)
 	s.AddHandler(b.onGuildCreate)
 	s.AddHandler(b.onInteraction)
 	s.AddHandler(b.onVoiceState)
 	s.AddHandler(b.onVoiceServer)
 	s.AddHandler(b.onGuildDelete)
+	s.AddHandler(b.onGuildMemberRemove)
 	return b, nil
 }
 
@@ -81,7 +90,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	}
 	defer b.S.Close()
 	var wg sync.WaitGroup
-	loops := []func(context.Context){func(ctx context.Context) { b.Reg.Run(ctx, SweepInterval) }, b.latencyLoop}
+	loops := []func(context.Context){func(ctx context.Context) { b.Reg.Run(ctx, SweepInterval) }, b.latencyLoop, b.memberSweepLoop}
 	if b.Settings.BackgroundTasksRunner == "bot" {
 		b.Log.Info("背景結算由 Bot 執行", "interval_seconds", b.Settings.RankingSettleIntervalSeconds)
 		loops = append(loops, b.settleLoop)
@@ -132,6 +141,7 @@ func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
 	}
 	b.ready = true
 	b.mu.Unlock()
+	b.readyOnce.Do(func() { close(b.readyCh) })
 	b.Log.Info("Bot 已登入", "user", r.User.Username, "id", r.User.ID, "guilds", len(r.Guilds))
 	b.musicOnce.Do(func() { b.startMusic(r.User.ID) })
 	activity := "/farm 種田"
@@ -426,6 +436,25 @@ func (b *Bot) onVoiceServer(_ *discordgo.Session, v *discordgo.VoiceServerUpdate
 func (b *Bot) onGuildDelete(_ *discordgo.Session, g *discordgo.GuildDelete) {
 	if b.music != nil && g.Guild != nil && !g.Unavailable {
 		b.music.OnGuildRemove(g.ID)
+	}
+}
+
+// onGuildMemberRemove 成員退出（或被踢出）伺服器：移除其在對應群組的成員關係，之後就不會被同群組的人偷菜。
+// 需要 DISCORD_MEMBERS_INTENT=true 才會收到此事件；失敗只記錄。
+func (b *Bot) onGuildMemberRemove(_ *discordgo.Session, m *discordgo.GuildMemberRemove) {
+	if m.Member == nil || m.User == nil || m.User.Bot {
+		return
+	}
+	guildID, userID := m.GuildID, m.User.ID
+	removed, err := bot.Call(context.Background(), b.Cmds.Runner, "leave_guild_group", func(ctx context.Context) (bool, error) {
+		return b.Svc.LeaveExternalGroup(ctx, bot.Platform, userID, guildID)
+	})
+	if err != nil {
+		b.Log.Warn("移除離開伺服器的群組成員失敗", "type", fmt.Sprintf("%T", err))
+		return
+	}
+	if removed {
+		b.Log.Info("成員離開伺服器，已移出群組", "guild", guildID, "user", userID)
 	}
 }
 

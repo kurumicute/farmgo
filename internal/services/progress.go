@@ -52,7 +52,7 @@ var CodexCategories = []struct{ Key, Emoji, Name string }{
 }
 
 // TitleSources 稱號來源的顯示名稱（成就以外）。
-var TitleSources = map[string]string{"world_boss": "世界 Boss", "shop": "稱號商店", "admin": "管理員"}
+var TitleSources = map[string]string{"world_boss": "世界 Boss", "shop": "稱號商店", "admin": "管理員", "reputation": "農會聲望", "auction": "拍賣"}
 
 // AwayMinSeconds 離開超過 30 分鐘才顯示「你不在的時候」。
 const AwayMinSeconds = 1800
@@ -203,9 +203,10 @@ type WeeklyView struct {
 }
 
 type TitleShopItem struct {
-	Title string
-	Price int
-	Owned bool
+	Title  string
+	Price  int
+	Owned  bool
+	EndsAt *time.Time // 限定稱號的下架時間（nil = 一般稱號或沒有結束日期）
 }
 
 type SpecialShopView struct {
@@ -876,7 +877,7 @@ func awayActivity(ctx context.Context, t *db.Tx, farm *models.Farm, since, now t
 		lines = append(lines, fmt.Sprintf("💰 自動販售、自動釣魚賺了 %d 金", income))
 	}
 	if n := by[rules.EvAidGift].n + by[rules.EvAidWater].n; n > 0 {
-		lines = append(lines, fmt.Sprintf("🤝 收到 %d 次朋友的送禮或幫忙澆水", n))
+		lines = append(lines, fmt.Sprintf("🤝 收到 %d 次朋友的送禮或幫忙拔草", n))
 	}
 	rewards, gold := 0, 0
 	for _, ev := range []rules.EventType{rules.EvQuestReward, rules.EvCompetitionReward, rules.EvRankingReward, rules.EvBossReward} {
@@ -1121,8 +1122,8 @@ func (p *ProgressService) SpecialShop(ctx context.Context, playerID int64) (Spec
 				Limit: o.Limit, Rare: o.Rare, Bought: bought[rules.SeedItemCode(o.CropCode)],
 			})
 		}
-		for _, ts := range specialshop.TitleShop() {
-			v.Titles = append(v.Titles, TitleShopItem{Title: ts.Title, Price: ts.Price, Owned: has[ts.Title]})
+		for _, ts := range specialshop.TitlesOnSale(p.now()) {
+			v.Titles = append(v.Titles, TitleShopItem{Title: ts.Title, Price: ts.Price, Owned: has[ts.Title], EndsAt: ts.EndsAt()})
 		}
 		return v, nil
 	})
@@ -1196,9 +1197,13 @@ func (p *ProgressService) BuyWeeklyDeal(ctx context.Context, playerID int64, cro
 
 // BuyTitle 稱號商店：用金幣買稱號，買到後可以在「🎖️ 稱號」選用。每個稱號只能買一次。
 func (p *ProgressService) BuyTitle(ctx context.Context, playerID int64, title string) (ActionResult, error) {
-	price, ok := specialshop.TitlePrice(title)
+	offer, ok := specialshop.FindTitle(title)
 	if !ok {
 		return ActionResult{}, gameerr.NotFoundf("稱號商店沒有「%s」。", title)
+	}
+	price := offer.Price
+	if !offer.OnSale(p.now()) { // 購買當下再檢查一次販售期間
+		return ActionResult{}, gameerr.Validationf("稱號「%s」目前沒有販售（限定稱號只在販售期間內才買得到）。", title)
 	}
 	return inTx(ctx, p.GameService, func(t *db.Tx) (ActionResult, error) {
 		farm, err := p.lockedFarm(ctx, t, playerID)

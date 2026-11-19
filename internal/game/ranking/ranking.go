@@ -43,6 +43,8 @@ var (
 		"create_farm", "admin_adjust", "quest_reward", "competition_reward", "ranking_reward", "boss_reward",
 		"checkin_reward", "achievement_reward", "rumor_treasure",
 		"aid_gift", "aid_water", // 送禮與互助的獎勵（Go 版新增）不算經營所得
+		// 捐給農會、拍賣出價／退回／得標（Go 版新增，2026-11-19）：純消費，不扣「淨賺金幣」
+		"reputation_donate", "auction_bid", "auction_refund", "auction_win",
 	}
 )
 

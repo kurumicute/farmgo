@@ -80,6 +80,38 @@ func RemoveMember(ctx context.Context, t *db.Tx, groupID, playerID int64) (bool,
 	return tag.RowsAffected() == 1, nil
 }
 
+// ExternalMember 對應 Discord 伺服器的群組中，屬於某外部平台帳號的成員。
+type ExternalMember struct {
+	GroupID  int64
+	GuildID  string
+	PlayerID int64
+	UserID   string
+}
+
+// ExternalMembers 所有「有對應 Discord 伺服器的群組」中，指定外部平台玩家的成員關係（依群組、玩家排序）。
+func ExternalMembers(ctx context.Context, t *db.Tx, platform string) ([]ExternalMember, error) {
+	rows, err := t.Query(ctx, `
+		SELECT m.group_id, g.discord_guild_id, m.player_id, p.external_user_id
+		FROM group_members m
+		JOIN groups g ON g.id = m.group_id
+		JOIN players p ON p.id = m.player_id
+		WHERE g.discord_guild_id IS NOT NULL AND p.external_platform = $1 AND p.external_user_id IS NOT NULL
+		ORDER BY m.group_id, m.player_id`, platform)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ExternalMember
+	for rows.Next() {
+		var m ExternalMember
+		if err := rows.Scan(&m.GroupID, &m.GuildID, &m.PlayerID, &m.UserID); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // MemberFarm 成員的農場摘要（JSON 欄位名稱同 Python dict）。
 type MemberFarm struct {
 	FarmID            int64  `json:"farm_id"`

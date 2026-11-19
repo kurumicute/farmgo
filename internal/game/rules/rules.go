@@ -83,7 +83,12 @@ const (
 	EvSeedLab           EventType = "seed_lab"   // 種子實驗室（Go 版新增，Migration 0039）
 	EvSeedShare         EventType = "seed_share" // 分享特殊種子（Go 版新增，Migration 0039）
 	EvAidGift           EventType = "aid_gift"   // 送作物給同群組的玩家（Go 版新增，Migration 0044）
-	EvAidWater          EventType = "aid_water"  // 幫同群組的玩家澆水（Go 版新增，Migration 0044）
+	EvAidWater          EventType = "aid_water"  // 幫同群組的玩家拔草（Go 版新增，Migration 0044；2026-11-19 前是幫忙澆水，事件代碼沿用）
+	// 金幣回收第二波（Go 版新增，Migration 0046）
+	EvReputationDonate EventType = "reputation_donate" // 捐給農會（聲望）
+	EvAuctionBid       EventType = "auction_bid"       // 拍賣出價：金幣凍結
+	EvAuctionRefund    EventType = "auction_refund"    // 拍賣被超過：凍結的金幣退回
+	EvAuctionWin       EventType = "auction_win"       // 拍賣得標（金額 0，凍結的金幣正式回收）
 )
 
 // EventTypeOrder 事件類型的定義順序（Python EventType 列舉順序）。
@@ -94,6 +99,7 @@ var EventTypeOrder = []EventType{
 	EvTransferGroup, EvGamble, EvExplore, EvBuildMachine, EvExchange, EvMakeSeed, EvFishingBuy, EvFishSell,
 	EvReleaseAnimal, EvBossDonate, EvBossReward, EvRenameFarm, EvCheckinReward, EvAchievementReward, EvRuinsDonate,
 	EvRuinsGuardian, EvRumorTreasure, EvSeedLab, EvSeedShare, EvAidGift, EvAidWater,
+	EvReputationDonate, EvAuctionBid, EvAuctionRefund, EvAuctionWin,
 }
 
 var EventTypeLabels = map[EventType]string{
@@ -143,7 +149,11 @@ var EventTypeLabels = map[EventType]string{
 	EvSeedLab:           "種子實驗室",
 	EvSeedShare:         "分享種子",
 	EvAidGift:           "送禮",
-	EvAidWater:          "幫忙澆水",
+	EvReputationDonate:  "捐給農會",
+	EvAuctionBid:        "拍賣出價",
+	EvAuctionRefund:     "拍賣退回",
+	EvAuctionWin:        "拍賣得標",
+	EvAidWater:          "幫忙拔草",
 }
 
 func SeedItemCode(cropCode string) string    { return "seed_" + cropCode }

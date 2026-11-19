@@ -439,7 +439,7 @@ func TestCraftPriceTable(t *testing.T) {
 	p := e.makePlayer(alice, guildA, "玩家")
 	p.goPage("craft")
 	p.click("售價表")
-	contains(t, p.Text, "加工品售價表", "磨坊", "乳品工坊", "🔒 未建造", "起司", "草莓蛋糕", "綜合果醬", "📈")
+	contains(t, p.Text, "加工品售價表", "磨坊", "乳品工坊", "🔒 未建造", "起司", "草莓蛋糕", "綜合果醬", "售價每 3 天抽一次", "下次換價") // 售價浮動，📈／📉 不固定
 	p.click("回加工")
 	contains(t, p.Text, "設施狀態")
 }

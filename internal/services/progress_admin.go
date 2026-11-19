@@ -20,15 +20,19 @@ import (
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/achievements"
 	"farmgm/internal/game/aid"
+	"farmgm/internal/game/auction"
 	"farmgm/internal/game/autofish"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/checkin"
+	"farmgm/internal/game/cosmetics"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/featurecfg"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/hourglass"
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/pets"
+	"farmgm/internal/game/reputation"
 	"farmgm/internal/game/seedlab"
 	"farmgm/internal/game/specialshop"
 	"farmgm/internal/repositories/catalog"
@@ -41,7 +45,7 @@ import (
 // FeatureKeys 管理網站可調整的規則（顯示順序）。
 var FeatureKeys = []string{checkin.ConfigKey, pets.ConfigKey, specialshop.ConfigKey, achievements.ConfigKey,
 	exploration.ConfigKey, mushroom.ConfigKey, seedlab.ConfigKey, autofish.ConfigKey,
-	hourglass.ConfigKey, aid.ConfigKey}
+	hourglass.ConfigKey, aid.ConfigKey, expansion.ConfigKey, cosmetics.ConfigKey, reputation.ConfigKey, auction.ConfigKey}
 
 // CodexEditable 可在管理網站調整的圖鑑分類（魚類圖鑑來自 farm_fish，不能在這裡改）。
 var CodexEditable = []string{"crop", "animal", "goods", "material"}
@@ -169,6 +173,23 @@ type FeatureSettingsView struct {
 	Exploration  FeatureExplorationMeta   `json:"exploration"`
 	Mushroom     FeatureMushroomMeta      `json:"mushroom"`
 	SeedLab      FeatureSeedLabMeta       `json:"seedlab"`
+	Badges       []FeatureBadgeView       `json:"badges"`    // 名牌（2026-11-19）
+	Cosmetics    []FeatureCosmeticKind    `json:"cosmetics"` // 外觀收藏的各種商品（名牌、主題、帽子、顏色）
+}
+
+// FeatureCosmeticKind 管理網站「外觀收藏」的一種商品。
+type FeatureCosmeticKind struct {
+	Key   string             `json:"key"` // 設定鍵（badge_prices…）
+	Label string             `json:"label"`
+	Items []FeatureBadgeView `json:"items"`
+}
+
+// FeatureBadgeView 管理網站「外觀收藏」的名牌清單。
+type FeatureBadgeView struct {
+	Code  string `json:"code"`
+	Emoji string `json:"emoji"`
+	Name  string `json:"name"`
+	How   string `json:"how"`
 }
 
 type AdminGreenhouse struct {
@@ -328,6 +349,21 @@ func (a *AdminService) FeatureSettings(ctx context.Context) (FeatureSettingsView
 	for _, code := range balance.ItemOrder {
 		it := balance.ItemOf(code)
 		v.Items = append(v.Items, FeatureItemView{code, it.Name, it.Price})
+	}
+	for _, b := range cosmetics.Badges {
+		v.Badges = append(v.Badges, FeatureBadgeView{b.Code, b.Emoji, b.Name, b.How})
+	}
+	for _, kind := range cosmetics.KindOrder {
+		k := FeatureCosmeticKind{Key: kind + "_prices", Label: map[string]string{cosmetics.KindBadge: "📛 名牌",
+			cosmetics.KindTheme: "🖼️ 農場主題", cosmetics.KindHat: "🎩 寵物帽子", cosmetics.KindColor: "🎨 寵物顏色"}[kind]}
+		for _, it := range cosmetics.Items(kind) {
+			how := ""
+			if b, ok := cosmetics.FindBadge(it.Code); ok && kind == cosmetics.KindBadge {
+				how = b.How
+			}
+			k.Items = append(k.Items, FeatureBadgeView{it.Code, it.Emoji, it.Name, how})
+		}
+		v.Cosmetics = append(v.Cosmetics, k)
 	}
 	categories := map[string]string{}
 	for _, c := range achievements.Categories {

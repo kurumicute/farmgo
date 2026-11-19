@@ -606,3 +606,31 @@ func countPlanted(st FarmStatus) int {
 	}
 	return n
 }
+
+// 批量鑑定（2026-11-19）：一次扣多顆種子與多份鑑定費，每顆各自擲基因；種子不足或種子庫放不下時整批不做。
+func TestIdentifySeedsBatch(t *testing.T) {
+	e := setup(t)
+	pid := e.labOwner("阿明", e.group("主群組"))
+	e.give(pid, "seed_wheat", 5)
+	gold := e.gold(pid)
+	before := len(e.lab(pid).Seeds)
+	r := e.ok(e.s.IdentifySeeds(e.ctx, pid, "wheat", 4))
+	if !strings.Contains(r.Message, "4 顆小麥種子") || len(e.lab(pid).Seeds) != before+4 || e.qty(pid, "seed_wheat") != 1 {
+		t.Fatal(r.Message)
+	}
+	fee := e.lab(pid).Identify[0].Fee
+	if e.gold(pid) != gold-4*fee {
+		t.Fatal(gold, e.gold(pid), fee)
+	}
+	_, err := e.s.IdentifySeeds(e.ctx, pid, "wheat", 2)
+	wantKind(t, err, gameerr.InsufficientItems)
+	if len(e.lab(pid).Seeds) != before+4 || e.qty(pid, "seed_wheat") != 1 {
+		t.Fatal("失敗時不能扣任何東西")
+	}
+	_, err = e.s.IdentifySeeds(e.ctx, pid, "wheat", 0)
+	wantKind(t, err, gameerr.Validation)
+	if n := e.scalar("SELECT count(*) FROM lab_records WHERE kind = 'identify'"); n != 4 {
+		t.Fatal(n)
+	}
+	e.invariant()
+}

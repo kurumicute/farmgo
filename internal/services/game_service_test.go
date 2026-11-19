@@ -14,6 +14,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/dbtest"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/repositories/transactions"
@@ -255,19 +256,23 @@ func TestUpgradePriceLadder(t *testing.T) {
 	}
 }
 
+// 2026-11-19 起第 17～32 格是第二塊農田（300,000 起每格 ×1.3），上限 expansion.MaxPlots()。
 func TestUpgradeStopsAtMaxPlots(t *testing.T) {
 	e := setup(t)
 	pid := e.player()
-	e.exec("UPDATE farms SET gold = 1000000")
-	for len(e.status(pid).Plots) < balance.MaxPlots {
-		e.ok(e.s.UpgradeFarm(e.ctx, pid))
+	e.exec("UPDATE farms SET gold = 100000000")
+	sum := 0
+	for len(e.status(pid).Plots) < expansion.MaxPlots() {
+		n := len(e.status(pid).Plots)
+		price, _ := expansion.LandPrice(n)
+		sum += price
+		r := e.ok(e.s.UpgradeFarm(e.ctx, pid))
+		if n == balance.MaxPlots && (price != 300_000 || !strings.Contains(r.Message, "第二塊農田")) {
+			t.Fatal(price, r.Message)
+		}
 	}
 	before := e.status(pid)
-	sum := 0
-	for _, p := range balance.UpgradePrices {
-		sum += p
-	}
-	if before.Gold != 1_000_000-sum || before.Level != 1+len(balance.UpgradePrices) {
+	if before.Gold != 100_000_000-sum || before.Level != 1+expansion.MaxPlots()-balance.InitialPlots || len(before.Plots) != 32 {
 		t.Fatalf("%+v", before)
 	}
 	records := e.scalar("SELECT count(*) FROM game_transactions")
@@ -277,7 +282,7 @@ func TestUpgradeStopsAtMaxPlots(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := e.status(pid)
-	if after.Gold != before.Gold || after.Level != before.Level || len(after.Plots) != balance.MaxPlots ||
+	if after.Gold != before.Gold || after.Level != before.Level || len(after.Plots) != expansion.MaxPlots() ||
 		e.scalar("SELECT count(*) FROM game_transactions") != records {
 		t.Fatal("達上限後仍有變動")
 	}

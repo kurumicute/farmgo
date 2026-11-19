@@ -192,12 +192,16 @@ func (p *Panel) buildStealFarm(_ context.Context, data any) (*ui.Embed, error) {
 	for _, t := range v.Targets {
 		stealable[t.PlotNumber] = t
 	}
-	lines := make([]string, len(v.Plots))
+	var lines []string
 	for i, pl := range v.Plots {
-		lines[i] = plotLine(pl, false)
-		if t, ok := stealable[pl.PlotNumber]; ok {
-			lines[i] += fmt.Sprintf("　🥷 **可偷 ×%d**", t.MaxSteal)
+		if i == balance.MaxPlots {
+			lines = append(lines, secondFieldHeader)
 		}
+		line := plotLine(pl, false)
+		if t, ok := stealable[pl.PlotNumber]; ok {
+			line += fmt.Sprintf("　🥷 **可偷 ×%d**", t.MaxSteal)
+		}
+		lines = append(lines, line)
 	}
 	var status string
 	switch {
@@ -255,6 +259,7 @@ type boardRow struct {
 type boardData struct {
 	rows   []boardRow
 	titles map[int64]string
+	badges map[int64]string // 名牌 emoji（2026-11-19）
 	// 個人排行：自己的名次（前 boardScan 名內才找得到）；mineScanned 表示有查過自己的名次
 	mine        *boardRow
 	mineScanned bool
@@ -331,8 +336,8 @@ func (p *Panel) loadBoard(ctx context.Context) (any, error) {
 			ids = append(ids, *r.playerID)
 		}
 	}
-	titles, err := svc.PlayerTitles(ctx, ids)
-	d.titles = titles
+	tags, err := p.loadNameTags(ctx, ids)
+	d.titles, d.badges = tags.titles, tags.badges
 	return d, err
 }
 
@@ -368,6 +373,9 @@ func (p *Panel) buildBoard(_ context.Context, data any) (*ui.Embed, error) {
 		if r.playerID != nil {
 			if title := d.titles[*r.playerID]; title != "" {
 				name = fmt.Sprintf("%s〔%s〕", name, title)
+			}
+			if badge := d.badges[*r.playerID]; badge != "" {
+				name = badge + " " + name
 			}
 		}
 		extra := ""
@@ -764,4 +772,14 @@ func (p *Panel) buildGroup(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	p.navBack(4)
 	return e, nil
+}
+
+// nameTags 排行榜名字旁的標記：稱號（名字後面〔〕）與名牌（名字前面的 emoji，2026-11-19）。
+type nameTags struct {
+	titles, badges map[int64]string
+}
+
+func (p *Panel) loadNameTags(ctx context.Context, ids []int64) (nameTags, error) {
+	titles, badges, err := p.svc().PlayerNameTags(ctx, ids)
+	return nameTags{titles, badges}, err
 }

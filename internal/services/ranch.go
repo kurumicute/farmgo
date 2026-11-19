@@ -16,6 +16,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/craftprice"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/genetics"
@@ -232,9 +233,12 @@ type RecipeView struct {
 	InputOrder     []string       // Inputs 的顯示順序（名稱）
 	OutputName     string
 	OutputQuantity int
-	Seconds        int // 每份的加工秒數（已依設施等級縮短）
-	SellPrice      *int
-	CanMake        *int // 現有原料最多能做幾份（單張訂單上限內）；沒有指定玩家時為 nil
+	Seconds        int  // 每份的加工秒數（已依設施等級縮短）
+	SellPrice      *int // 這一期的售價（加工品每 3 天抽一次，2026-11-19）
+	// PriceLow／PriceHigh 浮動售價的範圍（總成本 -50%～+100%）；不浮動時兩者相同
+	PriceLow, PriceHigh int
+	PriceUntil          time.Time // 這一期售價的有效期限（下次換價時間）
+	CanMake             *int      // 現有原料最多能做幾份（單張訂單上限內）；沒有指定玩家時為 nil
 	// InputValue 每份原料直接賣掉的價值（普通品質、目前季節的單價；2026-11-18 確認畫面顯示損益）
 	InputValue int
 }
@@ -289,8 +293,11 @@ func (r *RanchService) goods(ctx context.Context, t *db.Tx, key string) (*goodsI
 	code := findCode(balance.GoodOrder, func(c string) string { return balance.Goods[c].Name },
 		func(c string) []string { return balance.Goods[c].Aliases }, key)
 	if code != "" {
-		g := balance.Goods[code]
-		return &goodsInfo{code, g.Name, g.SellPrice}, nil
+		prices, err := goodPrices(ctx, t, r.now()) // 加工品是這一期的浮動售價
+		if err != nil {
+			return nil, err
+		}
+		return &goodsInfo{code, balance.Goods[code].Name, prices[code]}, nil
 	}
 	a, err := animals.FindProduct(ctx, t, key)
 	if err != nil || a == nil {
@@ -809,12 +816,16 @@ func (r *RanchService) ReleaseAnimal(ctx context.Context, playerID int64, animal
 func (r *RanchService) Recipes(ctx context.Context, playerID *int64) ([]RecipeView, error) {
 	counts, have, levels := map[string]int{}, map[string]int{}, map[string]int{}
 	var prices map[string]int
+	var quotes map[string]craftprice.Quote
 	names, err := inTx(ctx, r.GameService, func(t *db.Tx) (map[string]string, error) {
 		names, err := catalog.ItemNames(ctx, t)
 		if err != nil {
 			return nil, err
 		}
-		if prices, err = r.unitSellPrices(ctx, t); err != nil || playerID == nil {
+		if prices, err = r.unitSellPrices(ctx, t); err != nil {
+			return nil, err
+		}
+		if quotes, err = craftQuotes(ctx, t, r.now()); err != nil || playerID == nil {
 			return names, err
 		}
 		farm, err := r.farmOf(ctx, t, *playerID)
@@ -844,6 +855,7 @@ func (r *RanchService) Recipes(ctx context.Context, playerID *int64) ([]RecipeVi
 	if err != nil {
 		return nil, err
 	}
+	until := craftprice.PeriodEnd(r.now())
 	rows := make([]RecipeView, 0, len(balance.RecipeOrder))
 	for _, code := range balance.RecipeOrder {
 		rc := balance.Recipes[code]
@@ -856,9 +868,12 @@ func (r *RanchService) Recipes(ctx context.Context, playerID *int64) ([]RecipeVi
 			v.InputOrder = append(v.InputOrder, n)
 			v.InputValue += prices[item] * rc.Inputs[item]
 		}
-		if g, ok := balance.Goods[rc.Output]; ok {
-			price := g.SellPrice
+		if _, ok := balance.Goods[rc.Output]; ok {
+			price := prices[rc.Output] // 這一期的浮動售價
 			v.SellPrice = &price
+			if q, ok := quotes[rc.Output]; ok {
+				v.PriceLow, v.PriceHigh, v.PriceUntil = q.Low, q.High, until
+			}
 		}
 		if playerID != nil {
 			can := balance.CraftMaxQuantity
@@ -924,8 +939,12 @@ func (r *RanchService) unitSellPrices(ctx context.Context, t *db.Tx) (map[string
 	for _, a := range animalList {
 		out[a.ProductCode] = a.ProductPrice
 	}
-	for code, g := range balance.Goods {
-		out[code] = g.SellPrice
+	goods, err := goodPrices(ctx, t, now)
+	if err != nil {
+		return nil, err
+	}
+	for code, p := range goods {
+		out[code] = p
 	}
 	return out, nil
 }

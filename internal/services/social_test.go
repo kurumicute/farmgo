@@ -165,6 +165,42 @@ func TestExternalPlayerAndFarm(t *testing.T) {
 	}
 }
 
+func TestLeaveExternalGroup(t *testing.T) {
+	// 玩家離開 Discord 伺服器後不再是該群組成員（不會被偷），農場保留；再次使用指令會重新加入
+	e := setup(t)
+	fs := must[FarmStatus](t)(e.so.StartExternalFarm(e.ctx, "discord", "1234567890", "小明", "42", "伺服器", ""))
+	guild := "77"
+	ec := must[ExternalContext](t)(e.so.ExternalContext(e.ctx, "discord", "1234567890", &guild, "別人的伺服器"))
+	if !must[bool](t)(e.so.LeaveExternalGroup(e.ctx, "discord", "1234567890", guild)) {
+		t.Fatal("沒有移除")
+	}
+	if must[bool](t)(e.so.IsMember(e.ctx, *ec.GroupID, fs.PlayerID)) {
+		t.Fatal("仍是成員")
+	}
+	if !must[bool](t)(e.so.IsMember(e.ctx, *fs.HomeGroupID, fs.PlayerID)) {
+		t.Fatal("其他群組也被移除")
+	}
+	if must[bool](t)(e.so.LeaveExternalGroup(e.ctx, "discord", "1234567890", guild)) ||
+		must[bool](t)(e.so.LeaveExternalGroup(e.ctx, "discord", "555", guild)) ||
+		must[bool](t)(e.so.LeaveExternalGroup(e.ctx, "discord", "1234567890", "999")) {
+		t.Fatal("不存在的成員關係不應回傳 true")
+	}
+	_, err := e.so.LeaveExternalGroup(e.ctx, "discord", "1234567890", "abc")
+	wantKind(t, err, gameerr.Validation)
+	must[ExternalContext](t)(e.so.ExternalContext(e.ctx, "discord", "1234567890", &guild, ""))
+	if !must[bool](t)(e.so.IsMember(e.ctx, *ec.GroupID, fs.PlayerID)) {
+		t.Fatal("沒有重新加入")
+	}
+	// 定期比對用的清單：只列出有對應 Discord 伺服器的群組與 Discord 玩家
+	ms := must[[]groups.ExternalMember](t)(e.so.ExternalGuildMembers(e.ctx, "discord"))
+	if len(ms) != 2 || ms[0].UserID != "1234567890" || ms[0].GuildID != "42" || ms[1].GuildID != guild {
+		t.Fatalf("%+v", ms)
+	}
+	if len(must[[]groups.ExternalMember](t)(e.so.ExternalGuildMembers(e.ctx, "line"))) != 0 {
+		t.Fatal("不應列出其他平台")
+	}
+}
+
 // ---------- 偷菜目標 ----------
 
 func TestStealTargetsOnlyValidPlotsInCurrentGroup(t *testing.T) {

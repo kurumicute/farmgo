@@ -338,21 +338,47 @@ func (p *Panel) buildLab(_ context.Context, data any) (*ui.Embed, error) {
 	p.navFirstPage("培育紀錄", "lab_records", &p.labRecordPage, btn{emoji: "📜", row: 1})
 	p.labCodexButtons(1)
 
+	// 2026-11-19 批量鑑定：選了作物後跳出數量對話框，預填這次最多能鑑定的顆數（種子數、種子庫空位、金幣、單次上限取最小）
 	var options []option
+	room := v.Capacity - len(v.Seeds)
+	limits := map[string]int{}
 	for _, o := range v.Identify {
 		kind := "一般作物：基因 1–2 級"
 		if o.Rare {
 			kind = "稀有作物：基因 2–3 級"
 		}
-		options = append(options, option{fmt.Sprintf("%s（持有 %d，鑑定費 %s 金）", o.Name, o.Have, money(o.Fee)), o.CropCode,
-			kind, cropEmoji(o.CropCode)})
+		most := min(o.Have, room, services.IdentifyMax)
+		if o.Fee > 0 {
+			most = min(most, v.Gold/o.Fee)
+		}
+		limits[o.CropCode] = most
+		options = append(options, option{fmt.Sprintf("%s（持有 %d，鑑定費 %s 金／顆）", o.Name, o.Have, money(o.Fee)), o.CropCode,
+			fmt.Sprintf("%s｜這次最多 %d 顆", kind, most), cropEmoji(o.CropCode)})
 	}
-	if len(v.Seeds) < v.Capacity {
-		p.selectMenu("🔬 鑑定一般種子（背包的種子 → 特殊種子）…", options, func(ctx context.Context, it ui.Interaction, code string) error {
-			p.act(ctx, it, p.call("identify_seed", func(ctx context.Context) (services.ActionResult, error) {
-				return p.svc().IdentifySeed(ctx, p.playerID, code)
-			}), actOpts{noProgress: true})
-			return nil
+	if room > 0 {
+		p.selectMenu("🔬 鑑定一般種子（背包的種子 → 特殊種子，可以一次鑑定多顆）…", options, func(ctx context.Context, it ui.Interaction, code string) error {
+			most := limits[code]
+			if most <= 1 { // 只能鑑定 1 顆（或金幣不足）時直接鑑定，錯誤原因由服務層說明
+				p.act(ctx, it, p.call("identify_seed", func(ctx context.Context) (services.ActionResult, error) {
+					return p.svc().IdentifySeed(ctx, p.playerID, code)
+				}), actOpts{noProgress: true})
+				return nil
+			}
+			return it.SendModal(ctx, &ui.Modal{
+				Title: "鑑定種子",
+				Inputs: []ui.TextInput{{Label: fmt.Sprintf("鑑定幾顆？（1–%d）", most), Default: strconv.Itoa(most),
+					MaxLength: 3, Required: true}},
+				OnSubmit: func(ctx context.Context, mit ui.Interaction, values []string) error {
+					n, ok := parseDigits(strings.TrimSpace(first(values)))
+					if !ok || n < 1 || n > most {
+						return mit.SendMessage(ctx, ui.Message{Content: ptr(fmt.Sprintf("請輸入 1–%d 的整數。", most)), Ephemeral: true})
+					}
+					p.act(ctx, mit, p.call("identify_seed", func(ctx context.Context) (services.ActionResult, error) {
+						return p.svc().IdentifySeeds(ctx, p.playerID, code, n)
+					}), actOpts{noProgress: true})
+					return nil
+				},
+			})
 		}, 2, "")
 	}
 	p.nav("實驗室說明", "lab_help", btn{emoji: "📖", row: 3})

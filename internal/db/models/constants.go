@@ -63,6 +63,11 @@ var EventTypes = []string{
 	// 0044 送禮與互助（Go 版新增）
 	"aid_gift",
 	"aid_water",
+	// 0046 金幣回收第二波（Go 版新增）
+	"reputation_donate",
+	"auction_bid",
+	"auction_refund",
+	"auction_win",
 }
 
 // QualityCodes 作物品質代碼（inventory_items／farm_plots 等的 quality CHECK）。

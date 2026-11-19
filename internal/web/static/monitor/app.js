@@ -123,7 +123,8 @@ if (typeof document !== "undefined") {
     boss_donate: "世界 Boss 捐獻", boss_reward: "世界 Boss 獎勵", rename_farm: "農場改名",
     checkin_reward: "每日簽到", achievement_reward: "成就獎勵", ruins_donate: "修復遺跡",
     ruins_guardian: "攻擊遺跡守護者", rumor_treasure: "傳聞寶藏",
-    seed_lab: "種子實驗室", seed_share: "分享種子", aid_gift: "送禮", aid_water: "幫忙澆水",
+    seed_lab: "種子實驗室", seed_share: "分享種子", aid_gift: "送禮", aid_water: "幫忙拔草",
+    reputation_donate: "捐給農會", auction_bid: "拍賣出價", auction_refund: "拍賣退回", auction_win: "拍賣得標",
   };
 
   const state = {
@@ -4333,30 +4334,38 @@ if (typeof document !== "undefined") {
     let titles = c.titles.map((t) => ({ ...t }));
     let titleEditors = [];
     const titleBox = el("div");
-    const readTitles = () => titleEditors.map(({ name, price }, i) => {
+    // 2026-11-19：每個稱號可以設定販售期間（開始／結束日期，含當天；留空 = 一般稱號）
+    const dateInput = (v) => { const x = el("input"); x.type = "date"; x.value = v || ""; return x; };
+    const rawTitles = () => titleEditors.map((x) => ({ title: x.name.value, price: Number(x.price.value) || 1, start: x.start.value, end: x.end.value }));
+    const readTitles = () => titleEditors.map(({ name, price, start, end }, i) => {
       const p = Number(price.value);
       if (!name.value.trim()) throw new Error(`第 ${i + 1} 個商店稱號不可空白。`);
       if (!Number.isInteger(p) || p < 1) throw new Error(`稱號「${name.value.trim()}」的價格必須是 1 以上的整數。`);
-      return { title: name.value.trim(), price: p };
+      if (start.value && end.value && end.value < start.value) throw new Error(`稱號「${name.value.trim()}」的結束日期不能早於開始日期。`);
+      const out = { title: name.value.trim(), price: p };
+      if (start.value) out.start = start.value;
+      if (end.value) out.end = end.value;
+      return out;
     });
     const renderTitles = () => {
-      titleEditors = titles.map((t) => ({ name: textInput(t.title, lim.title_max_len), price: numInput(null, t.price, 1, 1000000000) }));
+      titleEditors = titles.map((t) => ({ name: textInput(t.title, lim.title_max_len), price: numInput(null, t.price, 1, 1000000000),
+        start: dateInput(t.start), end: dateInput(t.end) }));
       titleEditors.forEach((t) => t.price.classList.add("wide-num"));
       titleBox.replaceChildren(el("div", { className: "table-wrap" }, [el("table", {}, [
-        el("thead", {}, [el("tr", {}, ["稱號", "價格（金幣）", ""].map((t) => el("th", { text: t })))]),
+        el("thead", {}, [el("tr", {}, ["稱號", "價格（金幣）", "開始販售", "結束販售（含當天）", ""].map((t) => el("th", { text: t })))]),
         el("tbody", {}, titleEditors.length ? titleEditors.map((t, i) => el("tr", {}, [
-          el("td", {}, [t.name]), el("td", {}, [t.price]),
+          el("td", {}, [t.name]), el("td", {}, [t.price]), el("td", {}, [t.start]), el("td", {}, [t.end]),
           actionsTd([smallButton("移除", () => {
-            try { titles = readTitles(); } catch (err) { /* 未填完的列直接移除 */ titles = titleEditors.map((x) => ({ title: x.name.value, price: Number(x.price.value) || 1 })); }
+            try { titles = readTitles(); } catch (err) { /* 未填完的列直接移除 */ titles = rawTitles(); }
             titles.splice(i, 1);
             renderTitles();
           }, "danger")]),
-        ])) : [emptyRow("稱號商店沒有商品", 3)]),
+        ])) : [emptyRow("稱號商店沒有商品", 5)]),
       ])]));
     };
     renderTitles();
     const addTitle = smallButton("新增稱號", () => {
-      titles = titleEditors.map((x) => ({ title: x.name.value, price: Number(x.price.value) || 1 }));
+      titles = rawTitles();
       titles.push({ title: "", price: 100000 });
       renderTitles();
     });
@@ -4377,7 +4386,7 @@ if (typeof document !== "undefined") {
       el("h4", { text: "🎖️ 稱號商店" }),
       titleBox,
       el("div", { className: "controls" }, [addTitle]),
-      el("p", { className: "muted small", text: "商店稱號不可和成就稱號重複。改名或移除只影響之後的購買，已買到的稱號會保留在玩家的稱號清單。" }),
+      el("p", { className: "muted small", text: "商店稱號不可和成就稱號重複。改名或移除只影響之後的購買，已買到的稱號會保留在玩家的稱號清單。有填開始或結束日期的是限定稱號（台灣日期），只在期間內出現在商店，例如每月限定「2026 冬至農夫」。" }),
     ]);
     return featureCard("special_shop", "商店第三個分頁「特賣與升級」。降低溫室最高等級時，已超過的玩家以新的最高等級計算", body, () => {
       const gh = parseIntList(ghPrices.value);
@@ -4387,7 +4396,8 @@ if (typeof document !== "undefined") {
         normal_discount_pct: Number(discount.value), normal_limit: Number(normalLimit.value),
         rare_price_pct: Number(rarePct.value), rare_limit: Number(rareLimit.value), titles: readTitles(),
       };
-      const titleList = (ts) => ts.map((t) => `${t.title} ${fmtNum(t.price)}`).join("、") || "（無）";
+      const period = (t) => (t.start || t.end ? `（${t.start || "…"}～${t.end || "…"}）` : "");
+      const titleList = (ts) => ts.map((t) => `${t.title} ${fmtNum(t.price)}${period(t)}`).join("、") || "（無）";
       return [value, [
         diffRow("溫室升級價格", listText(c.greenhouse_prices), listText(value.greenhouse_prices)),
         diffRow("溫室每級加速", `${c.greenhouse_pct_per_level}%`, `${value.greenhouse_pct_per_level}%`),
@@ -4966,15 +4976,15 @@ if (typeof document !== "undefined") {
     ["gift_send_per_day", "每天最多送出幾份禮物", 0, 20], ["gift_receive_per_day", "每天最多收到幾份禮物", 0, 20],
     ["gift_max_quantity", "一份最多幾個作物", 1, 100], ["gift_max_value", "一份的價值上限（金幣）", 1, 1000000],
     ["gift_reward_gold", "送禮雙方各得金幣", 0, 10000],
-    ["water_send_per_day", "每天最多幫幾位玩家澆水", 0, 20], ["water_receive_per_day", "每天最多被幾位玩家幫忙", 0, 20],
-    ["water_reward_gold", "幫忙澆水雙方各得金幣", 0, 10000],
+    ["water_send_per_day", "每天最多幫幾位玩家拔草", 0, 20],
+    ["water_reward_gold", "幫忙拔草雙方各得金幣", 0, 10000],
   ];
   function aidCard() {
     const c = featureKey("aid").current;
     const inputs = AID_FIELDS.map(([key, , low, high]) => numInput(null, c[key], low, high));
     const body = el("div", {}, [
       el("div", { className: "controls" }, AID_FIELDS.map(([, label], i) => el("label", { className: "inline", text: label + " " }, [inputs[i]]))),
-      el("p", { className: "muted small", text: "同群組的玩家互送作物（只限普通品質、沒有突變）或幫忙澆水，雙方各拿金幣獎勵。等級、農場天數與每日上限用來防止小號洗錢；同一對玩家同一種互助每天只能一次。獎勵不算進「淨賺金幣」排行。" }),
+      el("p", { className: "muted small", text: "同群組的玩家互送作物（只限普通品質、沒有突變）或幫忙拔草（對方生長中作物的剩餘生長時間 -10%，每人每天只能被拔草一次），雙方各拿金幣獎勵。等級、農場天數與每日上限用來防止小號洗錢；同一對玩家同一種互助每天只能一次。獎勵不算進「淨賺金幣」排行。" }),
     ]);
     return featureCard("aid", "🤝 送禮與互助", body, () => {
       const value = {};
@@ -4983,9 +4993,114 @@ if (typeof document !== "undefined") {
     });
   }
 
+  // ----- 改名與擴充（Go 版新增，2026-11-19，金幣回收第二波）-----
+  const EXPANSION_FIELDS = [
+    ["rename_first_free", "第 1 次改名免費（1 = 是、0 = 否）", 0, 1],
+    ["rename_base", "改名第 2 次的價格（之後每次 ×2）", 1, 100000000], ["rename_max", "改名價格上限", 1, 1000000000],
+    ["rename_decay_days", "幾天沒改名降一級", 1, 365],
+    ["land_max", "土地上限（16–32 格）", 16, 32], ["land_base", "第 17 格的價格", 1, 1000000000],
+    ["land_growth_pct", "第 17 格以後每格倍率（%，130 = ×1.3）", 100, 1000],
+    ["warehouse_max", "倉庫上限（300 以上，每 50 格一級）", 300, 5000],
+    ["warehouse_late_base", "倉庫 300 格後第 1 次的價格", 1, 1000000000],
+    ["warehouse_late_growth_pct", "倉庫後段每次倍率（%，160 = ×1.6）", 100, 1000],
+    ["material_bag_levels", "素材背包可擴充幾級（0–10）", 0, 10], ["material_bag_step", "素材背包每級 +幾格", 1, 10000],
+    ["material_bag_base", "素材背包第 1 級的價格", 1, 1000000000],
+    ["material_bag_growth_pct", "素材背包每級倍率（%，180 = ×1.8）", 100, 1000],
+  ];
+  function expansionCard() {
+    const c = featureKey("expansion").current;
+    const inputs = EXPANSION_FIELDS.map(([key, , low, high]) => numInput(null, c[key], low, high));
+    const body = el("div", {}, [
+      el("div", { className: "controls" }, EXPANSION_FIELDS.map(([, label], i) => el("label", { className: "inline", text: label + " " }, [inputs[i]]))),
+      el("p", { className: "muted small", text: "改名費逐次加價：次數從交易紀錄計算，久沒改名每過設定的天數降一級（最低回到第 2 次的價格）。土地前 16 格與倉庫前 300 格的價格不變；第 17 格以上是第二塊農田，畫在農田圖下方。降低上限不會收回玩家已經擁有的土地或倉庫格數。" }),
+    ]);
+    return featureCard("expansion", "✏️ 改名與擴充：改名費、土地第 17 格以上、倉庫後段、素材背包", body, () => {
+      const value = {};
+      EXPANSION_FIELDS.forEach(([key, label, low, high], i) => { value[key] = intIn(inputs[i], label, low, high); });
+      if (value.rename_max < value.rename_base) throw new Error("改名價格上限不能低於第 2 次的價格。");
+      return [value, EXPANSION_FIELDS.map(([key, label]) => diffRow(label, fmtNum(c[key]), fmtNum(value[key]))).filter(Boolean)];
+    });
+  }
+
+  // ----- 外觀收藏：名牌、主題、寵物帽子與顏色的價格（Go 版新增，2026-11-19）-----
+  function cosmeticsCard() {
+    const c = featureKey("cosmetics").current;
+    const kinds = features.data.cosmetics || [];
+    const eds = kinds.map((k) => ({ k, inputs: k.items.map((it) => {
+      const x = numInput(null, (c[k.key] || {})[it.code] ?? 0, 0, 1000000000);
+      x.classList.add("wide-num");
+      return x;
+    }) }));
+    const body = el("div", {}, [
+      ...eds.map(({ k, inputs }) => [el("h4", { text: k.label }),
+        miniTable(["商品", "價格（金幣，0 = 不在商店販售）", "其他取得方式"], k.items.map((it, i) => el("tr", {}, [
+          td(`${it.emoji} ${it.name}（${it.code}）`), el("td", {}, [inputs[i]]), td(it.how || "—"),
+        ])), "沒有商品")]).flat(),
+      el("p", { className: "muted small", text: "只改外觀、沒有加成。名牌顯示在排行榜、日報與世界 Boss 排行的名字前面；主題換掉農田外圍；帽子與顏色所有寵物共用。價格設為 0 表示不在商店販售（名牌可以從農會聲望或每週拍賣取得）；已經擁有的玩家不受影響。" }),
+    ]);
+    return featureCard("cosmetics", "🎨 外觀收藏：名牌、農場主題、寵物帽子與顏色的價格", body, () => {
+      const value = {};
+      const diff = [];
+      for (const { k, inputs } of eds) {
+        value[k.key] = {};
+        k.items.forEach((it, i) => {
+          value[k.key][it.code] = intIn(inputs[i], `${it.name}的價格`, 0, 1000000000);
+          diff.push(diffRow(`${it.emoji} ${it.name}`, fmtNum((c[k.key] || {})[it.code] ?? 0), fmtNum(value[k.key][it.code])));
+        });
+      }
+      return [value, diff.filter(Boolean)];
+    });
+  }
+
+  // ----- 農場聲望（農會）（Go 版新增，2026-11-19）-----
+  const REPUTATION_FIELDS = [
+    ["min_donation", "一次最少捐多少", 1, 1000000000], ["daily_cap", "每天最多捐多少（0 = 不限）", 0, 1000000000000],
+    ["level_base", "Lv.1 需要的聲望", 1, 1000000000], ["level_exp_pct", "等級指數（%，150 = 1.5 次方）", 100, 300],
+  ];
+  function reputationCard() {
+    const c = featureKey("reputation").current;
+    const inputs = REPUTATION_FIELDS.map(([key, , low, high]) => numInput(null, c[key], low, high));
+    const body = el("div", {}, [
+      el("div", { className: "controls" }, REPUTATION_FIELDS.map(([, label], i) => el("label", { className: "inline", text: label + " " }, [inputs[i]]))),
+      el("p", { className: "muted small", text: "玩家在「🏛️ 農會」捐金幣，1 金 = 1 聲望點，金幣直接消失，不算進「淨賺金幣」排行。第 N 級需要的累積聲望 = Lv.1 需要的聲望 × N^指數。等級獎勵（Lv.5、15、20、30、50、75 稱號；Lv.10、25、40 名牌）固定。調整等級公式會讓所有玩家的等級重新計算，已拿到的獎勵保留。" }),
+    ]);
+    return featureCard("reputation", "🏛️ 農場聲望（農會）", body, () => {
+      const value = {};
+      REPUTATION_FIELDS.forEach(([key, label, low, high], i) => { value[key] = intIn(inputs[i], label, low, high); });
+      return [value, REPUTATION_FIELDS.map(([key, label]) => diffRow(label, fmtNum(c[key]), fmtNum(value[key]))).filter(Boolean)];
+    });
+  }
+
+  // ----- 每週拍賣（Go 版新增，2026-11-19）-----
+  const AUCTION_FIELDS = [
+    ["start_price", "起標價", 1, 1000000000], ["min_increment_pct", "每次最少加價（%）", 1, 100],
+    ["extend_minutes", "結標前出價延長（分鐘）", 1, 60], ["end_hour", "週日幾點結標（0–23）", 0, 23],
+  ];
+  function auctionCard() {
+    const c = featureKey("auction").current;
+    const inputs = AUCTION_FIELDS.map(([key, , low, high]) => numInput(null, c[key], low, high));
+    const items = textInput((c.items || []).join(", "), 2000, "例如 decor:golden_windmill, badge:dragon, title:拍賣之王");
+    items.classList.add("reason-input");
+    const body = el("div", {}, [
+      el("div", { className: "controls" }, AUCTION_FIELDS.map(([, label], i) => el("label", { className: "inline", text: label + " " }, [inputs[i]]))),
+      el("label", { className: "inline", text: "拍賣品輪替順序（逗號分隔） " }, [items]),
+      el("p", { className: "muted small", text: "每週一 00:00 開一場，依週次輪流拍上面的商品；流標時下週換下一件。可以拍的商品：decor:golden_windmill／crystal_fountain／rainbow_arch／dragon_statue（拍賣限定裝飾）、badge:名牌代碼（例如 dragon、unicorn）、title:稱號（最多 20 字，不可和其他稱號重複）。起標價與加價比例在開拍時記下，改設定只影響之後開的拍賣。" }),
+    ]);
+    return featureCard("auction", "🔨 每週拍賣", body, () => {
+      const value = {};
+      AUCTION_FIELDS.forEach(([key, label, low, high], i) => { value[key] = intIn(inputs[i], label, low, high); });
+      value.items = items.value.split(/[,，]/).map((x) => x.trim()).filter(Boolean);
+      if (!value.items.length) throw new Error("拍賣品至少要有 1 件。");
+      return [value, [...AUCTION_FIELDS.map(([key, label]) => diffRow(label, fmtNum(c[key]), fmtNum(value[key]))),
+        diffRow("拍賣品", (c.items || []).join("、"), value.items.join("、"))].filter(Boolean)];
+    });
+  }
+
   const FEATURE_CARDS = [["checkin", checkinCard], ["pets", petsCard], ["special_shop", specialShopCard],
     ["achievements", achievementsCard], ["exploration", explorationCard], ["mushroom", mushroomCard],
-    ["seedlab", seedlabCard], ["autofish", autofishCard], ["hourglass", hourglassCard], ["aid", aidCard]];
+    ["seedlab", seedlabCard], ["autofish", autofishCard], ["hourglass", hourglassCard], ["aid", aidCard],
+    ["expansion", expansionCard], ["cosmetics", cosmeticsCard], ["reputation", reputationCard],
+    ["auction", auctionCard]];
 
   function renderFeatureSettings() {
     $("fs-body").replaceChildren(...FEATURE_CARDS.map(([, build]) => build()));

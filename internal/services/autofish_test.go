@@ -214,8 +214,10 @@ func TestUpgradeFishBasket(t *testing.T) {
 	e.setGoldRecorded(pid, 29_999)
 	_, err := e.s.UpgradeFishBasket(e.ctx, pid)
 	wantKind(t, err, gameerr.InsufficientGold)
-	e.setGoldRecorded(pid, 1_000_000)
-	for i, want := range []struct{ capacity, price int }{{40, 30_000}, {60, 50_000}, {80, 100_000}, {100, 200_000}} {
+	e.setGoldRecorded(pid, 30_000_000)
+	// Lv.5～10 是 2026-11-19 新增的後段（每級 +20 格、價格 ×2）
+	for i, want := range []struct{ capacity, price int }{{40, 30_000}, {60, 50_000}, {80, 100_000}, {100, 200_000},
+		{120, 400_000}, {140, 800_000}, {160, 1_600_000}, {180, 3_200_000}, {200, 6_400_000}, {220, 12_800_000}} {
 		b := must[FishBasket](t)(e.f.FishBasket(e.ctx, pid))
 		if b.NextCapacity != want.capacity || b.NextPrice != want.price {
 			t.Fatalf("第 %d 次：%+v", i+1, b)
@@ -233,7 +235,7 @@ func TestUpgradeFishBasket(t *testing.T) {
 		t.Fatalf("%+v", b)
 	}
 	_, err = e.s.UpgradeFishBasket(e.ctx, pid)
-	wantMsg(t, err, gameerr.Validation, "已經是最大的 100 格")
+	wantMsg(t, err, gameerr.Validation, "已經是最大的 220 格")
 	if c := autofish.BasketCapacity(4, 20); c != 100 {
 		t.Fatal(c)
 	}

@@ -36,7 +36,7 @@ func WarehouseExpansionPrice(capacity int) (price int, ok bool) {
 // 擴建土地：每次 +1 格，價格依目前格數遞增（第 5 格 500 … 第 16 格 180,000）
 const (
 	UpgradePlotsAdded = 1
-	MaxPlots          = 16 // 每座農場最多土地數（Discord 農田圖片為 4×4）
+	MaxPlots          = 16 // 第一塊農田的格數（Discord 農田圖片為 4×4）；第 17 格以上見 expansion.MaxPlots()
 )
 
 var UpgradePrices = []int{500, 1_000, 2_000, 4_000, 8_000, 20_000, 40_000, 80_000, 120_000, 160_000, 170_000, 180_000}
@@ -56,7 +56,7 @@ const (
 
 	PlayerNameMaxLen = 32
 	FarmNameMaxLen   = 40
-	RenameFarmCost   = 300 // 更改農場名稱每次的金幣費用
+	// 改名費改為逐次加價（2026-11-19），見 game/expansion
 )
 
 // CropSpec 初始作物設定。
@@ -607,7 +607,7 @@ const (
 // ---------- 管理員調整 ----------
 
 const (
-	AdminMaxPlots        = MaxPlots // 管理員新增土地也不能超過上限
+	AdminMaxPlots        = MaxPlots * 2 // 管理員一次新增的上限；總格數另外受 expansion.MaxPlots() 限制
 	AdminMaxItemQuantity = 100_000
 	AdminMaxGold         = 1_000_000_000_000
 	AdminMaxLevel        = 100 // 只影響品質加成，不會自動增減土地

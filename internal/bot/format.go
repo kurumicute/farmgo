@@ -6,11 +6,13 @@ package bot
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"farmgm/internal/bot/ui"
+	"farmgm/internal/game/balance"
 	"farmgm/internal/game/news"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/numfmt"
@@ -94,7 +96,25 @@ func lookupOr(m map[string]string, key, fallback string) string {
 	return fallback
 }
 
+// secondFieldHeader 第 17 格以上（第二塊農田）前面的分隔行。
+const secondFieldHeader = "━━ 🌾 第二塊農田 ━━"
+
+// plotLines 每格一行；第 17 格以上前面加「第二塊農田」分隔行。
+func plotLines(plots []services.PlotInfo, owner bool) []string {
+	lines := make([]string, 0, len(plots)+1)
+	for i, pl := range plots {
+		if i == balance.MaxPlots {
+			lines = append(lines, secondFieldHeader)
+		}
+		lines = append(lines, plotLine(pl, owner))
+	}
+	return lines
+}
+
 func money(n int) string { return numfmt.Comma(n) }
+
+// pctFactor 百分比倍率的文字（130 → "1.3"）。
+func pctFactor(pct int) string { return strconv.FormatFloat(float64(pct)/100, 'f', -1, 64) }
 
 // linesOr 把多行文字放進 Embed 欄位（上限 1024 字），超過時截斷並註明；沒有內容時回傳 empty。
 func linesOr(lines []string, empty string, limit int) string {

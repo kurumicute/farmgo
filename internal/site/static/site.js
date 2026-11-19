@@ -123,18 +123,20 @@
     const s = g.start;
     setText("g-start", `${num.format(s.gold)} 金幣、${s.plots} 格農田、倉庫 ${s.warehouse} 格`);
     if (s.rename_cost != null) {
-      setText("g-rename", `${num.format(s.rename_cost)} 金幣`);
-      setText("g-rename-quick", `${num.format(s.rename_cost)} 金幣`);
+      setText("g-rename", renameText(s));
+      setText("g-rename-quick", renameText(s));
     }
     setText("g-wither", duration(s.wither_minutes * 60));
-    setText("g-upgrade", `每次農田 +${s.upgrade_plots} 格：${s.upgrade_prices.map((p) => num.format(p)).join(" → ")} 金幣（最多 ${s.max_plots} 格）`);
+    const landLate = s.max_plots > 16 && s.land_base ? ` → 第 17 格起是第二塊農田：${num.format(s.land_base)} 起每格 ×${s.land_growth_pct / 100}` : "";
+    setText("g-upgrade", `每次農田 +${s.upgrade_plots} 格：${s.upgrade_prices.map((p) => num.format(p)).join(" → ")} 金幣${landLate}（最多 ${s.max_plots} 格）`);
     setText("g-steal-max", String(s.steal_max));
     if (s.steal_plots_per_day) setText("g-steal-day", String(s.steal_plots_per_day));
     if (s.steal_thieves_per_day) setText("g-steal-thieves", String(s.steal_thieves_per_day));
     setText("g-transfer", `${s.transfer_cooldown_days} 天`);
     setText("g-craft-max", String(s.craft_max));
     setText("g-wh-price", `${num.format(s.warehouse_prices[0])} 起`);
-    setText("g-wh-desc", `每次 +${s.warehouse_step} 格：${s.warehouse_prices.map((p) => num.format(p)).join(" → ")}，最大 ${s.warehouse_max} 格`);
+    const whLate = s.warehouse_late_base && s.warehouse_max > 300 ? ` → 300 格後 ${num.format(s.warehouse_late_base)} 起每次 ×${s.warehouse_late_growth_pct / 100}` : "";
+    setText("g-wh-desc", `每次 +${s.warehouse_step} 格：${s.warehouse_prices.map((p) => num.format(p)).join(" → ")}${whLate}，最大 ${s.warehouse_max} 格`);
     if (s.material_bag_capacity) setText("g-seed-bag", num.format(s.material_bag_capacity));
   }
 
@@ -384,7 +386,7 @@
       : [["本週沒有特賣", "", "", ""]]);
     const ends = new Date(w.ends_at);
     setText("g-weekly-note", `本週特賣到 ${ends.toLocaleString("zh-TW", { dateStyle: "medium", timeStyle: "short" })} 為止，之後換新商品。`);
-    fillRows("g-title-shop", sp.titles.map((t) => [`🎖️ ${t.title}`, num.format(t.price)]));
+    fillRows("g-title-shop", sp.titles.map((t) => [`🎖️ ${t.title}${t.end ? `（限定，販售到 ${t.end}）` : ""}`, num.format(t.price)]));
   }
 
   // 每日簽到、成就與圖鑑（固定規則，沒有玩家資料）
@@ -580,7 +582,15 @@
     if (c.codex) setText("c-codex", listText(c.codex));
     setText("c-cellar-level", `Lv.${c.cellar_level}`);
     setText("c-lab-level", `Lv.${c.lab_level}`);
-    if (c.rename_cost != null) setText("g-rename-quick", `${num.format(c.rename_cost)} 金幣`);
+    if (c.rename_cost != null) setText("g-rename-quick", renameText(c));
+  }
+
+  // 改名費：第 1 次免費（可關閉），之後 rename_cost 起每次加倍，上限 rename_max，久沒改名降一級
+  function renameText(s) {
+    const head = s.rename_first_free ? "第 1 次免費，之後 " : "";
+    const tail = s.rename_max ? `，最多 ${num.format(s.rename_max)} 金幣` : "";
+    const decay = s.rename_decay_days ? `；${s.rename_decay_days} 天沒改名降一級` : "";
+    return `${head}${num.format(s.rename_cost)} 金幣起每次加倍${tail}${decay}`;
   }
 
   // 釣魚：稀有度機率與售價、基礎成功率、時間設定、釣具與魚類圖鑑

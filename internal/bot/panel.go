@@ -140,6 +140,11 @@ type Panel struct {
 	// 庭院擺設頁（2026-11-15）：要購買的裝飾、選取的位置
 	decorBuy      string
 	decorSlot     int
+	decorPage     int // 購買選單的頁碼（2026-11-19 裝飾超過 25 種）
+	decorPutPage  int // 擺放選單的頁碼
+	badgeBuy      string
+	looksBuy      string // 外觀頁確認購買的商品（theme:snow／hat:crown／color:pink）
+	looksPet      string // 外觀頁正在打扮的寵物
 	checkinNextAt time.Time
 	lastShareAt   time.Time // 最近一次公開分享（農場、魚卡）的時間，用來限制洗版
 	welcomed      bool
@@ -876,10 +881,18 @@ func nameModal(onSubmit func(ctx context.Context, it ui.Interaction, name string
 	}
 }
 
+// renameCostText 改名價格的文字（0 = 免費）。
+func renameCostText(cost int) string {
+	if cost == 0 {
+		return "免費"
+	}
+	return money(cost) + " 金幣"
+}
+
 // renameModal 更改農場名稱：預先填入目前名稱，送出後才扣金幣。
-func renameModal(current string, onSubmit func(ctx context.Context, it ui.Interaction, name string)) *ui.Modal {
+func renameModal(current string, cost int, onSubmit func(ctx context.Context, it ui.Interaction, name string)) *ui.Modal {
 	return &ui.Modal{
-		Title: cut(fmt.Sprintf("更改農場名稱（%d 金幣）", balance.RenameFarmCost), 45),
+		Title: cut(fmt.Sprintf("更改農場名稱（%s）", renameCostText(cost)), 45),
 		Inputs: []ui.TextInput{{Label: "新的農場名稱", Default: string([]rune(current)[:min(utf8.RuneCountInString(current), balance.FarmNameMaxLen)]),
 			MaxLength: balance.FarmNameMaxLen, Required: true}},
 		OnSubmit: func(ctx context.Context, it ui.Interaction, values []string) error {

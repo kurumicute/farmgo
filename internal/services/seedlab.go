@@ -619,6 +619,17 @@ func (s *GameService) addLabExp(ctx context.Context, t *db.Tx, lab *models.SeedL
 
 // IdentifySeed 鑑定一顆一般種子，變成有基因的特殊種子（扣 1 顆種子與鑑定費）。
 func (s *GameService) IdentifySeed(ctx context.Context, playerID int64, cropKey string) (ActionResult, error) {
+	return s.IdentifySeeds(ctx, playerID, cropKey, 1)
+}
+
+// IdentifyMax 一次最多鑑定幾顆（2026-11-19 批量鑑定；實際還受種子數、種子庫空位與金幣限制）。
+const IdentifyMax = 100
+
+// IdentifySeeds 一次鑑定多顆同一種作物的一般種子（2026-11-19）：每顆各自擲基因，扣 quantity 顆種子與 quantity 份鑑定費。
+func (s *GameService) IdentifySeeds(ctx context.Context, playerID int64, cropKey string, quantity int) (ActionResult, error) {
+	if quantity < 1 || quantity > IdentifyMax {
+		return ActionResult{}, gameerr.Validationf("一次可以鑑定 1–%d 顆。", IdentifyMax)
+	}
 	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
 		farm, err := s.lockedFarm(ctx, t, playerID)
 		if err != nil {
@@ -635,50 +646,66 @@ func (s *GameService) IdentifySeed(ctx context.Context, playerID int64, cropKey 
 		if seedlab.IsHybrid(crop.Code) {
 			return ActionResult{}, gameerr.Validationf("%s是雜交作物，沒有一般種子可以鑑定。", crop.Name)
 		}
-		if err := s.checkLibrary(ctx, t, farm.ID, 1, ""); err != nil {
+		if err := s.checkLibrary(ctx, t, farm.ID, quantity, ""); err != nil {
 			return ActionResult{}, err
 		}
 		fee := seedlab.IdentifyFee(crop.SeedPrice)
-		if farm.Gold < fee {
-			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：鑑定需要 %d，目前只有 %d。", fee, farm.Gold)
+		total := fee * quantity
+		if farm.Gold < total {
+			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：鑑定 %d 顆需要 %d，目前只有 %d。", quantity, total, farm.Gold)
 		}
 		item := rules.SeedItemCode(crop.Code)
-		ok, err := inventory.Remove(ctx, t, farm.ID, item, 1, "normal", "none")
+		ok, err := inventory.Remove(ctx, t, farm.ID, item, quantity, "normal", "none")
 		if err != nil {
 			return ActionResult{}, err
 		}
 		if !ok {
-			return ActionResult{}, gameerr.New(gameerr.InsufficientItems, "沒有%s種子可以鑑定。", crop.Name)
+			return ActionResult{}, gameerr.New(gameerr.InsufficientItems, "%s種子不足 %d 顆，無法鑑定。", crop.Name, quantity)
 		}
-		farm.Gold -= fee
+		farm.Gold -= total
 		if err := s.saveFarm(ctx, t, farm, db.C("gold", farm.Gold)); err != nil {
 			return ActionResult{}, err
 		}
 		now := s.now()
-		genes := seedlab.RollIdentify(!crop.ShopBuyable, s.LabRng)
-		id, err := labrepo.AddSeed(ctx, t, labrepo.NewSeed{FarmID: farm.ID, BreederFarmID: farm.ID, CropCode: crop.Code,
-			Genes: genes, Generation: 1}, now)
-		if err != nil {
-			return ActionResult{}, err
+		var texts []string
+		for range quantity {
+			genes := seedlab.RollIdentify(!crop.ShopBuyable, s.LabRng)
+			id, err := labrepo.AddSeed(ctx, t, labrepo.NewSeed{FarmID: farm.ID, BreederFarmID: farm.ID, CropCode: crop.Code,
+				Genes: genes, Generation: 1}, now)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			if err := labrepo.AddRecord(ctx, t, labrepo.NewRecord{FarmID: farm.ID, Kind: "identify", ResultSeedID: &id,
+				CropCode: crop.Code, Genes: genes, Generation: 1, Mutation: "none", Success: true}, now); err != nil {
+				return ActionResult{}, err
+			}
+			texts = append(texts, genes.Text())
 		}
 		if err := s.registerLabCodex(ctx, t, farm.ID, crop.Code, now); err != nil {
 			return ActionResult{}, err
 		}
-		if err := labrepo.AddRecord(ctx, t, labrepo.NewRecord{FarmID: farm.ID, Kind: "identify", ResultSeedID: &id,
-			CropCode: crop.Code, Genes: genes, Generation: 1, Mutation: "none", Success: true}, now); err != nil {
-			return ActionResult{}, err
-		}
-		lvNote, err := s.addLabExp(ctx, t, lab, seedlab.Current().ExpIdentify)
+		lvNote, err := s.addLabExp(ctx, t, lab, seedlab.Current().ExpIdentify*quantity)
 		if err != nil {
 			return ActionResult{}, err
 		}
 		if err := s.record(ctx, t, farm, rules.EvSeedLab,
-			fmt.Sprintf("鑑定%s種子（%s），金幣 -%d", crop.Name, genes.Text(), fee),
-			rec{ItemCode: item, Quantity: 1, GoldDelta: -fee}); err != nil {
+			truncRunes(fmt.Sprintf("鑑定%s種子 %d 顆（%s），金幣 -%d", crop.Name, quantity, strings.Join(texts, "；"), total), 200),
+			rec{ItemCode: item, Quantity: quantity, GoldDelta: -total}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🔬 鑑定完成：%s種子（%s），花費 %d 金幣。%s", crop.Name, genes.Text(), fee, lvNote),
-			farm.Gold, -fee, item, 1), nil
+		if quantity == 1 {
+			return result(fmt.Sprintf("🔬 鑑定完成：%s種子（%s），花費 %d 金幣。%s", crop.Name, texts[0], fee, lvNote),
+				farm.Gold, -fee, item, 1), nil
+		}
+		lines := make([]string, len(texts))
+		for i, x := range texts {
+			lines[i] = fmt.Sprintf("　%d. %s", i+1, x)
+		}
+		if len(lines) > 20 { // 訊息太長時只列前 20 顆，其餘到種子庫看
+			lines = append(lines[:20], fmt.Sprintf("　…另外 %d 顆到「🌰 種子庫」查看", len(texts)-20))
+		}
+		return result(fmt.Sprintf("🔬 鑑定完成：%d 顆%s種子，花費 %d 金幣。\n%s%s", quantity, crop.Name, total, strings.Join(lines, "\n"), lvNote),
+			farm.Gold, -total, item, quantity), nil
 	})
 }
 

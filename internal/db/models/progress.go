@@ -91,6 +91,8 @@ type FarmPet struct {
 	PetCode  string    `db:"pet_code"`
 	Level    int       `db:"level"`
 	BoughtAt time.Time `db:"bought_at"`
+	Hat      *string   `db:"hat"`   // 戴的帽子（Migration 0046），NULL = 沒有
+	Color    *string   `db:"color"` // 換的顏色（Migration 0046），NULL = 原色
 }
 
 func (FarmPet) TableName() string { return TableFarmPet }

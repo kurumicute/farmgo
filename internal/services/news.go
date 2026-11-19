@@ -8,14 +8,21 @@ package services
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"farmgm/internal/db"
+	"farmgm/internal/game/cosmetics"
 	"farmgm/internal/game/fishing"
 	newsrules "farmgm/internal/game/news"
+	"farmgm/internal/game/reputation"
 	"farmgm/internal/game/ruins"
+	"farmgm/internal/game/rules"
 	"farmgm/internal/repositories/catalog"
 	newsrepo "farmgm/internal/repositories/news"
 	ruinsrepo "farmgm/internal/repositories/ruins"
@@ -96,6 +103,12 @@ func (n *NewsService) DailyNews(ctx context.Context, groupID int64, day time.Tim
 			return err
 		}
 		farmIDs := map[int64]bool{}
+		if data.Auction, err = auctionWinOn(ctx, t, groupID, start, end); err != nil {
+			return err
+		}
+		if data.Auction != nil {
+			farmIDs[data.Auction.FarmID] = true
+		}
 		var active []int64
 		donated := 0
 		for _, e := range events {
@@ -129,6 +142,12 @@ func (n *NewsService) DailyNews(ctx context.Context, groupID int64, day time.Tim
 			ids = append(ids, id)
 		}
 		if data.Names, err = newsrepo.FarmNames(ctx, t, ids); err != nil {
+			return err
+		}
+		if data.Badges, err = newsBadges(ctx, t, ids); err != nil {
+			return err
+		}
+		if data.Reputation, err = reputationUps(ctx, t, events, end); err != nil {
 			return err
 		}
 		if data.ItemNames, err = catalog.ItemNames(ctx, t); err != nil {
@@ -167,4 +186,90 @@ func (n *NewsService) DailyNews(ctx context.Context, groupID int64, day time.Tim
 		newsCacheMu.Unlock()
 	}
 	return out, nil
+}
+
+// newsBadges 日報顯示用：農場 → 裝備中名牌的 emoji（以產生日報當下的裝備為準）。
+func newsBadges(ctx context.Context, t *db.Tx, farmIDs []int64) (map[int64]string, error) {
+	out := map[int64]string{}
+	if len(farmIDs) == 0 {
+		return out, nil
+	}
+	rows, err := t.Query(ctx, "SELECT id, badge FROM farms WHERE id = ANY($1) AND badge IS NOT NULL", farmIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var code string
+		if err := rows.Scan(&id, &code); err != nil {
+			return nil, err
+		}
+		if e := cosmetics.BadgeEmoji(code); e != "" {
+			out[id] = e
+		}
+	}
+	return out, rows.Err()
+}
+
+// reputationUps 當天聲望升級的農場：目前聲望扣掉 end 之後的捐款 = 當天結束時的聲望，再扣當天的捐款 = 當天開始時的聲望。
+func reputationUps(ctx context.Context, t *db.Tx, events []newsrepo.FarmEvent, end time.Time) ([]newsrules.ReputationUp, error) {
+	donated := map[int64]int{}
+	var ids []int64
+	for _, e := range events {
+		if e.EventType == string(rules.EvReputationDonate) {
+			if _, ok := donated[e.FarmID]; !ok {
+				ids = append(ids, e.FarmID)
+			}
+			donated[e.FarmID] += -e.Gold
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := t.Query(ctx, `SELECT f.id, (f.reputation - coalesce((SELECT -sum(g.gold_delta) FROM game_transactions g
+		WHERE g.farm_id = f.id AND g.event_type = $2 AND g.created_at >= $3), 0))::bigint
+		FROM farms f WHERE f.id = ANY($1)`, ids, string(rules.EvReputationDonate), end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []newsrules.ReputationUp
+	for rows.Next() {
+		var id int64
+		var atEnd int
+		if err := rows.Scan(&id, &atEnd); err != nil {
+			return nil, err
+		}
+		if after := reputation.Level(atEnd); after > reputation.Level(atEnd-donated[id]) {
+			out = append(out, newsrules.ReputationUp{FarmID: id, Level: after})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	slices.SortFunc(out, func(a, b newsrules.ReputationUp) int {
+		if a.Level != b.Level {
+			return b.Level - a.Level
+		}
+		return int(a.FarmID - b.FarmID)
+	})
+	return out, nil
+}
+
+// auctionWinOn 當天結標、得標者屬於這個群組的每週拍賣（沒有時是 nil）。
+func auctionWinOn(ctx context.Context, t *db.Tx, groupID int64, start, end time.Time) (*newsrules.AuctionWin, error) {
+	var w newsrules.AuctionWin
+	var kind, code string
+	err := t.QueryRow(ctx, `SELECT a.top_farm_id, a.top_bid, a.item_kind, a.item_code FROM auctions a JOIN farms f ON f.id = a.top_farm_id
+		WHERE a.status = 'settled' AND a.settled_at >= $2 AND a.settled_at < $3 AND f.home_group_id = $1
+		ORDER BY a.settled_at DESC LIMIT 1`, groupID, start, end).Scan(&w.FarmID, &w.Price, &kind, &code)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	w.Item, _ = auctionItemName(kind, code)
+	return &w, nil
 }

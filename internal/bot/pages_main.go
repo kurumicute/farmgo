@@ -16,6 +16,7 @@ import (
 	"farmgm/internal/config"
 	"farmgm/internal/game/achievements"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/mushroom"
@@ -72,6 +73,10 @@ func (p *Panel) registerPages() {
 		"progress":        {p.loadProgress, p.buildProgress},
 		"achievements":    {p.loadAchievements, p.buildAchievements},
 		"titles":          {p.loadTitles, p.buildTitles},
+		"badges":          {p.loadBadges, p.buildBadges},
+		"reputation":      {p.loadReputation, p.buildReputation},
+		"looks":           {p.loadLooks, p.buildLooks},
+		"auction":         {p.loadAuction, p.buildAuction},
 		"codex":           {p.loadCodex, p.buildCodex},
 		"ruins":           {p.loadRuins, p.buildRuins},
 		"boss":            {p.loadBoss, p.buildBoss},
@@ -254,10 +259,7 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	header := fmt.Sprintf("👨‍🌾 **%s**%s　⭐ **Lv %d**　💰 **%s** 金\n━━━━━━━━ 🌱 **農田（%d 格）** ━━━━━━━━",
 		s.PlayerName, title, s.Level, money(s.Gold), len(s.Plots))
-	lines := make([]string, len(s.Plots))
-	for i, pl := range s.Plots {
-		lines[i] = plotLine(pl, true)
-	}
+	lines := plotLines(s.Plots, true)
 	e := &ui.Embed{Title: fmt.Sprintf("🌾 ✦ %s ✦", s.Name), Color: Green, Description: header + "\n" + strings.Join(lines, "\n")}
 	if p.AvatarURL != "" {
 		e.Thumbnail = p.AvatarURL
@@ -579,7 +581,7 @@ var moreEntries = []struct{ page, label, desc, emoji string }{
 	{"casino", "賭場", "【冒險】用作物比大小", "🎰"},
 	{"boss", "世界Boss", "【冒險】伺服器共同活動、捐獻物資", "🐉"},
 	{"steal", "偷菜", "【社交】偷同伺服器玩家成熟的作物", "🥷"},
-	{"aid", "送禮互助", "【社交】送朋友作物、幫忙澆水，雙方都有獎勵", "🤝"},
+	{"aid", "送禮互助", "【社交】送朋友作物、幫忙拔草，雙方都有獎勵", "🤝"},
 	{"quests", "任務競賽", "【社交】群組任務與競賽", "📜"},
 	{"group", "群組", "【社交】所屬群組、轉移農場", "👥"},
 	{"board", "排行榜", "【紀錄】個人、伺服器、群組排行", "🏆"},
@@ -638,10 +640,7 @@ func (p *Panel) share(ctx context.Context, it ui.Interaction) error {
 		_, _ = it.Followup(ctx, ui.Message{Content: ptr("❌ " + PlayerMessage(err)), Ephemeral: true})
 		return nil
 	}
-	lines := make([]string, len(status.Plots))
-	for i, pl := range status.Plots {
-		lines[i] = plotLine(pl, false) // 公開訊息：不顯示「請清除」這類給主人看的提示
-	}
+	lines := plotLines(status.Plots, false) // 公開訊息：不顯示「請清除」這類給主人看的提示
 	desc := strings.Join(lines, "\n")
 	if r := []rune(desc); len(r) > 4000 {
 		desc = string(r[:4000])
@@ -696,6 +695,7 @@ type plotsData struct {
 	backpack services.Backpack
 	crops    []services.CropInfo
 	labSeeds []services.LabSeedView // 現在可以種的特殊種子（沒有空地時不查）
+	grow     map[string]int         // 作物 → 種下澆水後實際的生長秒數（含所有加速；沒有空地時不查，2026-11-19）
 }
 
 func (p *Panel) loadPlots(ctx context.Context) (any, error) {
@@ -710,6 +710,9 @@ func (p *Panel) loadPlots(ctx context.Context) (any, error) {
 	}
 	if countState(d.status.Plots, rules.PlotEmpty) > 0 {
 		if d.labSeeds, err = svc.PlantableLabSeeds(ctx, pid); err != nil {
+			return nil, err
+		}
+		if d.grow, err = svc.GrowTimes(ctx, pid); err != nil {
 			return nil, err
 		}
 	}
@@ -739,13 +742,9 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 	if seedText == "" {
 		seedText = "沒有種子"
 	}
-	plotLines := make([]string, len(s.Plots))
-	for i, pl := range s.Plots {
-		plotLines[i] = plotLine(pl, true)
-	}
 	e := &ui.Embed{Title: fmt.Sprintf("🌱 ✦ 農田（%d 格）✦", len(s.Plots)), Color: Green, Description: sections(
 		fmt.Sprintf("💰 金幣 **%s**\n🌰 %s", money(s.Gold), seedText),
-		Section{Title: "農田", Lines: plotLines},
+		Section{Title: "農田", Lines: plotLines(s.Plots, true)},
 		"📊 "+summaryCounts(s.Plots),
 	), Footer: p.farmNextStep(s.Plots, true)} // 下一步放 footer：大圖排在欄位之後，footer 才是緊貼按鈕的位置
 	p.attachImage(e, p.farmImage(d.status)) // 圖片在交易外產生
@@ -759,8 +758,17 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 			if !c.ShopBuyable {
 				label = fmt.Sprintf("%s（稀有種子，持有 %d）", c.Name, seeds[c.Code])
 			}
+			// 2026-11-19 顯示種下澆水後實際要長多久（限時活動、溫室、蚯蚓、灑水器等加速都算進去），不再顯示作物原本的時間
+			grow, ok := d.grow[c.Code]
+			if !ok {
+				grow = c.GrowSeconds
+			}
+			timeText := services.LongDuration(grow)
+			if grow < c.GrowSeconds {
+				timeText += "（已含加速）"
+			}
 			options = append(options, option{label, c.Code,
-				fmt.Sprintf("⏱️ %s｜🧺 收成 ×%d %s｜🏷️ %s 金／個", services.LongDuration(c.GrowSeconds), c.HarvestQuantity, c.Name, money(c.SellPrice)),
+				fmt.Sprintf("⏱️ %s｜🧺 收成 ×%d %s｜🏷️ %s 金／個", timeText, c.HarvestQuantity, c.Name, money(c.SellPrice)),
 				cropEmoji(c.Code)})
 		}
 		p.selectMenu(fmt.Sprintf("🌱 選擇作物，種到 %d 格空地…", empty), options, func(ctx context.Context, it ui.Interaction, code string) error {
@@ -773,7 +781,7 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 	p.button("全部澆水", p.waterAll, btn{emoji: "💧", style: ui.Primary, row: 1, disabled: countState(s.Plots, rules.PlotWaitingWater) == 0})
 	p.button("全部收成", p.harvestAll, btn{emoji: "🧺", style: ui.Success, row: 1, disabled: countState(s.Plots, rules.PlotReady) == 0})
 	p.button("清除乾枯", p.clearAll, btn{emoji: "🥀", row: 1, disabled: countState(s.Plots, rules.PlotWithered) == 0})
-	price, ok := balance.UpgradePrice(len(s.Plots))
+	price, ok := expansion.LandPrice(len(s.Plots))
 	confirming := p.confirm == "upgrade"
 	label := fmt.Sprintf("擴建（%s 金）", money(price))
 	style := ui.Secondary
@@ -1093,13 +1101,18 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 // ======================================================================
 
 type helpData struct {
-	name string
-	gold int
+	name       string
+	gold       int
+	renameCost int
 }
 
 func (p *Panel) loadHelp(ctx context.Context) (any, error) {
 	st, err := p.svc().GetFarmStatus(ctx, p.playerID)
-	return helpData{st.Name, st.Gold}, err
+	if err != nil {
+		return nil, err
+	}
+	cost, err := p.svc().RenameCost(ctx, p.playerID)
+	return helpData{st.Name, st.Gold, cost}, err
 }
 
 // buildHelp 說明頁：用下拉選單選主題，一次只顯示一個主題（不再一次列出整面文字）；沒選主題時顯示主題清單與改名。
@@ -1111,7 +1124,7 @@ func (p *Panel) buildHelp(_ context.Context, data any) (*ui.Embed, error) {
 	if i, err := strconv.Atoi(p.helpTopic); err == nil && i >= 0 && i < len(full.Fields) {
 		topic = i
 	}
-	cost := balance.RenameFarmCost
+	cost := d.renameCost
 	if topic >= 0 {
 		f := full.Fields[topic]
 		e.AddField(f.Name, f.Value, false) // 選取的主題放在最下方，貼近選單
@@ -1120,7 +1133,8 @@ func (p *Panel) buildHelp(_ context.Context, data any) (*ui.Embed, error) {
 		for i, f := range full.Fields {
 			names[i] = f.Name
 		}
-		e.AddField("🏡 農場名稱", fmt.Sprintf("目前：**%s**　改名每次 %s 金幣（你有 %s 金幣）", d.name, money(cost), money(d.gold)), false)
+		e.AddField("🏡 農場名稱", fmt.Sprintf("目前：**%s**　這次改名 %s（你有 %s 金幣）\n改名費逐次加價，%d 天沒改名會降一級",
+			d.name, renameCostText(cost), money(d.gold), expansion.Current().RenameDecayDays), false)
 		e.AddField("📚 主題", strings.Join(names, "　")+"\n👇 從下方選單選一個主題", false)
 	}
 	options := make([]option, len(full.Fields))
@@ -1139,8 +1153,8 @@ func (p *Panel) buildHelp(_ context.Context, data any) (*ui.Embed, error) {
 			return nil
 		}, btn{emoji: "📚", row: 0})
 	}
-	p.button(fmt.Sprintf("更改農場名稱（%s 金幣）", money(cost)), func(ctx context.Context, it ui.Interaction) error {
-		return it.SendModal(ctx, renameModal(d.name, func(ctx context.Context, mit ui.Interaction, name string) {
+	p.button(fmt.Sprintf("更改農場名稱（%s）", renameCostText(cost)), func(ctx context.Context, it ui.Interaction) error {
+		return it.SendModal(ctx, renameModal(d.name, cost, func(ctx context.Context, mit ui.Interaction, name string) {
 			p.act(ctx, mit, p.call("rename_farm", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().RenameFarm(ctx, p.playerID, name)
 			}), actOpts{})
@@ -1156,9 +1170,9 @@ func HelpEmbed() *ui.Embed {
 	e := &ui.Embed{Title: "❓ 怎麼玩", Color: Blue, Description: "輸入 **/farm** 打開農場面板，所有操作都用按鈕和選單完成，面板只有你看得到；15 分鐘沒有操作會逾時，再輸入 /farm 就能重新打開。"}
 	e.AddField("🌱 種田", fmt.Sprintf("• 「🌱 農田」選作物 → 種滿空地（種子不夠會自動買）\n"+
 		"• 「💧 全部澆水」→ 等成熟 →「🧺 全部收成」→「💰 販售」\n"+
-		"• 成熟後 16 小時沒收成會乾枯；農田最多 %d 格\n"+
+		"• 成熟後 16 小時沒收成會乾枯；農田最多 %d 格（第 17 格起是第二塊農田，畫在農田圖下方）\n"+
 		"• 加速：化肥剩餘時間 -%d%%、蚯蚓生長時間 ×%v、溫室（商店）每級再縮短；自動澆水器種下就澆水",
-		balance.MaxPlots, balance.FertilizerPct, balance.EarthwormGrowMultiplier), false)
+		expansion.MaxPlots(), balance.FertilizerPct, balance.EarthwormGrowMultiplier), false)
 	e.AddField("🐔 養殖與加工", fmt.Sprintf("• 「🐔 動物」先建造畜舍 → 買動物 → 餵食 → 等生產後收集\n"+
 		"• 「🏭 加工」用磨坊、烘焙坊、果醬工坊把作物做成更值錢的商品\n"+
 		"• 「🐔 動物」→「🐾 寵物」領養 %s 金：貓咪增加收成數量、狗狗多擋一次偷菜\n"+

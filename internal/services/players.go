@@ -10,6 +10,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/seasons"
@@ -408,9 +409,30 @@ func (s *GameService) TransferHomeGroup(ctx context.Context, playerID, groupID i
 	})
 }
 
-// RenameFarm 更改自己農場的名稱，每次花費 balance.RenameFarmCost 金幣（經 record 記錄扣款）。
+// renameCost 下一次改名的價格（expansion.RenameLevel：第 1 次免費，之後逐次加價，久沒改名會降價）。
+func (s *GameService) renameCost(ctx context.Context, t *db.Tx, farmID int64) (int, error) {
+	times, err := db.QueryValues[time.Time](ctx, t,
+		"SELECT created_at FROM game_transactions WHERE farm_id = $1 AND event_type = $2 ORDER BY created_at, id",
+		farmID, string(rules.EvRenameFarm))
+	if err != nil {
+		return 0, err
+	}
+	return expansion.RenamePrice(expansion.RenameLevel(times, s.now())), nil
+}
+
+// RenameCost 下一次改名的價格（面板顯示用）。
+func (s *GameService) RenameCost(ctx context.Context, playerID int64) (int, error) {
+	return inTx(ctx, s, func(t *db.Tx) (int, error) {
+		farm, err := s.farmOf(ctx, t, playerID)
+		if err != nil {
+			return 0, err
+		}
+		return s.renameCost(ctx, t, farm.ID)
+	})
+}
+
+// RenameFarm 更改自己農場的名稱：價格見 renameCost（經 record 記錄扣款，免費時也記一筆，作為下次加價的依據）。
 func (s *GameService) RenameFarm(ctx context.Context, playerID int64, newName string) (ActionResult, error) {
-	cost := balance.RenameFarmCost
 	name, err := rules.ValidateName(newName, "農場名稱", balance.FarmNameMaxLen)
 	if err != nil {
 		return ActionResult{}, err
@@ -422,6 +444,10 @@ func (s *GameService) RenameFarm(ctx context.Context, playerID int64, newName st
 		}
 		if farm.Name == name {
 			return ActionResult{}, gameerr.Validationf("新名稱和目前的農場名稱相同。")
+		}
+		cost, err := s.renameCost(ctx, t, farm.ID)
+		if err != nil {
+			return ActionResult{}, err
 		}
 		if farm.Gold < cost {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：改名需要 %d，目前只有 %d。", cost, farm.Gold)
@@ -436,7 +462,16 @@ func (s *GameService) RenameFarm(ctx context.Context, playerID int64, newName st
 			rec{GoldDelta: -cost}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("農場名稱已從「%s」改為「%s」，花費 %d 金幣。", oldName, name, cost), farm.Gold, -cost, "", 0), nil
+		next, err := s.renameCost(ctx, t, farm.ID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		paid := "免費"
+		if cost > 0 {
+			paid = fmt.Sprintf("花費 %d 金幣", cost)
+		}
+		return result(fmt.Sprintf("農場名稱已從「%s」改為「%s」，%s。下次改名需要 %d 金幣（%d 天沒改名會降價）。",
+			oldName, name, paid, next, expansion.Current().RenameDecayDays), farm.Gold, -cost, "", 0), nil
 	})
 }
 
@@ -469,7 +504,7 @@ func (s *GameService) status(ctx context.Context, t *db.Tx, farm *models.Farm, p
 	if err != nil {
 		return FarmStatus{}, err
 	}
-	levels, err := pets.Levels(ctx, t, farm.ID)
+	levels, skins, err := pets.LevelsAndSkins(ctx, t, farm.ID)
 	if err != nil {
 		return FarmStatus{}, err
 	}
@@ -481,6 +516,7 @@ func (s *GameService) status(ctx context.Context, t *db.Tx, farm *models.Farm, p
 		FarmID: farm.ID, PlayerID: farm.PlayerID, HomeGroupID: farm.HomeGroupID, PlayerName: playerName,
 		Name: farm.Name, Level: farm.Level, Gold: farm.Gold, WarehouseUsed: used,
 		WarehouseCapacity: farm.WarehouseCapacity, Plots: infos, Now: now, Title: farm.Title, Pets: levels, Decor: placed,
+		Theme: deref(farm.Theme), PetSkins: skins,
 	}, nil
 }
 

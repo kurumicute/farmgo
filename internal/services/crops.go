@@ -11,6 +11,8 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/expansion"
+	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/genetics"
 	"farmgm/internal/game/rules"
@@ -343,44 +345,87 @@ func (s *GameService) autoPlant(ctx context.Context, t *db.Tx, farm *models.Farm
 	return fmt.Sprintf(" 🤖 自動播種機種下 %d 格（%s）。", total, strings.Join(parts, "、")), nil
 }
 
+// growBoosts 這座農場目前的生長加速（澆水與種植選單的預估時間共用，2026-11-19 抽出）。
+type growBoosts struct {
+	earthworm  bool
+	active     []*eventrules.Event
+	settings   balance.GeneticsSettings
+	greenhouse int // 溫室的減少 %（與限時活動相加）
+	sprinkler  int // 灑水器（2026-11-18）：效果期間不是晴天時，也有晴天的生長加速
+}
+
+func (s *GameService) growBoostsOf(ctx context.Context, t *db.Tx, farm *models.Farm, now time.Time) (growBoosts, error) {
+	var g growBoosts
+	var err error
+	if g.earthworm, err = db.Memo(t, effectKey{farm.ID, balance.EffectEarthworm}, func() (bool, error) {
+		return items.EffectActive(ctx, t, farm.ID, balance.EffectEarthworm, now)
+	}); err != nil {
+		return g, err
+	}
+	if g.active, err = s.activeEvents(ctx, t); err != nil {
+		return g, err
+	}
+	if g.settings, err = s.geneticsSettings(ctx, t); err != nil {
+		return g, err
+	}
+	g.greenhouse = specialshop.GreenhousePct(farm.GreenhouseLevel)
+	if w := weather.Today(now); w.Code != weather.Sunny {
+		on, err := s.boostActive(ctx, t, farm.ID, balance.ItemSprinkler, now)
+		if err != nil {
+			return g, err
+		}
+		if on {
+			g.sprinkler = weather.Kinds[weather.Sunny].GrowReductionPct
+		}
+	}
+	return g, nil
+}
+
+// seconds 這種作物澆水後的生長秒數（mutation：快速生長突變；labPct：特殊種子的生長基因）。
+func (g growBoosts) seconds(crop *models.CropType, mutation string, labPct int) (int, eventrules.Bonus) {
+	grow := eventrules.BonusOf(g.active, "grow_reduction_pct", &crop.ID)
+	return genetics.GrowSeconds(crop.GrowSeconds, mutation, g.earthworm, g.settings, grow.Value+g.greenhouse+labPct+g.sprinkler), grow
+}
+
+// GrowTimes 種植選單用：每種作物種下並澆水後實際需要的生長秒數（限時活動、溫室、蚯蚓、灑水器、天氣等加速都算進去；
+// 不含快速生長突變與特殊種子的基因，那些要看種下的那一顆）。
+func (s *GameService) GrowTimes(ctx context.Context, playerID int64) (map[string]int, error) {
+	return inTx(ctx, s, func(t *db.Tx) (map[string]int, error) {
+		farm, err := s.farmOf(ctx, t, playerID)
+		if err != nil {
+			return nil, err
+		}
+		g, err := s.growBoostsOf(ctx, t, farm, s.now())
+		if err != nil {
+			return nil, err
+		}
+		all, err := crops.ListAll(ctx, t, true)
+		if err != nil {
+			return nil, err
+		}
+		out := make(map[string]int, len(all))
+		for i := range all {
+			out[all[i].Code], _ = g.seconds(&all[i], "none", 0)
+		}
+		return out, nil
+	})
+}
+
 // water auto：自動澆水器；reason：免澆水活動（nil 表示不是）。回傳生長秒數。
 func (s *GameService) water(ctx context.Context, t *db.Tx, farm *models.Farm, plot *models.FarmPlot, crop *models.CropType,
 	now time.Time, auto bool, reason *eventrules.Bonus) (int, error) {
-	earthworm, err := db.Memo(t, effectKey{farm.ID, balance.EffectEarthworm}, func() (bool, error) {
-		return items.EffectActive(ctx, t, farm.ID, balance.EffectEarthworm, now)
-	})
+	g, err := s.growBoostsOf(ctx, t, farm, now)
 	if err != nil {
 		return 0, err
 	}
-	active, err := s.activeEvents(ctx, t)
-	if err != nil {
-		return 0, err
-	}
-	grow := eventrules.BonusOf(active, "grow_reduction_pct", &crop.ID)
-	settings, err := s.geneticsSettings(ctx, t)
-	if err != nil {
-		return 0, err
-	}
+	earthworm, greenhouse, sprinkler := g.earthworm, g.greenhouse, g.sprinkler
 	mutation := deref(plot.Mutation)
-	// 快速生長突變也只在澆水後才開始計時，不會繞過澆水與乾枯規則；溫室的減少 % 與限時活動相加
-	greenhouse := specialshop.GreenhousePct(farm.GreenhouseLevel)
-	// 特殊種子（種子實驗室）的生長基因也一起相加
+	// 快速生長突變也只在澆水後才開始計時，不會繞過澆水與乾枯規則；特殊種子（種子實驗室）的生長基因也一起相加
 	labPct, err := labGrowthPct(ctx, t, plot)
 	if err != nil {
 		return 0, err
 	}
-	// 灑水器（2026-11-18）：效果期間不是晴天時，也有晴天的生長加速
-	sprinkler := 0
-	if w := weather.Today(now); w.Code != weather.Sunny {
-		on, err := s.boostActive(ctx, t, farm.ID, balance.ItemSprinkler, now)
-		if err != nil {
-			return 0, err
-		}
-		if on {
-			sprinkler = weather.Kinds[weather.Sunny].GrowReductionPct
-		}
-	}
-	seconds := genetics.GrowSeconds(crop.GrowSeconds, mutation, earthworm, settings, grow.Value+greenhouse+labPct+sprinkler)
+	seconds, grow := g.seconds(crop, mutation, labPct)
 	if err := farms.Water(ctx, t, plot, now, rules.ReadyTime(now, seconds)); err != nil {
 		return 0, err
 	}
@@ -1175,9 +1220,9 @@ func (s *GameService) UpgradeFarm(ctx context.Context, playerID int64) (ActionRe
 		if err != nil {
 			return ActionResult{}, err
 		}
-		cost, ok := balance.UpgradePrice(n)
+		cost, ok := expansion.LandPrice(n)
 		if !ok {
-			return ActionResult{}, gameerr.Validationf("農田已達上限 %d 格，無法再擴建。", balance.MaxPlots)
+			return ActionResult{}, gameerr.Validationf("農田已達上限 %d 格，無法再擴建。", expansion.MaxPlots())
 		}
 		if farm.Gold < cost {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：擴建需要 %d，目前只有 %d。", cost, farm.Gold)
@@ -1204,13 +1249,52 @@ func (s *GameService) UpgradeFarm(ctx context.Context, playerID int64) (ActionRe
 			return ActionResult{}, err
 		}
 		tail := "農田已達上限。"
-		if nxt, ok := balance.UpgradePrice(total); ok {
+		if nxt, ok := expansion.LandPrice(total); ok {
 			tail = fmt.Sprintf("下一次擴建需要 %d 金幣。", nxt)
+		}
+		if total == balance.MaxPlots+1 {
+			tail = "🌾 開闢了第二塊農田！農田頁可以切換「第一塊／第二塊」。" + tail
 		}
 		return result(fmt.Sprintf("擴建完成！農場升到 %d 級，新增第 %d 格，共 %d 格土地，花費 %d 金幣。\n"+
 			"🌱 農田 %d → %d 格｜⭐ 等級 %d → %d%s\n%s%s",
 			farm.Level, numbers[0], total, cost, total-len(numbers), total, farm.Level-1, farm.Level,
 			GoldChange(farm.Gold, -cost), tail, auto), farm.Gold, -cost, "", len(numbers)), nil
+	})
+}
+
+// ExpandMaterialBag 素材背包擴充（2026-11-19）：每級 +expansion 設定的格數，價格逐級提高。
+func (s *GameService) ExpandMaterialBag(ctx context.Context, playerID int64) (ActionResult, error) {
+	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
+		farm, err := s.lockedFarm(ctx, t, playerID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		price, ok := expansion.MaterialBagPrice(farm.MaterialBagLevel)
+		if !ok {
+			return ActionResult{}, gameerr.Validationf("素材背包已經是最高等級 Lv.%d。", farm.MaterialBagLevel)
+		}
+		if farm.Gold < price {
+			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：素材背包擴充需要 %d，目前只有 %d。", price, farm.Gold)
+		}
+		base := exploration.BagCapacity()
+		before := expansion.MaterialBagCapacity(farm.MaterialBagLevel, base)
+		farm.Gold -= price
+		farm.MaterialBagLevel++
+		if err := s.saveFarm(ctx, t, farm, db.C("gold", farm.Gold), db.C("material_bag_level", farm.MaterialBagLevel)); err != nil {
+			return ActionResult{}, err
+		}
+		after := expansion.MaterialBagCapacity(farm.MaterialBagLevel, base)
+		if err := s.record(ctx, t, farm, rules.EvBuyItem,
+			fmt.Sprintf("素材背包擴充到 Lv.%d：%d → %d 格，金幣 -%d", farm.MaterialBagLevel, before, after, price),
+			rec{ItemCode: "material_bag", Quantity: 1, GoldDelta: -price}); err != nil {
+			return ActionResult{}, err
+		}
+		tail := "已達最高等級。"
+		if nxt, ok := expansion.MaterialBagPrice(farm.MaterialBagLevel); ok {
+			tail = fmt.Sprintf("下一級需要 %d 金幣。", nxt)
+		}
+		return result(fmt.Sprintf("🎒 素材背包擴充到 Lv.%d，花費 %d 金幣。\n素材背包 %d → %d 格%s\n%s",
+			farm.MaterialBagLevel, price, before, after, GoldChange(farm.Gold, -price), tail), farm.Gold, -price, "", 0), nil
 	})
 }
 
@@ -1221,16 +1305,16 @@ func (s *GameService) ExpandWarehouse(ctx context.Context, playerID int64) (Acti
 		if err != nil {
 			return ActionResult{}, err
 		}
-		price, ok := balance.WarehouseExpansionPrice(farm.WarehouseCapacity)
+		price, ok := expansion.WarehousePrice(farm.WarehouseCapacity)
 		if !ok {
-			return ActionResult{}, gameerr.Validationf("倉庫已經是最大容量 %d 格。", balance.WarehouseMaxCapacity)
+			return ActionResult{}, gameerr.Validationf("倉庫已經是最大容量 %d 格。", expansion.WarehouseMax())
 		}
 		if farm.Gold < price {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：倉庫擴大卷需要 %d，目前只有 %d。", price, farm.Gold)
 		}
 		before := farm.WarehouseCapacity
 		farm.Gold -= price
-		farm.WarehouseCapacity = min(before+balance.WarehouseExpansionStep, balance.WarehouseMaxCapacity)
+		farm.WarehouseCapacity = min(before+balance.WarehouseExpansionStep, expansion.WarehouseMax())
 		if err := s.saveFarm(ctx, t, farm, db.C("gold", farm.Gold), db.C("warehouse_capacity", farm.WarehouseCapacity)); err != nil {
 			return ActionResult{}, err
 		}
@@ -1241,7 +1325,7 @@ func (s *GameService) ExpandWarehouse(ctx context.Context, playerID int64) (Acti
 			return ActionResult{}, err
 		}
 		tail := "已達最大容量。"
-		if nxt, ok := balance.WarehouseExpansionPrice(farm.WarehouseCapacity); ok {
+		if nxt, ok := expansion.WarehousePrice(farm.WarehouseCapacity); ok {
 			tail = fmt.Sprintf("下一次擴大需要 %d 金幣。", nxt)
 		}
 		return result(fmt.Sprintf("倉庫擴大為 %d 格，花費 %d 金幣。\n📦 倉庫 %d → %d 格%s\n%s",

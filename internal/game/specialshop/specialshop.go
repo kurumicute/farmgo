@@ -6,6 +6,8 @@
 //   - 每週特賣：台灣時間每週一 00:00 換一批，用現有的種子；每人每週每項限購，購買量存在 weekly_shop_purchases。
 //     商品由週次決定（不存資料庫），所有玩家同一週看到的一樣。
 //   - 稱號商店：用金幣買稱號（放進稱號清單，可在「🎖️ 稱號」選用）；每個稱號只能買一次。
+//     2026-11-19 起每個稱號可以設定販售期間（start／end，台灣日期，含當天；留空 = 一般稱號），只在期間內出現在商店，
+//     買過的人永久保留（每月限定稱號）。
 package specialshop
 
 import (
@@ -34,6 +36,28 @@ var epoch = time.Date(2026, 1, 5, 0, 0, 0, 0, clock.TaipeiTZ)
 
 func titleValue(title string, price int) map[string]any {
 	return map[string]any{"title": title, "price": price}
+}
+
+// dateLayout 限定稱號販售期間的日期格式（台灣日期）。
+const dateLayout = "2006-01-02"
+
+// parseDate 選填的日期（"" 或 nil = 沒有設定）。
+func parseDate(v any, label string) (string, *time.Time, error) {
+	if v == nil {
+		return "", nil, nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", nil, gameerr.Validationf("%s請用 YYYY-MM-DD 格式。", label)
+	}
+	if s == "" {
+		return "", nil, nil
+	}
+	d, err := time.ParseInLocation(dateLayout, s, clock.TaipeiTZ)
+	if err != nil {
+		return "", nil, gameerr.Validationf("%s請用 YYYY-MM-DD 格式（目前是「%s」）。", label, s)
+	}
+	return s, &d, nil
 }
 
 func defaults() featurecfg.Value {
@@ -116,7 +140,25 @@ func ValidateConfig(raw featurecfg.Value) (featurecfg.Value, error) {
 			dup = true
 		}
 		seen[title] = true
-		outTitles = append(outTitles, titleValue(title, price))
+		tv := titleValue(title, price)
+		start, from, err := parseDate(t["start"], fmt.Sprintf("稱號「%s」的開始販售日期", title))
+		if err != nil {
+			return nil, err
+		}
+		end, to, err := parseDate(t["end"], fmt.Sprintf("稱號「%s」的結束販售日期", title))
+		if err != nil {
+			return nil, err
+		}
+		if from != nil && to != nil && to.Before(*from) {
+			return nil, gameerr.Validationf("稱號「%s」的結束販售日期不能早於開始日期。", title)
+		}
+		if start != "" {
+			tv["start"] = start
+		}
+		if end != "" {
+			tv["end"] = end
+		}
+		outTitles = append(outTitles, tv)
 	}
 	if dup {
 		return nil, gameerr.Validationf("稱號商店的稱號不可重複。")
@@ -174,13 +216,35 @@ func GreenhousePrice(level int) (price int, ok bool) {
 
 // ---------- 稱號商店 ----------
 
-// TitleOffer 稱號商店的商品。
+// TitleOffer 稱號商店的商品。Start／End 是販售期間（台灣日期 00:00，End 當天仍可購買）；nil = 沒有限制。
 type TitleOffer struct {
 	Title string
 	Price int
+	Start *time.Time
+	End   *time.Time
 }
 
-// TitleShop (稱號, 價格)，依商店顯示順序。
+// Limited 是不是限定稱號（有設定販售期間）。
+func (o TitleOffer) Limited() bool { return o.Start != nil || o.End != nil }
+
+// OnSale 現在是否在販售期間內。
+func (o TitleOffer) OnSale(now time.Time) bool {
+	if o.Start != nil && now.Before(*o.Start) {
+		return false
+	}
+	return o.EndsAt() == nil || now.Before(*o.EndsAt())
+}
+
+// EndsAt 下架時間（End 隔天 00:00，台灣時間）；沒有結束日期時是 nil。
+func (o TitleOffer) EndsAt() *time.Time {
+	if o.End == nil {
+		return nil
+	}
+	t := o.End.AddDate(0, 0, 1)
+	return &t
+}
+
+// TitleShop 所有稱號（含不在販售期間的限定稱號），依商店顯示順序。
 func TitleShop() []TitleOffer {
 	list, _ := featurecfg.AsList(Config()["titles"])
 	out := make([]TitleOffer, 0, len(list))
@@ -188,19 +252,38 @@ func TitleShop() []TitleOffer {
 		m, _ := featurecfg.AsMap(v)
 		title, _ := m["title"].(string)
 		price, _ := featurecfg.AsInt(m["price"])
-		out = append(out, TitleOffer{title, price})
+		_, start, _ := parseDate(m["start"], "")
+		_, end, _ := parseDate(m["end"], "")
+		out = append(out, TitleOffer{title, price, start, end})
 	}
 	return out
 }
 
-// TitlePrice 稱號價格；商店沒有這個稱號時 ok = false。
-func TitlePrice(title string) (price int, ok bool) {
+// TitlesOnSale 現在商店有賣的稱號：一般稱號＋在販售期間內的限定稱號。
+func TitlesOnSale(now time.Time) []TitleOffer {
+	var out []TitleOffer
 	for _, t := range TitleShop() {
-		if t.Title == title {
-			price, ok = t.Price, true // 與 Python dict(...) 相同：重複時以最後一個為準
+		if t.OnSale(now) {
+			out = append(out, t)
 		}
 	}
-	return price, ok
+	return out
+}
+
+// FindTitle 商店的稱號（不論是否在販售期間）；沒有時 ok = false。重複時以最後一個為準（與 Python dict(...) 相同）。
+func FindTitle(title string) (offer TitleOffer, ok bool) {
+	for _, t := range TitleShop() {
+		if t.Title == title {
+			offer, ok = t, true
+		}
+	}
+	return offer, ok
+}
+
+// TitlePrice 稱號價格；商店沒有這個稱號時 ok = false。
+func TitlePrice(title string) (price int, ok bool) {
+	t, ok := FindTitle(title)
+	return t.Price, ok
 }
 
 // CropRef 選商品需要的作物資料（服務層由 crop_types 轉成這個）。

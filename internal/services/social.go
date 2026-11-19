@@ -271,6 +271,32 @@ func (s *SocialService) RemoveMember(ctx context.Context, groupID, playerID int6
 	})
 }
 
+// LeaveExternalGroup 外部帳號離開伺服器時移除其在對應群組的成員關係（之後無法被同群組的人偷菜，也不能偷該群組）。
+// 伺服器沒有對應群組或帳號沒有玩家時不做任何事並回傳 false；農場、金幣與紀錄都保留，再次在該伺服器使用指令時會重新加入。
+func (s *SocialService) LeaveExternalGroup(ctx context.Context, platform, userID, guildID string) (bool, error) {
+	if !guildIDRe.MatchString(guildID) || userID == "" {
+		return false, gameerr.Validationf("外部帳號資料無效。")
+	}
+	return inTx(ctx, s.GameService, func(t *db.Tx) (bool, error) {
+		g, err := groups.GetByGuild(ctx, t, guildID)
+		if err != nil || g == nil {
+			return false, err
+		}
+		p, err := players.GetByExternal(ctx, t, platform, userID)
+		if err != nil || p == nil {
+			return false, err
+		}
+		return groups.RemoveMember(ctx, t, g.ID, p.ID)
+	})
+}
+
+// ExternalGuildMembers 所有對應 Discord 伺服器的群組中，指定外部平台玩家的成員關係（Bot 定期比對是否已離開伺服器）。
+func (s *SocialService) ExternalGuildMembers(ctx context.Context, platform string) ([]groups.ExternalMember, error) {
+	return inTx(ctx, s.GameService, func(t *db.Tx) ([]groups.ExternalMember, error) {
+		return groups.ExternalMembers(ctx, t, platform)
+	})
+}
+
 func (s *SocialService) GroupMembers(ctx context.Context, groupID int64) ([]groups.Member, error) {
 	now := s.now()
 	return inTx(ctx, s.GameService, func(t *db.Tx) ([]groups.Member, error) {

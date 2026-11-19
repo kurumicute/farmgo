@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 送禮與互助頁（2026-11-17）：選對象 → 送禮、幫忙澆水；門檻不足時說明原因。
+// 送禮與互助頁（2026-11-17）：選對象 → 送禮、幫忙拔草；門檻不足時說明原因。
 func TestAidPage(t *testing.T) {
 	e := setup(t)
 	a := e.makePlayer(alice, guildA, "阿明")
@@ -19,7 +19,7 @@ func TestAidPage(t *testing.T) {
 	before := e.gold(pb)
 	a.goPage("aid")
 	a.choose("選擇要送禮或幫忙的玩家", fmtID(pb))
-	contains(t, a.Text, "小美", "0 格待澆水")
+	contains(t, a.Text, "小美", "0 格生長中")
 	a.choose("選擇要送給 小美 的作物", "wheat|10")
 	contains(t, a.Text, "已送 10 個小麥給 小美", "雙方各得 30 金幣")
 	if e.produceQty(pb) != 10 || e.gold(pb) != before+30 {
@@ -28,16 +28,17 @@ func TestAidPage(t *testing.T) {
 	if a.selectMenu("選擇要送給") != nil {
 		t.Fatal("送過禮後不應該再出現送禮選單")
 	}
-	if !a.button("幫 小美 澆水").Disabled {
-		t.Fatal("對方沒有待澆水的土地，按鈕應該停用")
+	if !a.button("幫 小美 拔草").Disabled {
+		t.Fatal("對方沒有生長中的作物，按鈕應該停用")
 	}
-	// 對方種下作物（還沒澆水）後，幫他澆水
+	// 對方種下並澆水後，幫他拔草
 	b.goPage("plots")
 	b.choose("選擇作物", "wheat")
+	b.click("全部澆水")
 	a.click("重新整理")
-	a.click("幫 小美 澆水")
-	contains(t, a.Text, "已幫 小美 澆了", "雙方各得 20 金幣")
-	if !a.button("幫 小美 澆水").Disabled {
+	a.click("幫 小美 拔草")
+	contains(t, a.Text, "已幫 小美 拔草", "剩餘生長時間減少 10%", "雙方各得 20 金幣")
+	if !a.button("幫 小美 拔草").Disabled {
 		t.Fatal("今天已經幫過，按鈕應該停用")
 	}
 	e.checkLedger()

@@ -14,6 +14,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/genetics"
@@ -73,7 +74,8 @@ func BuildBackpack(ctx context.Context, t *db.Tx, farm *models.Farm, now time.Ti
 		return Backpack{}, err
 	}
 	bp := Backpack{PlayerID: farm.PlayerID, Capacity: farm.WarehouseCapacity, Now: now,
-		MaterialCapacity: exploration.BagCapacity()}
+		MaterialCapacity: expansion.MaterialBagCapacity(farm.MaterialBagLevel, exploration.BagCapacity()),
+		MaterialBagLevel: farm.MaterialBagLevel}
 	for _, c := range cropList {
 		if n := quantities[rules.SeedItemCode(c.Code)]; n != 0 {
 			bp.Seeds = append(bp.Seeds, line(c.Code, c.Name+"種子", n, c.SeedPrice, ""))
@@ -142,10 +144,13 @@ func BuildBackpack(ctx context.Context, t *db.Tx, farm *models.Farm, now time.Ti
 			bp.Goods = append(bp.Goods, line(a.ProductCode, a.ProductName, n, a.ProductPrice, ""))
 		}
 	}
+	goodPrice, err := goodPrices(ctx, t, now) // 加工品是這一期的浮動售價
+	if err != nil {
+		return Backpack{}, err
+	}
 	for _, code := range balance.GoodOrder {
 		if n := quantities[code]; n != 0 {
-			g := balance.Goods[code]
-			bp.Goods = append(bp.Goods, line(code, g.Name, n, g.SellPrice, ""))
+			bp.Goods = append(bp.Goods, line(code, balance.Goods[code].Name, n, goodPrice[code], ""))
 		}
 	}
 	slices.SortStableFunc(bp.Produce, func(a, b BackpackLine) int {

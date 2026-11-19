@@ -121,6 +121,23 @@ type DayData struct {
 	ItemNames map[string]string
 	Ruins     *Ruins
 	Rumor     *Rumor
+	// 2026-11-19 金幣回收第二波
+	Badges     map[int64]string // farm_id → 裝備中名牌的 emoji（名字前面顯示）
+	Reputation []ReputationUp   // 當天聲望升級的農場（等級由高到低）
+	Auction    *AuctionWin      // 當天結標、由本群組玩家得標的每週拍賣
+}
+
+// AuctionWin 每週拍賣得標。
+type AuctionWin struct {
+	FarmID int64
+	Price  int
+	Item   string
+}
+
+// ReputationUp 當天聲望升級：升到 Level 級。
+type ReputationUp struct {
+	FarmID int64
+	Level  int
 }
 
 // MakeRumor day 的日報附帶的傳聞（candidates：day 當天有動靜的農場）；沒有傳聞時回傳 nil。結果只由參數決定。
@@ -160,6 +177,9 @@ func who(data DayData, farmID int64) string {
 	name, ok := data.Names[farmID]
 	if !ok {
 		name = "某座農場"
+	}
+	if badge := data.Badges[farmID]; badge != "" {
+		return badge + " **" + SafeName(name) + "**"
 	}
 	return "**" + SafeName(name) + "**"
 }
@@ -280,6 +300,19 @@ func Build(day time.Time, data DayData, seed string) News {
 	if finder := top(gold["rumor_treasure"], 1); finder != nil {
 		headlines = append([]string{fmt.Sprintf("💎 %s 昨天在傳聞說的田裡挖到寶藏，進帳 **%s** 金！",
 			who(data, finder.farmID), numfmt.Comma(finder.value))}, headlines...)
+	}
+
+	if a := data.Auction; a != nil { // 拍賣得標放最前面（一週一次的大新聞）
+		headlines = append([]string{fmt.Sprintf("🔨 %s 以 **%s** 金標下本週拍賣品 %s！", who(data, a.FarmID), numfmt.Comma(a.Price), a.Item)}, headlines...)
+	}
+
+	if len(data.Reputation) > 0 {
+		r := data.Reputation[0]
+		more := ""
+		if n := len(data.Reputation) - 1; n > 0 {
+			more = fmt.Sprintf("，另外還有 %d 位升級", n)
+		}
+		headlines = append(headlines, fmt.Sprintf("🏛️ %s 熱心捐款給農會，聲望升上 **Lv.%d**%s！", who(data, r.FarmID), r.Level, more))
 	}
 
 	if gambles := sum(count["gamble"]); gambles != 0 {

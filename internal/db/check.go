@@ -11,7 +11,7 @@ import (
 )
 
 // AlembicHead Go 版程式對應的 Alembic 版本。
-const AlembicHead = "0045" // 0045：寵物新增兔子、小鳥、刺蝟（2026-11-18）
+const AlembicHead = "0046" // 0046：金幣回收第二波（名牌、主題、寵物造型、素材背包、聲望、拍賣，2026-11-19）
 
 // StartupCheckError 啟動檢查失敗。
 type StartupCheckError struct{ Msg string }

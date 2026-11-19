@@ -20,6 +20,7 @@ import (
 	"farmgm/internal/config"
 	"farmgm/internal/db"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/repositories/farms"
 	"farmgm/internal/repositories/repotest"
@@ -181,6 +182,24 @@ func (p *player) choose(placeholder, value string) *uitest.Interaction {
 	return p.update(it)
 }
 
+// chooseModal 選單選了之後會開輸入框（例如批量鑑定的數量）：填入 input 送出。
+func (p *player) chooseModal(placeholder, value, input string) *uitest.Interaction {
+	p.e.t.Helper()
+	opener := p.choose(placeholder, value)
+	var m *ui.Modal
+	for _, en := range opener.Entries() {
+		if en.Kind == "modal" {
+			m = en.Modal
+		}
+	}
+	if m == nil {
+		p.e.t.Fatalf("選單「%s」沒有開啟輸入框：%v", placeholder, opener.Kinds())
+	}
+	it := p.interaction()
+	p.e.cmds.Registry.DispatchModal(p.e.ctx, it, m.CustomID(), []string{input})
+	return p.update(it)
+}
+
 func (p *player) options(placeholder string) []string {
 	s := p.selectMenu(placeholder)
 	if s == nil {
@@ -334,9 +353,9 @@ func TestOpenPanelExpiredInteractionIsIgnored(t *testing.T) {
 }
 
 func TestRenameFarmFromHelpPage(t *testing.T) {
-	// 說明頁的「更改農場名稱」：每次 300 金幣、記錄交易；金幣不足時按鈕停用。
+	// 說明頁的「更改農場名稱」：第 1 次免費、之後逐次加價，記錄交易；金幣不足時按鈕停用。
 	e := setup(t)
-	cost := balance.RenameFarmCost
+	cost := 0
 	p := e.makePlayer(alice, guildA, "阿明")
 	pid := p.panel.playerID
 	gold := 1000
@@ -358,9 +377,10 @@ func TestRenameFarmFromHelpPage(t *testing.T) {
 	}
 	p.click("回總覽")
 	contains(t, p.Text, "星空牧場")
-	low := cost - 1
+	low := 999
 	must[services.FarmValues](t)(e.admin.SetFarmValues(e.ctx, "test", pid, &low, nil))
 	p.click("說明")
+	contains(t, strings.Join(p.labels(), " "), "更改農場名稱（1,000 金幣）") // 第 2 次起逐次加價
 	if !p.button("更改農場名稱").Disabled {
 		t.Fatal("金幣不足時應停用")
 	}
@@ -599,8 +619,9 @@ func TestMissingAssetsFallBackToText(t *testing.T) {
 func TestUpgradeButtonDisabledAtMaxPlots(t *testing.T) {
 	e := setup(t)
 	p := e.makePlayer(alice, guildA, "玩家")
-	must[services.PlotsAdded](t)(e.admin.AddPlots(e.ctx, "root", p.panel.playerID, balance.MaxPlots-balance.InitialPlots))
+	must[services.PlotsAdded](t)(e.admin.AddPlots(e.ctx, "root", p.panel.playerID, expansion.MaxPlots()-balance.InitialPlots))
 	p.goPage("plots")
+	contains(t, p.Text, "第二塊農田")
 	if !p.button("已達上限").Disabled {
 		t.Fatal("應停用")
 	}

@@ -141,6 +141,17 @@ func TestWarehouseExpansionPricesAndCap(t *testing.T) {
 	if !slices.Equal(paid, []int{4_000, 20_000, 50_000, 100_000, 200_000}) || e.status(pid).WarehouseCapacity != 300 {
 		t.Fatal(paid)
 	}
+	// 2026-11-19 後段：300 格以後 400,000 起每次 ×1.6，最多 600 格
+	e.setGoldRecorded(pid, 100_000_000)
+	paid = nil
+	for e.status(pid).WarehouseCapacity < 600 {
+		before := e.gold(pid)
+		e.ok(e.s.ExpandWarehouse(e.ctx, pid))
+		paid = append(paid, before-e.gold(pid))
+	}
+	if !slices.Equal(paid, []int{400_000, 640_000, 1_024_000, 1_638_400, 2_621_400, 4_194_300}) {
+		t.Fatal(paid)
+	}
 	_, err := e.s.ExpandWarehouse(e.ctx, pid)
 	wantMsg(t, err, gameerr.Validation, "最大容量")
 	e.invariant()

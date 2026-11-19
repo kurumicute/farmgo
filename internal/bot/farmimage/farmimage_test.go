@@ -196,12 +196,13 @@ func TestMixedAndUnknownCropsRender(t *testing.T) {
 	}
 }
 
-func TestMoreThanSixteenPlotsDrawsSixteen(t *testing.T) {
+// 超過 16 格畫第二塊農田（2026-11-19 以前只畫前 16 格），最多再 16 格，超過 32 格的部分不畫。
+func TestMoreThanSixteenPlotsDrawsSecondField(t *testing.T) {
 	var plots []Plot
 	for range 20 {
 		plots = append(plots, plot("wheat", "growing", 0.5, "", ""), plot("carrot", "ready", 0, "", ""))
 	}
-	if s := sizeOf(t, must(t)(FarmPNG(plots, nil))); s != [2]int{512, 502} {
+	if s := sizeOf(t, must(t)(FarmPNG(plots, nil))); s != [2]int{512, 502 + fieldGap + 502} {
 		t.Fatal(s)
 	}
 }
@@ -407,8 +408,8 @@ func TestCanvasMatchesPython(t *testing.T) {
 		}
 		return c
 	}
-	var sixteen []Plot
-	for range 20 {
+	var sixteen []Plot // 以前用 40 格（只畫前 16 格）比對 Python；現在超過 16 格會畫第二塊，改用剛好 16 格（畫面相同）
+	for range 8 {
 		sixteen = append(sixteen, plot("wheat", "growing", 0.5, "", ""), plot("carrot", "ready", 0, "", ""))
 	}
 	busy, animals := fullYard()
@@ -486,5 +487,23 @@ func TestQuantizedColorsMatchPillow(t *testing.T) {
 		if h := hex.EncodeToString(sum[:]); h != c.want {
 			t.Errorf("%s：減色結果與 Pillow 不同（%s）", c.name, h)
 		}
+	}
+}
+
+// 第 17 格以上畫成第二塊農田：疊在第一塊下方，寬度不變。
+func TestSecondField(t *testing.T) {
+	ResetCache()
+	first := sizeOf(t, must(t)(FarmPNG(repeat(plot("wheat", "growing", 0.5, "", ""), 16), nil)))
+	small := sizeOf(t, must(t)(FarmPNG(repeat(plot("wheat", "growing", 0.5, "", ""), 4), nil)))
+	got := sizeOf(t, must(t)(FarmPNG(repeat(plot("wheat", "growing", 0.5, "", ""), 17), nil)))
+	if got != [2]int{first[0], first[1] + fieldGap + small[1]} {
+		t.Fatal(first, small, got)
+	}
+	full := sizeOf(t, must(t)(FarmPNG(repeat(plot("wheat", "ready", 0, "", ""), 40), map[string]int{"cat": 1})))
+	if full[0] != first[0] || full[1] <= 2*first[1] {
+		t.Fatal(full)
+	}
+	if _, err := FarmPNGWithDecor(repeat(plot("", "empty", 0, "", ""), 20), nil, []string{"scarecrow"}); err != nil {
+		t.Fatal(err)
 	}
 }

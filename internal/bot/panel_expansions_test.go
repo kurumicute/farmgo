@@ -16,13 +16,13 @@ func TestDecorPanel(t *testing.T) {
 	e.setGold(pid, 300_000)
 	p.goPage("plots")
 	p.click("庭院擺設")
-	contains(t, p.Text, "✦ 庭院擺設 ✦", "左上：（空）", "已擁有 0／24", "🟡 **稀有**（100,000 金）")
+	contains(t, p.Text, "✦ 庭院擺設 ✦", "左上：（空）", "已擁有 0／26", "🟡 **稀有**（100,000 金）", "本季限定") // 24 件＋本季限定 2 件
 	p.choose("購買裝飾", "fountain")
 	contains(t, p.Text, "確認購買", "噴水池")
 	p.click("確認購買（100,000 金）")
 	contains(t, p.Text, "買下⛲ 噴水池", "擺在庭院的左上")
 	p.goPage("decor")
-	contains(t, p.Text, "左上：⛲ 噴水池", "已擁有 1／24")
+	contains(t, p.Text, "左上：⛲ 噴水池", "已擁有 1／26")
 	// 搬到 3 號位置
 	p.choose("選擇庭院位置", "3")
 	p.choose("擺到左下", "fountain")
@@ -83,5 +83,63 @@ func TestHourglassAndLabExpansionPanel(t *testing.T) {
 	p.click("研究槽擴充（100,000 金）")
 	p.click("確認擴充研究槽")
 	contains(t, p.Text, "研究槽擴充：3 → **4** 個")
+	e.checkLedger()
+}
+
+// 名牌與農會（2026-11-19）：從成就與圖鑑進入；買名牌後排行榜名字前面顯示；捐款要確認。
+func TestBadgeAndReputationPanels(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	pid := p.panel.playerID
+	e.setGold(pid, 500_000)
+	p.goPage("progress")
+	p.click("名牌")
+	contains(t, p.Text, "✦ 名牌 ✦", "🍀 **幸運草**", "農會聲望 Lv.10")
+	p.choose("購買名牌", "clover")
+	p.click("確認購買（30,000 金）")
+	contains(t, p.Text, "買下名牌 🍀 幸運草")
+	p.click("農會")
+	contains(t, p.Text, "✦ 農會 ✦", "Lv.0")
+	p.click("捐 10,000")
+	contains(t, p.Text, "確認捐款")
+	p.click("確認捐 10,000 金")
+	contains(t, p.Text, "聲望升到 **Lv.1**", "🍀 阿明")
+	p.goPage("board") // 排行榜名字前面顯示名牌
+	contains(t, p.Text, "🍀 阿明")
+	e.checkLedger()
+}
+
+// 農場外觀頁（2026-11-19）：從庭院擺設進入，買主題後農田圖照常產生。
+func TestLooksPanel(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	pid := p.panel.playerID
+	e.setGold(pid, 500_000)
+	p.goPage("decor")
+	p.click("農場外觀")
+	contains(t, p.Text, "✦ 農場外觀 ✦", "❄️ **雪地**", "還沒有寵物")
+	p.choose("選擇主題", "night")
+	contains(t, p.Text, "確認購買")
+	p.click("確認購買（150,000 金）")
+	contains(t, p.Text, "買下主題 🌙 夜景")
+	p.goPage("plots")
+	if len(p.panel.files) == 0 {
+		t.Fatal("套用主題後農田頁要有圖片")
+	}
+	e.checkLedger()
+}
+
+// 每週拍賣頁（2026-11-19）：出最低價要確認，成功後顯示自己是最高出價者。
+func TestAuctionPanel(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	e.setGold(p.panel.playerID, 500_000)
+	p.goPage("progress")
+	p.click("每週拍賣")
+	contains(t, p.Text, "✦ 每週拍賣 ✦", "本週拍賣品", "還沒有人出價")
+	p.click("出最低價（50,000）")
+	contains(t, p.Text, "確認出價")
+	p.click("確認出價 50,000 金")
+	contains(t, p.Text, "目前最高價", "你是目前的最高出價者")
 	e.checkLedger()
 }

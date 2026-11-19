@@ -11,6 +11,7 @@ import (
 
 	"farmgm/internal/bot/ui"
 	"farmgm/internal/game/decor"
+	"farmgm/internal/game/seasons"
 	"farmgm/internal/services"
 )
 
@@ -33,7 +34,7 @@ func (p *Panel) buildDecor(_ context.Context, data any) (*ui.Embed, error) {
 		}
 	}
 	var tiers []any
-	for _, tier := range []decor.Tier{decor.Common, decor.Fine, decor.Rare, decor.Festival} {
+	for _, tier := range decor.Tiers {
 		var names []string
 		price := 0
 		for _, it := range v.Items {
@@ -45,9 +46,24 @@ func (p *Panel) buildDecor(_ context.Context, data any) (*ui.Embed, error) {
 			if it.Owned {
 				mark = "✅"
 			}
-			names = append(names, mark+it.Emoji+it.Name)
+			name := mark + it.Emoji + it.Name
+			if !it.OnSale && it.Season != "" {
+				name += "（" + seasons.SeasonNames[it.Season] + "季限定・已絕版）"
+			}
+			names = append(names, name)
 		}
-		tiers = append(tiers, fmt.Sprintf("%s **%s**（%s 金）：%s", tier.Emoji, tier.Name, money(price), strings.Join(names, "、")))
+		if len(names) == 0 {
+			continue
+		}
+		head := fmt.Sprintf("%s **%s**（%s 金）", tier.Emoji, tier.Name, money(price))
+		if tier == decor.Auction {
+			head = fmt.Sprintf("%s **%s**（每週拍賣得標）", tier.Emoji, tier.Name)
+		}
+		if tier == decor.Seasonal { // 2026-11-19 本季限定放最上面，標示下架倒數
+			head = fmt.Sprintf("%s **本季限定：%s季**（%s 金，%s下架）", seasons.SeasonEmoji[v.Season], seasons.SeasonNames[v.Season],
+				money(decor.SeasonalPrice), ts(&v.SeasonEndsAt))
+		}
+		tiers = append(tiers, head+"："+strings.Join(names, "、"))
 	}
 	owned := 0
 	for _, it := range v.Items {
@@ -64,14 +80,26 @@ func (p *Panel) buildDecor(_ context.Context, data any) (*ui.Embed, error) {
 	e.Description = runes(sections(parts...), 4000)
 	e.Footer = fmt.Sprintf("💳 金幣 %s　回「🌱 農田」就能看到擺好的庭院。", money(v.Gold))
 
-	// 購買：選一種還沒有的裝飾 → 確認
+	// 購買：選一種還沒有的裝飾 → 確認（本季限定排最前面；超過 25 種時選單內翻頁）
 	var buy []option
-	for _, it := range v.Items {
-		if !it.Owned {
-			buy = append(buy, option{fmt.Sprintf("%s（%s 金）", it.Name, money(it.Price)), it.Code, it.Tier.Emoji + " " + it.Tier.Name, it.Emoji})
+	for _, tier := range decor.Tiers {
+		for _, it := range v.Items {
+			if it.Tier == tier && !it.Owned && it.OnSale {
+				desc := it.Tier.Emoji + " " + it.Tier.Name
+				if it.Season != "" {
+					desc = fmt.Sprintf("%s %s季限定，換季就下架", seasons.SeasonEmoji[it.Season], seasons.SeasonNames[it.Season])
+				}
+				buy = append(buy, option{fmt.Sprintf("%s（%s 金）", it.Name, money(it.Price)), it.Code, desc, it.Emoji})
+			}
 		}
 	}
-	p.selectMenu("🛒 購買裝飾…", buy, func(ctx context.Context, it ui.Interaction, code string) error {
+	shown, page, pages := pagedOptions(buy, p.decorPage)
+	p.decorPage = page
+	p.selectMenu("🛒 購買裝飾…", shown, func(ctx context.Context, it ui.Interaction, code string) error {
+		if turnPage(code, &p.decorPage, pages) {
+			p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+			return nil
+		}
 		p.decorBuy = code
 		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
 		return nil
@@ -112,7 +140,13 @@ func (p *Panel) buildDecor(_ context.Context, data any) (*ui.Embed, error) {
 			}
 			put = append(put, option{it.Name, it.Code, where, it.Emoji})
 		}
-		p.selectMenu(fmt.Sprintf("🎨 擺到%s…", decor.SlotName(slot)), put, func(ctx context.Context, it ui.Interaction, code string) error {
+		putShown, putPage, putPages := pagedOptions(put, p.decorPutPage) // 擁有超過 24 種時選單內翻頁
+		p.decorPutPage = putPage
+		p.selectMenu(fmt.Sprintf("🎨 擺到%s…", decor.SlotName(slot)), putShown, func(ctx context.Context, it ui.Interaction, code string) error {
+			if turnPage(code, &p.decorPutPage, putPages) {
+				p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+				return nil
+			}
 			if code == "none" {
 				code = ""
 			}
@@ -142,6 +176,7 @@ func (p *Panel) buildDecor(_ context.Context, data any) (*ui.Embed, error) {
 			return nil
 		}, btn{emoji: "✖️", row: 3})
 	}
+	p.nav("農場外觀", "looks", btn{emoji: "🖼️", row: 4}) // 2026-11-19 主題與寵物造型
 	p.nav("回農田", "plots", btn{emoji: "🌱", row: 4})
 	p.navBack(4)
 	return e, nil

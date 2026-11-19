@@ -1,7 +1,7 @@
 package services
 
-// 送禮與互助（Go 版新增，2026-11-17；規則與數值在 game/aid）：同群組的玩家每天可以互送一份作物、互相幫忙澆水，
-// 雙方都拿少量金幣。雙方都要達到等級門檻與農場天數；每天的送出、收到次數各有上限，同一對玩家同一種互助一天只能一次。
+// 送禮與互助（Go 版新增，2026-11-17；規則與數值在 game/aid）：同群組的玩家每天可以互送一份作物、互相幫忙拔草
+// （2026-11-19 由幫忙澆水改成），雙方都拿少量金幣。雙方都要達到等級門檻與農場天數；每天的送出、收到次數各有上限，同一對玩家同一種互助一天只能一次。
 
 import (
 	"context"
@@ -23,14 +23,15 @@ import (
 
 // AidTargetView 可以互助的對象。
 type AidTargetView struct {
-	PlayerID     int64
-	Name         string
-	FarmName     string
-	Level        int
-	Waiting      int    // 等待澆水的土地數
-	Blocked      string // 對方不符合門檻的原因；"" = 可以
-	GiftedToday  bool   // 今天已經送過禮給他
-	WateredToday bool   // 今天已經幫他澆過水
+	PlayerID    int64
+	Name        string
+	FarmName    string
+	Level       int
+	Growing     int    // 生長中的土地數（拔草可以加速的）
+	Blocked     string // 對方不符合門檻的原因；"" = 可以
+	GiftedToday bool   // 今天已經送過禮給他
+	WeededToday bool   // 今天已經幫他拔過草
+	WeedTaken   bool   // 今天已經被別人（或自己）幫忙拔過草（每人每天只能被拔草一次）
 }
 
 // AidGiftItem 可以當禮物的作物（普通品質、沒有突變）。
@@ -44,14 +45,14 @@ type AidGiftItem struct {
 
 // AidView 送禮與互助畫面。
 type AidView struct {
-	Config        aid.Config
-	Blocked       string // 自己不符合門檻的原因；"" = 可以
-	GiftSent      int
-	GiftReceived  int
-	WaterSent     int
-	WaterReceived int
-	Targets       []AidTargetView
-	Items         []AidGiftItem
+	Config       aid.Config
+	Blocked      string // 自己不符合門檻的原因；"" = 可以
+	GiftSent     int
+	GiftReceived int
+	WeedSent     int
+	WeedReceived int
+	Targets      []AidTargetView
+	Items        []AidGiftItem
 }
 
 // aidBlocked 不符合等級或農場天數門檻的原因（who 例如「你」「阿明」）；符合時回傳 ""。
@@ -83,16 +84,21 @@ func (s *GameService) AidOverview(ctx context.Context, groupID, playerID int64) 
 		if err != nil {
 			return AidView{}, err
 		}
-		v.GiftSent, v.GiftReceived, v.WaterSent, v.WaterReceived = counts.GiftSent, counts.GiftReceived, counts.WaterSent, counts.WaterReceived
-		targets, err := aidrepo.Targets(ctx, t, groupID, playerID)
+		v.GiftSent, v.GiftReceived, v.WeedSent, v.WeedReceived = counts.GiftSent, counts.GiftReceived, counts.WeedSent, counts.WeedReceived
+		targets, err := aidrepo.Targets(ctx, t, groupID, playerID, now)
+		if err != nil {
+			return AidView{}, err
+		}
+		taken, err := aidrepo.WeedReceivedFarms(ctx, t, day)
 		if err != nil {
 			return AidView{}, err
 		}
 		for _, r := range targets {
 			v.Targets = append(v.Targets, AidTargetView{
-				PlayerID: r.PlayerID, Name: r.PlayerName, FarmName: r.FarmName, Level: r.Level, Waiting: r.Waiting,
+				PlayerID: r.PlayerID, Name: r.PlayerName, FarmName: r.FarmName, Level: r.Level, Growing: r.Growing,
 				Blocked:     aidBlocked(r.PlayerName, r.Level, r.CreatedAt, now),
-				GiftedToday: counts.GiftedTo[r.FarmID], WateredToday: counts.WateredFor[r.FarmID],
+				GiftedToday: counts.GiftedTo[r.FarmID], WeededToday: counts.WeededFor[r.FarmID],
+				WeedTaken: taken[r.FarmID] >= aid.WeedReceivePerDay,
 			})
 		}
 		items, err := inventory.ListItems(ctx, t, farm.ID)
@@ -285,12 +291,13 @@ func (s *GameService) SendGift(ctx context.Context, groupID, playerID, targetPla
 	})
 }
 
-// HelpWater 幫同群組的玩家把所有等待澆水的土地澆水（算一次），雙方各得金幣。
-func (s *GameService) HelpWater(ctx context.Context, groupID, playerID, targetPlayerID int64) (ActionResult, error) {
+// HelpWeed 幫同群組的玩家拔草（2026-11-19 由幫忙澆水改成）：對方所有生長中作物的剩餘生長時間減少 aid.WeedGrowPct%，
+// 算一次；每人每天只能被拔草 aid.WeedReceivePerDay 次，雙方各得金幣。
+func (s *GameService) HelpWeed(ctx context.Context, groupID, playerID, targetPlayerID int64) (ActionResult, error) {
 	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
 		cfg := aid.Current()
-		if cfg.WaterSendPerDay == 0 || cfg.WaterReceivePerDay == 0 {
-			return ActionResult{}, gameerr.Validationf("幫忙澆水目前沒有開放。")
+		if cfg.WeedSendPerDay == 0 {
+			return ActionResult{}, gameerr.Validationf("幫忙拔草目前沒有開放。")
 		}
 		me, them, myName, theirName, err := s.aidPair(ctx, t, groupID, playerID, targetPlayerID)
 		if err != nil {
@@ -302,49 +309,50 @@ func (s *GameService) HelpWater(ctx context.Context, groupID, playerID, targetPl
 		if err != nil {
 			return ActionResult{}, err
 		}
-		if mine.WaterSent >= cfg.WaterSendPerDay {
-			return ActionResult{}, gameerr.Validationf("今天已經幫 %d 位玩家澆過水了（每天最多 %d 位）。", mine.WaterSent, cfg.WaterSendPerDay)
+		if mine.WeedSent >= cfg.WeedSendPerDay {
+			return ActionResult{}, gameerr.Validationf("今天已經幫 %d 位玩家拔過草了（每天最多 %d 位）。", mine.WeedSent, cfg.WeedSendPerDay)
 		}
-		if mine.WateredFor[them.ID] {
-			return ActionResult{}, gameerr.Validationf("今天已經幫 %s 澆過水了。", theirName)
+		if mine.WeededFor[them.ID] {
+			return ActionResult{}, gameerr.Validationf("今天已經幫 %s 拔過草了。", theirName)
 		}
 		theirs, err := aidrepo.Counts(ctx, t, them.ID, day)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		if theirs.WaterReceived >= cfg.WaterReceivePerDay {
-			return ActionResult{}, gameerr.Validationf("%s今天已經被 %d 位玩家幫忙澆過水了（每人每天最多 %d 位）。", theirName, theirs.WaterReceived, cfg.WaterReceivePerDay)
+		if theirs.WeedReceived >= aid.WeedReceivePerDay {
+			return ActionResult{}, gameerr.Validationf("%s今天已經被別人幫忙拔過草了（每人每天只能被拔草 %d 次）。", theirName, aid.WeedReceivePerDay)
 		}
-		plots, err := s.plotsInState(ctx, t, them, rules.PlotWaitingWater)
+		plots, err := s.plotsInState(ctx, t, them, rules.PlotGrowing)
 		if err != nil {
 			return ActionResult{}, err
 		}
 		if len(plots) == 0 {
-			return ActionResult{}, gameerr.Validationf("%s沒有需要澆水的土地。", theirName)
+			return ActionResult{}, gameerr.Validationf("%s沒有生長中的作物，拔草沒有效果。", theirName)
 		}
 		for _, p := range plots {
-			crop, err := crops.Get(ctx, t, *p.CropTypeID)
-			if err != nil {
+			newReady := now.Add(mulDuration(p.ReadyAt.Sub(now), aid.WeedTimeFactor))
+			if floor := p.WateredAt.Add(time.Microsecond); newReady.Before(floor) {
+				newReady = floor
+			}
+			if _, err := t.Exec(ctx, "UPDATE farm_plots SET ready_at = $2, updated_at = now() WHERE id = $1", p.ID, newReady); err != nil {
 				return ActionResult{}, err
 			}
-			if _, err := s.water(ctx, t, them, p, crop, now, false, nil); err != nil {
-				return ActionResult{}, err
-			}
+			p.ReadyAt = &newReady
 		}
 		n := len(plots)
-		if err := aidrepo.Add(ctx, t, "water", me.ID, them.ID, &groupID, "", n, day, now); err != nil {
+		if err := aidrepo.Add(ctx, t, aidrepo.KindWeed, me.ID, them.ID, &groupID, "", n, day, now); err != nil {
 			return ActionResult{}, err
 		}
-		gold := cfg.WaterRewardGold
+		gold := cfg.WeedRewardGold
 		if err := s.aidReward(ctx, t, rules.EvAidWater, gold,
-			me, fmt.Sprintf("幫 %s 澆了 %d 格", theirName, n), rec{},
-			them, fmt.Sprintf("%s 幫忙澆了 %d 格", myName, n), rec{}); err != nil {
+			me, fmt.Sprintf("幫 %s 拔草，%d 格作物剩餘生長時間 -%d%%", theirName, n, aid.WeedGrowPct), rec{},
+			them, fmt.Sprintf("%s 幫忙拔草，%d 格作物剩餘生長時間 -%d%%", myName, n, aid.WeedGrowPct), rec{}); err != nil {
 			return ActionResult{}, err
 		}
-		msg := fmt.Sprintf("💧 已幫 %s 澆了 %d 格", theirName, n)
+		msg := fmt.Sprintf("🌿 已幫 %s 拔草，%d 格作物的剩餘生長時間減少 %d%%", theirName, n, aid.WeedGrowPct)
 		if gold > 0 {
 			msg += fmt.Sprintf("，雙方各得 %d 金幣", gold)
 		}
-		return result(msg+fmt.Sprintf("（今天已幫 %d／%d 位）。", mine.WaterSent+1, cfg.WaterSendPerDay), me.Gold, gold, "", 0), nil
+		return result(msg+fmt.Sprintf("（今天已幫 %d／%d 位）。", mine.WeedSent+1, cfg.WeedSendPerDay), me.Gold, gold, "", 0), nil
 	})
 }

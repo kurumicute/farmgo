@@ -215,7 +215,7 @@ func TestFeatureCardsHaveGuideSlots(t *testing.T) {
 	}
 	guide := getJSON(t, a, "/api/guide")
 	start := m(guide["start"])
-	if num(start["steal_plots_per_day"]) != 1 || num(start["rename_cost"]) != balance.RenameFarmCost {
+	if num(start["steal_plots_per_day"]) != 1 || num(start["rename_cost"]) != 1000 {
 		t.Fatal(start)
 	}
 	if find(guide["items"], "kind", "tool") == nil {
@@ -291,7 +291,7 @@ func TestGuideFollowsGameSettingsWithoutPlayerData(t *testing.T) {
 		}
 	}
 	seeds := list(m(list(x["areas"])[0])["seeds"])
-	if len(seeds) != 1 || m(seeds[0])["name"] != "琥珀瓜種子" || num(m(seeds[0])["min_level"]) != 1 || num(x["max_level"]) != 13 {
+	if len(seeds) != 1 || m(seeds[0])["name"] != "琥珀瓜種子" || num(m(seeds[0])["min_level"]) != 1 || num(x["max_level"]) != 29 { // 32 格土地（2026-11-19 第二塊農田）
 		t.Fatal(seeds, x["max_level"])
 	}
 	if melon := find(guide["crops"], "name", "琥珀瓜"); melon["shop_buyable"] != false { // 稀有作物：商店不販售種子
@@ -837,14 +837,15 @@ func TestGuideHasDecorTiers(t *testing.T) {
 		t.Fatal("缺少庭院擺設欄位")
 	}
 	tiers := list(getJSON(t, a, "/api/guide/shop")["decor"])
-	if len(tiers) != 4 {
+	if len(tiers) != 5 { // 2026-11-19 加季節限定
 		t.Fatal(tiers)
 	}
 	n := 0
 	for _, x := range tiers {
 		n += len(list(m(x)["items"]))
 	}
-	if n != len(decor.Catalog) || m(tiers[0])["name"] != decor.Common.Name || num(m(tiers[0])["price"]) != float64(decor.Catalog[0].Price) {
+	// 拍賣限定 4 件不列出
+	if n != len(decor.Catalog)-4 || m(tiers[0])["name"] != decor.Common.Name || num(m(tiers[0])["price"]) != float64(decor.Catalog[0].Price) {
 		t.Fatal(tiers)
 	}
 }

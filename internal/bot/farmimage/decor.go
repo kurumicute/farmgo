@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"farmgm/internal/game/cosmetics"
 	"farmgm/internal/game/decor"
 )
 
@@ -29,12 +30,22 @@ func hasDecor(codes []string) bool {
 
 // withDecor 農田左右加庭院、上方加草地帶，畫裝飾與寵物。
 func withDecor(m *manifest, field *image.NRGBA, pets map[string]int, codes []string) (*image.NRGBA, error) {
+	return withDecorLook(m, field, pets, codes, Look{})
+}
+
+// withDecorLook withDecor 加上主題（換地面磚、點綴與夜景濾鏡）與寵物造型（見 style.go）。
+func withDecorLook(m *manifest, field *image.NRGBA, pets map[string]int, codes []string, look Look) (*image.NRGBA, error) {
 	d := m.DecorSides
 	top := m.Pets.BandHeight
 	fw, fh := field.Rect.Dx(), field.Rect.Dy()
 	w, h := fw+2*d.Width, fh+top
 	canvas := newCanvas(w, h)
-	tile, err := img(d.Tile)
+	tileFile := d.Tile
+	theme, themed := cosmetics.FindTheme(look.Theme)
+	if themed {
+		tileFile = theme.Tile
+	}
+	tile, err := img(tileFile)
 	if err != nil {
 		return nil, err
 	}
@@ -47,12 +58,31 @@ func withDecor(m *manifest, field *image.NRGBA, pets map[string]int, codes []str
 	if err != nil {
 		return nil, err
 	}
-	for _, pos := range d.Flowers {
+	for i, pos := range d.Flowers {
 		x := pos[0]
 		if x < 0 {
 			x += w
 		}
-		alphaComposite(canvas, flower, x, top+pos[1])
+		sprite := flower
+		if themed { // 主題點綴輪流放在花叢的位置
+			if sprite, err = img(theme.Props[i%len(theme.Props)]); err != nil {
+				return nil, err
+			}
+		}
+		alphaComposite(canvas, sprite, x, top+pos[1])
+	}
+	if themed { // 上方草地帶的兩端（左右庭院正上方）也放點綴，寵物站在中間的農田上方
+		for i := range 2 {
+			sprite, err := img(theme.Props[i%len(theme.Props)])
+			if err != nil {
+				return nil, err
+			}
+			x := (d.Width - sprite.Rect.Dx()) / 2
+			if i == 1 {
+				x = w - d.Width + x
+			}
+			alphaComposite(canvas, sprite, x, top-sprite.Rect.Dy()-8)
+		}
 	}
 	alphaComposite(canvas, field, d.Width, top)
 	per := len(d.Rows)
@@ -83,7 +113,12 @@ func withDecor(m *manifest, field *image.NRGBA, pets map[string]int, codes []str
 		if s.Anchor != "left" {
 			x = d.Width + fw - sprite.Rect.Dx() - s.Margin
 		}
-		alphaComposite(canvas, sprite, x, top-sprite.Rect.Dy()+s.Bottom)
+		if err := drawPet(canvas, s, look.Skins[s.Code], x, top-sprite.Rect.Dy()+s.Bottom); err != nil {
+			return nil, err
+		}
+	}
+	if themed && theme.Night {
+		nightFilter(canvas, theme.Filter)
 	}
 	return canvas, nil
 }
