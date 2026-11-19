@@ -3,6 +3,7 @@ package services
 // 訊息格式化（對應 Python game_service.py 模組層級的函式）。
 
 import (
+	"farmgm/i18n"
 	"fmt"
 	"math/big"
 	"slices"
@@ -231,4 +232,98 @@ func mulDuration(d time.Duration, f float64) time.Duration {
 		q.Add(q, big.NewInt(1))
 	}
 	return time.Duration(q.Int64()) * time.Microsecond
+}
+
+// ---------- 多語版本（2026-11-19；繁體中文時與原本的函式輸出完全相同） ----------
+
+// RecordNoteLang RecordNote 的多語版本。
+func RecordNoteLang(lang, key string, value, old int) string {
+	if lang == i18n.Default {
+		return RecordNote(key, value, old)
+	}
+	return i18n.T(lang, "svc.record.note", "label", i18n.T(lang, "svc.record."+key), "value", numfmt.Comma(value),
+		"unit", i18n.T(lang, "svc.record."+key+"_unit"), "old", numfmt.Comma(old))
+}
+
+// GoldChangeLang GoldChange 的多語版本。
+func GoldChangeLang(lang string, goldAfter, delta int) string {
+	return i18n.T(lang, "svc.gold_change", "before", numfmt.Comma(goldAfter-delta), "after", numfmt.Comma(goldAfter))
+}
+
+func joinNameQtyLang(lang string, groups []nameQty) string {
+	if lang == i18n.Default {
+		return joinNameQty(groups)
+	}
+	parts := make([]string, len(groups))
+	for i, g := range groups {
+		parts[i] = fmt.Sprintf("%s ×%d", g.name, g.qty)
+	}
+	return strings.Join(parts, i18n.T(lang, "svc.list_sep"))
+}
+
+// HarvestSummaryLang HarvestSummary 的多語版本（HarvestDetail.Name 已經是該語言的名稱）。
+func HarvestSummaryLang(lang string, details []HarvestDetail) string {
+	if lang == i18n.Default {
+		return HarvestSummary(details)
+	}
+	total, stolen, lost := 0, 0, 0
+	for _, d := range details {
+		total += d.Quantity
+		stolen += d.Stolen
+		lost += d.Lost
+	}
+	groups := groupNames(details)
+	shown := joinNameQtyLang(lang, groups[:min(8, len(groups))])
+	if len(groups) > 8 {
+		shown += i18n.T(lang, "svc.harvest.more_kinds", "n", len(groups))
+	}
+	var rare []HarvestDetail
+	legendary := false
+	for _, d := range details {
+		if IsRare(d.Quality, d.Mutation) {
+			rare = append(rare, d)
+			if d.Quality == "legendary" || d.Mutation == "golden" || d.Mutation == "variant" {
+				legendary = true
+			}
+		}
+	}
+	text := ""
+	if len(rare) > 0 {
+		head := i18n.T(lang, "svc.harvest.rare_head")
+		if legendary {
+			head = i18n.T(lang, "svc.harvest.big_head")
+		}
+		g := groupNames(rare)
+		text = head + joinNameQtyLang(lang, g[:min(6, len(g))]) + "\n"
+	}
+	text += i18n.T(lang, "svc.harvest.summary", "plots", len(details), "n", total) + "\n" + shown
+	sold, kept, cat := 0, 0, 0
+	for _, d := range details {
+		if d.Sold {
+			sold += d.Value
+		} else {
+			kept += d.Value
+		}
+		cat += d.CatBonus
+	}
+	if kept != 0 {
+		text += i18n.T(lang, "svc.harvest.value_kept", "n", numfmt.Comma(kept))
+	}
+	if sold != 0 {
+		text += i18n.T(lang, "svc.harvest.value_sold", "n", numfmt.Comma(sold))
+	}
+	if cat != 0 {
+		text += i18n.T(lang, "svc.harvest.cat_bonus", "n", cat)
+	}
+	var losses []string
+	if stolen != 0 {
+		losses = append(losses, i18n.T(lang, "svc.harvest.stolen", "n", stolen))
+	}
+	if lost != 0 {
+		losses = append(losses, i18n.T(lang, "svc.harvest.lost", "n", lost))
+	}
+	if len(losses) > 0 {
+		text += "\n😢 " + strings.Join(losses, i18n.T(lang, "svc.list_sep"))
+	}
+	return text
 }

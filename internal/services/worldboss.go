@@ -534,9 +534,9 @@ func ScheduleView(ctx context.Context, t *db.Tx, s *models.WorldBossSchedule, no
 	v.AnchorDate, v.IntervalDays, v.SpawnHour = v.Times.AnchorDate.Format(time.DateOnly), s.IntervalDays, s.SpawnHour
 	v.SpawnMinute, v.DurationMinutes, v.MaxHP = s.SpawnMinute, s.DurationMinutes, s.MaxHP
 	hours, minutes := s.DurationMinutes/60, s.DurationMinutes%60
-	v.TimeText = fmt.Sprintf("每 %d 天 %02d:%02d（台灣時間）出現，持續 %d 小時", s.IntervalDays, s.SpawnHour, s.SpawnMinute, hours)
+	v.TimeText = txf(ctx, "每 %d 天 %02d:%02d（台灣時間）出現，持續 %d 小時", s.IntervalDays, s.SpawnHour, s.SpawnMinute, hours)
 	if minutes != 0 {
-		v.TimeText += fmt.Sprintf(" %d 分", minutes)
+		v.TimeText += txf(ctx, " %d 分", minutes)
 	}
 	up, err := db.QueryStruct[models.WorldBossEvent](ctx, t,
 		"SELECT * FROM world_boss_events WHERE schedule_id = $1 AND status <> 'ended' ORDER BY slot_at LIMIT 1", s.ID)
@@ -1430,16 +1430,16 @@ func (w *WorldBossService) BossClaim(ctx context.Context, groupID *int64, player
 			}
 		}
 		got := BossRewardText(wb.Reward{Gold: reward.Gold, Items: reward.Items}, names)
-		parts := strings.Join(reward.Parts, "、")
+		parts := strings.Join(reward.Parts, txt(ctx, "、"))
 		if parts == "" {
-			parts = label + "獎勵"
+			parts = label + txt(ctx, "獎勵")
 		}
-		msg := fmt.Sprintf("🎁 領取「%s」%s：%s。", ev.Name, parts, got)
+		msg := txf(ctx, "🎁 領取「%s」%s：%s。", ev.Name, parts, got)
 		if reward.Title != "" {
 			if err := titles.Grant(ctx, t, farm.ID, reward.Title, worldBossTitleSource, now); err != nil { // 可在「成就圖鑑」選用
 				return ActionResult{}, err
 			}
-			msg += fmt.Sprintf("\n🏅 獲得稱號「%s」！可到「🏅 成就圖鑑」設定顯示。", reward.Title)
+			msg += txf(ctx, "\n🏅 獲得稱號「%s」！可到「🏅 成就圖鑑」設定顯示。", reward.Title)
 		}
 		return result(msg, farm.Gold, reward.Gold, "", total), nil
 	})
@@ -1713,9 +1713,9 @@ func (w *WorldBossService) CreateWorldBoss(ctx context.Context, actor string, in
 				gid, v.Name, v.Level, v.MaxHP, startsAt, endsAt, string(sj), string(rj), actor, now).Scan(&id)
 		})
 		if isIntegrity(err) {
-			where := "這個群組"
+			where := txt(ctx, "這個群組")
 			if gid == nil {
-				where = "全服"
+				where = txt(ctx, "全服")
 			}
 			return BossView{}, gameerr.New(gameerr.AlreadyExists, "%s已經有尚未結束的手動世界 Boss 活動，請先結束它。", where)
 		}

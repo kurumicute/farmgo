@@ -63,14 +63,14 @@ func (p *Panel) claimButton(trip *services.TripView, row int) {
 	if trip == nil || !trip.Finished {
 		return
 	}
-	p.button("領取探險獎勵", func(ctx context.Context, it ui.Interaction) error {
+	p.button(p.s("領取探險獎勵"), func(ctx context.Context, it ui.Interaction) error {
 		p.act(ctx, it, p.claimExploration, actOpts{page: "cave_result"})
 		return nil
 	}, btn{emoji: "📦", row: row, style: ui.Success})
 }
 
 func (p *Panel) areaImage(code string) []byte {
-	return p.image("探險區域", func() ([]byte, error) { return farmimage.ExplorePNG(code) })
+	return p.image(p.s("探險區域"), func() ([]byte, error) { return farmimage.ExplorePNG(code) })
 }
 
 type caveData struct {
@@ -94,32 +94,32 @@ func (p *Panel) loadCave(ctx context.Context) (any, error) {
 func (p *Panel) buildCave(_ context.Context, data any) (*ui.Embed, error) {
 	d := data.(caveData)
 	trip := d.ov.Trip
-	e := &ui.Embed{Title: "⛰️ ✦ 山洞冒險 ✦", Color: Gold, Description: sections(
-		fmt.Sprintf("👨‍🌾 **%s**　⭐ 農場 **Lv %d**", d.ov.PlayerName, d.ov.Level),
-		"探險帶回素材、稀有種子與假幣（放素材背包），素材可以在「🔧 機器」做自動化機器。\n"+
-			"一次只能去一個區域，回來領取獎勵後才能再出發；🏛️ 古代遺跡由群組一起修復，修好後每天可額外探索一次。",
+	e := &ui.Embed{Title: p.s("⛰️ ✦ 山洞冒險 ✦"), Color: Gold, Description: sections(
+		p.f("👨‍🌾 **%s**　⭐ 農場 **Lv %d**", d.ov.PlayerName, d.ov.Level),
+		p.s("探險帶回素材、稀有種子與假幣（放素材背包），素材可以在「🔧 機器」做自動化機器。\n")+
+			p.s("一次只能去一個區域，回來領取獎勵後才能再出發；🏛️ 古代遺跡由群組一起修復，修好後每天可額外探索一次。"),
 	)}
 	for _, a := range d.ov.Areas {
-		when := "探險 " + services.LongDuration(a.DurationSeconds)
+		when := p.s("探險 ") + p.dur(true, a.DurationSeconds)
 		if a.NeedsRuins {
-			when = "每天一次、立即拿到獎勵"
+			when = p.s("每天一次、立即拿到獎勵")
 		}
-		e.AddField(fmt.Sprintf("%s %s（Lv.%d）", a.Emoji, a.Name, a.UnlockLevel),
-			fmt.Sprintf("%s　🕒 %s\n🪨 主要素材：%s", areaStatus(a, trip), when, strings.Join(a.Common[:min(3, len(a.Common))], "、")), false)
+		e.AddField(p.f("%s %s（Lv.%d）", a.Emoji, p.s(a.Name), a.UnlockLevel),
+			p.f("%s　🕒 %s\n🪨 主要素材：%s", areaStatus(a, trip), when, strings.Join(a.Common[:min(3, len(a.Common))], p.s("、"))), false)
 	}
-	e.AddField("🧭 目前探險", tripText(trip), false) // 目前狀態放在最後一個欄位，貼近出發／領取按鈕
+	e.AddField(p.s("🧭 目前探險"), tripText(trip), false) // 目前狀態放在最後一個欄位，貼近出發／領取按鈕
 	// 2026-11-16 可以出發的區域按一下就出發（原本要先進區域頁再按「出發探險」）；其他狀態（探險中、未解鎖…）打開區域頁。
 	// 區域的詳細資訊改從「ℹ️ 查看區域詳情」選單進入。連點保護與區域頁相同：重繪後舊按鈕失效，後端也限制一次一趟。
 	var details []option
 	for _, a := range d.ov.Areas {
 		code := a.Code
-		details = append(details, option{a.Name, code, areaStatusShort(a, trip), a.Emoji})
+		details = append(details, option{p.s(a.Name), code, areaStatusShort(a, trip), a.Emoji})
 		if a.Ready {
 			target := "cave"
 			if a.NeedsRuins {
 				target = "cave_result"
 			}
-			p.button("出發："+a.Name, func(ctx context.Context, it ui.Interaction) error {
+			p.button(p.s("出發：")+p.s(a.Name), func(ctx context.Context, it ui.Interaction) error {
 				p.caveArea = code
 				p.act(ctx, it, func(ctx context.Context) (string, error) { return p.explore(ctx, code) }, actOpts{page: target})
 				return nil
@@ -130,21 +130,21 @@ func (p *Panel) buildCave(_ context.Context, data any) (*ui.Embed, error) {
 		if a.Exploring {
 			style = ui.Primary
 		}
-		p.button(a.Name, func(ctx context.Context, it ui.Interaction) error {
+		p.button(p.s(a.Name), func(ctx context.Context, it ui.Interaction) error {
 			p.caveArea = code
 			p.goTo(ctx, it, "cave_area", "")
 			return nil
 		}, btn{emoji: a.Emoji, row: 0, style: style})
 	}
-	p.selectMenu("ℹ️ 查看區域詳情（素材、稀有種子、等級解鎖）…", details, func(ctx context.Context, it ui.Interaction, code string) error {
+	p.selectMenu(p.s("ℹ️ 查看區域詳情（素材、稀有種子、等級解鎖）…"), details, func(ctx context.Context, it ui.Interaction, code string) error {
 		p.caveArea = code
 		p.goTo(ctx, it, "cave_area", "")
 		return nil
 	}, 2, "")
 	p.claimButton(trip, 1)
-	p.nav("探索紀錄", "cave_log", btn{emoji: "📖", row: 1})
-	p.nav("機器", "machines", btn{emoji: "🔧", row: 1})
-	p.nav("修復遺跡", "ruins", btn{emoji: "🏛️", row: 1})
+	p.nav(p.s("探索紀錄"), "cave_log", btn{emoji: "📖", row: 1})
+	p.nav(p.s("機器"), "machines", btn{emoji: "🔧", row: 1})
+	p.nav(p.s("修復遺跡"), "ruins", btn{emoji: "🏛️", row: 1})
 	p.navBack(1)
 	p.attachImage(e, d.image)
 	return e, nil
@@ -177,12 +177,12 @@ func (p *Panel) buildCaveArea(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		notes[i] = fmt.Sprintf("%s Lv.%d %s", mark, n.Level, n.Text)
 	}
-	kind := fmt.Sprintf("普通探索（Lv.%d 起高級探索）", a.AdvancedLevel)
+	kind := p.f("普通探索（Lv.%d 起高級探索）", a.AdvancedLevel)
 	if a.Advanced {
-		kind = "🌟 高級探索"
+		kind = p.s("🌟 高級探索")
 	}
 	orDash := func(list []string, empty string) string {
-		if s := strings.Join(list, "、"); s != "" {
+		if s := strings.Join(list, p.s("、")); s != "" {
 			return s
 		}
 		return empty
@@ -191,24 +191,24 @@ func (p *Panel) buildCaveArea(_ context.Context, data any) (*ui.Embed, error) {
 	for _, ev := range a.Events {
 		lock := ""
 		if level < ev.MinLevel {
-			lock = fmt.Sprintf("（Lv.%d）", ev.MinLevel)
+			lock = p.f("（Lv.%d）", ev.MinLevel)
 		}
-		events = append(events, ev.Name+lock)
+		events = append(events, p.s(ev.Name)+lock)
 	}
-	events = append(events, "🪙 假幣")
+	events = append(events, p.s("🪙 假幣"))
 	color := Grey
 	if a.Ready {
 		color = Green
 	}
-	e := &ui.Embed{Title: fmt.Sprintf("%s ✦ %s ✦", a.Emoji, a.Name), Color: color, Description: sections(
-		a.Description,
-		fmt.Sprintf("🔑 解鎖：農場 **Lv.%d**（你是 Lv %d）\n🕒 探險時間：%s　🎲 每次 %d 份獎勵　%s\n📌 狀態：%s",
-			a.UnlockLevel, level, services.LongDuration(a.DurationSeconds), a.Rolls, kind, areaStatus(a, trip)),
-		Section{Title: "🪨 主要素材", Lines: []string{strings.Join(a.Common, "、")}},
-		Section{Title: "💎 稀有素材", Lines: []string{orDash(a.Rare, "—")}},
-		Section{Title: "🌰 稀有種子", Lines: []string{orDash(a.Seeds, "這裡沒有稀有種子")}},
-		Section{Title: "🎁 特殊發現", Lines: events},
-		Section{Title: "⭐ 等級解鎖", Lines: notes},
+	e := &ui.Embed{Title: fmt.Sprintf("%s ✦ %s ✦", a.Emoji, p.s(a.Name)), Color: color, Description: sections(
+		p.s(a.Description),
+		p.f("🔑 解鎖：農場 **Lv.%d**（你是 Lv %d）\n🕒 探險時間：%s　🎲 每次 %d 份獎勵　%s\n📌 狀態：%s",
+			a.UnlockLevel, level, p.dur(true, a.DurationSeconds), a.Rolls, kind, areaStatus(a, trip)),
+		Section{Title: p.s("🪨 主要素材"), Lines: []string{strings.Join(a.Common, p.s("、"))}},
+		Section{Title: p.s("💎 稀有素材"), Lines: []string{orDash(a.Rare, "—")}},
+		Section{Title: p.s("🌰 稀有種子"), Lines: []string{orDash(a.Seeds, p.s("這裡沒有稀有種子"))}},
+		Section{Title: p.s("🎁 特殊發現"), Lines: events},
+		Section{Title: p.s("⭐ 等級解鎖"), Lines: notes},
 	)}
 	if a.Exploring && trip != nil && trip.Finished {
 		p.claimButton(trip, 0)
@@ -216,17 +216,17 @@ func (p *Panel) buildCaveArea(_ context.Context, data any) (*ui.Embed, error) {
 		var label string
 		switch {
 		case !a.Unlocked:
-			label = "尚未解鎖"
+			label = p.s("尚未解鎖")
 		case a.NeedsRuins && a.Ready:
-			label = "探索遺跡"
+			label = p.s("探索遺跡")
 		case a.NeedsRuins:
-			label = "冷卻中"
+			label = p.s("冷卻中")
 		case a.Exploring:
-			label = "探險中"
+			label = p.s("探險中")
 		case trip != nil:
-			label = "正在其他區域探險"
+			label = p.s("正在其他區域探險")
 		default:
-			label = "出發探險"
+			label = p.s("出發探險")
 		}
 		style := ui.Secondary
 		if a.Ready {
@@ -243,7 +243,7 @@ func (p *Panel) buildCaveArea(_ context.Context, data any) (*ui.Embed, error) {
 			return nil
 		}, btn{emoji: "🧭", row: 0, disabled: !a.Ready, style: style})
 	}
-	p.nav("回山洞", "cave", btn{emoji: "⛰️", row: 0})
+	p.nav(p.s("回山洞"), "cave", btn{emoji: "⛰️", row: 0})
 	p.navBack(0)
 	p.attachImage(e, d.image)
 	return e, nil
@@ -258,7 +258,7 @@ func (p *Panel) explore(ctx context.Context, code string) (string, error) {
 			return "", err
 		}
 		p.caveResult = &r
-		return fmt.Sprintf("%s 探索了%s！", r.Emoji, r.AreaName), nil
+		return p.f("%s 探索了%s！", r.Emoji, p.s(r.AreaName)), nil
 	}
 	out, err := Call(ctx, p.cmds.Runner, "explore", func(ctx context.Context) (services.ExploreOutcome, error) {
 		return p.svc().Explore(ctx, p.playerID, code)
@@ -270,7 +270,7 @@ func (p *Panel) explore(ctx context.Context, code string) (string, error) {
 		return "", fmt.Errorf("探險沒有回傳行程")
 	}
 	r := out.Trip
-	return fmt.Sprintf("%s 出發前往%s！探險 %s，%s回來後記得領取獎勵。", r.Emoji, r.AreaName, services.LongDuration(r.DurationSeconds), tsv(r.EndsAt)), nil
+	return p.f("%s 出發前往%s！探險 %s，%s回來後記得領取獎勵。", r.Emoji, p.s(r.AreaName), p.dur(true, r.DurationSeconds), tsv(r.EndsAt)), nil
 }
 
 func (p *Panel) claimExploration(ctx context.Context) (string, error) {
@@ -281,7 +281,7 @@ func (p *Panel) claimExploration(ctx context.Context) (string, error) {
 		return "", err
 	}
 	p.caveResult = &r
-	return fmt.Sprintf("%s 從%s探險回來了！", r.Emoji, r.AreaName), nil
+	return p.f("%s 從%s探險回來了！", r.Emoji, p.s(r.AreaName)), nil
 }
 
 type caveResultData struct {
@@ -302,44 +302,44 @@ func (p *Panel) buildCaveResult(_ context.Context, data any) (*ui.Embed, error) 
 	var items, seeds []string
 	for _, i := range r.Items {
 		emoji := lookupOr(MaterialEmoji, i.Code, cropEmoji(strings.TrimPrefix(i.Code, "seed_")))
-		items = append(items, fmt.Sprintf("%s %s　×**%d**　（%s）", emoji, i.Name, i.Quantity, i.Rarity))
-		if q, ok := r.Seeds[i.Name]; ok { // Seeds 依掉落順序（Python dict 的順序）
-			seeds = append(seeds, fmt.Sprintf("%s ×%d", i.Name, q))
+		items = append(items, p.f("%s %s　×**%d**　（%s）", emoji, p.s(i.Name), i.Quantity, i.Rarity))
+		if q, ok := r.Seeds[p.s(i.Name)]; ok { // Seeds 依掉落順序（Python dict 的順序）
+			seeds = append(seeds, fmt.Sprintf("%s ×%d", p.s(i.Name), q))
 		}
 	}
 	if len(items) == 0 {
-		items = []string{"這次什麼都沒找到…"}
+		items = []string{p.s("這次什麼都沒找到…")}
 	}
-	seedText := "沒有"
+	seedText := p.s("沒有")
 	if len(seeds) > 0 {
-		seedText = "🎉 " + strings.Join(seeds, "、")
+		seedText = "🎉 " + strings.Join(seeds, p.s("、"))
 	}
-	coins := "沒有"
+	coins := p.s("沒有")
 	if r.FakeCoins != 0 {
-		coins = fmt.Sprintf("🎉 %d 個", r.FakeCoins)
+		coins = p.f("🎉 %d 個", r.FakeCoins)
 	}
-	events := "沒有"
+	events := p.s("沒有")
 	if len(r.Events) > 0 {
-		events = strings.Join(r.Events, "、")
+		events = strings.Join(r.Events, p.s("、"))
 	}
-	summary := fmt.Sprintf("🌰 稀有種子：%s\n🪙 假幣：%s\n🎁 特殊事件：%s", seedText, coins, events)
+	summary := p.f("🌰 稀有種子：%s\n🪙 假幣：%s\n🎁 特殊事件：%s", seedText, coins, events)
 	if r.Advanced {
-		summary += "\n🌟 高級探索"
+		summary += p.s("\n🌟 高級探索")
 	}
 	if r.GuardianNote != "" {
 		summary += "\n" + r.GuardianNote
 	}
-	tail := "🧭 獎勵已放進背包，現在可以再出發探險了！"
+	tail := p.s("🧭 獎勵已放進背包，現在可以再出發探險了！")
 	if r.Instant {
-		tail = fmt.Sprintf("🏛️ 遺跡裡多找到 %d 份", r.ExtraRolls)
+		tail = p.f("🏛️ 遺跡裡多找到 %d 份", r.ExtraRolls)
 		if r.BonusRolls != 0 {
-			tail += fmt.Sprintf("，守護者已被打倒再多 %d 份", r.BonusRolls)
+			tail += p.f("，守護者已被打倒再多 %d 份", r.BonusRolls)
 		}
-		tail += fmt.Sprintf("！獎勵已放進背包，%s可再探索遺跡（一般探險不受影響）。", ts(r.NextAt))
+		tail += p.f("！獎勵已放進背包，%s可再探索遺跡（一般探險不受影響）。", ts(r.NextAt))
 	}
-	e := &ui.Embed{Title: fmt.Sprintf("%s ✦ %s探索結果 ✦", r.Emoji, r.AreaName), Color: Gold, Description: sections(
-		Section{Title: "🎒 獲得物品", Lines: items}, summary, tail)}
-	p.nav("回山洞", "cave", btn{emoji: "⛰️", row: 0})
+	e := &ui.Embed{Title: p.f("%s ✦ %s探索結果 ✦", r.Emoji, p.s(r.AreaName)), Color: Gold, Description: sections(
+		Section{Title: p.s("🎒 獲得物品"), Lines: items}, summary, tail)}
+	p.nav(p.s("回山洞"), "cave", btn{emoji: "⛰️", row: 0})
 	p.navBack(0)
 	p.attachImage(e, d.image)
 	return e, nil
@@ -355,28 +355,28 @@ func (p *Panel) buildCaveLog(_ context.Context, data any) (*ui.Embed, error) {
 	for _, x := range logs {
 		adv := ""
 		if x.Advanced {
-			adv = "　🌟高級"
+			adv = p.s("　🌟高級")
 		}
 		rewards := make([]string, len(x.Rewards))
 		for i, r := range x.Rewards {
-			rewards[i] = fmt.Sprintf("%s ×%d", r.Name, r.Quantity)
+			rewards[i] = fmt.Sprintf("%s ×%d", p.s(r.Name), r.Quantity)
 		}
-		got := strings.Join(rewards, "、")
+		got := strings.Join(rewards, p.s("、"))
 		if got == "" {
-			got = "一無所獲"
+			got = p.s("一無所獲")
 		}
-		line := fmt.Sprintf("%s **%s**　%s%s\n　🎒 %s", x.Emoji, x.AreaName, tsv(x.ExploredAt), adv, got)
+		line := p.f("%s **%s**　%s%s\n　🎒 %s", x.Emoji, p.s(x.AreaName), tsv(x.ExploredAt), adv, got)
 		if len(x.Events) > 0 {
-			line += "\n　🎁 " + strings.Join(x.Events, "、")
+			line += p.s("\n　🎁 ") + strings.Join(x.Events, p.s("、"))
 		}
 		lines = append(lines, line)
 	}
 	empty := ""
 	if len(lines) == 0 {
-		empty = "還沒有探索紀錄。"
+		empty = p.s("還沒有探索紀錄。")
 	}
-	e := &ui.Embed{Title: "📖 ✦ 探索紀錄 ✦", Color: Blue, Description: sections(Section{Title: "最近 10 次探索", Lines: lines, Sep: "\n\n"}, empty)}
-	p.nav("回山洞", "cave", btn{emoji: "⛰️", row: 0})
+	e := &ui.Embed{Title: p.s("📖 ✦ 探索紀錄 ✦"), Color: Blue, Description: sections(Section{Title: p.s("最近 10 次探索"), Lines: lines, Sep: "\n\n"}, empty)}
+	p.nav(p.s("回山洞"), "cave", btn{emoji: "⛰️", row: 0})
 	p.navBack(0)
 	return e, nil
 }
@@ -426,18 +426,18 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 		var state string
 		switch {
 		case m.Owned && m.Code == "seed_maker": // 只在手動使用時運作，沒有啟用／停用
-			state = "✅ 已擁有，從「🌱 農田」→「🌱 種子製造」使用"
+			state = p.s("✅ 已擁有，從「🌱 農田」→「🌱 種子製造」使用")
 		case m.Owned:
-			state = "✅ 已擁有，已停用"
+			state = p.s("✅ 已擁有，已停用")
 			if m.Enabled {
-				state = "✅ 已擁有，啟用中"
+				state = p.s("✅ 已擁有，啟用中")
 			}
 		case !m.Unlocked:
-			state = fmt.Sprintf("🔒 農場 Lv.%d 解鎖", m.UnlockLevel)
+			state = p.f("🔒 農場 Lv.%d 解鎖", m.UnlockLevel)
 		case len(m.Missing) > 0:
-			state = "🧺 材料不足（還缺 " + strings.Join(missingText(m, "×"), "、") + "）"
+			state = p.s("🧺 材料不足（還缺 ") + strings.Join(missingText(m, "×"), p.s("、")) + p.s("）")
 		default:
-			state = "🛠️ 可以製作"
+			state = p.s("🛠️ 可以製作")
 		}
 		mats := make([]string, len(m.Materials))
 		for i, mat := range m.Materials {
@@ -445,29 +445,29 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 			if mat.Have >= mat.Need {
 				mark = "✅"
 			}
-			mats[i] = fmt.Sprintf("%s%s %d/%d", mark, mat.Name, mat.Have, mat.Need)
+			mats[i] = fmt.Sprintf("%s%s %d/%d", mark, p.s(mat.Name), mat.Have, mat.Need)
 		}
-		block := fmt.Sprintf("%s **%s**（Lv.%d）　%s\n　📝 %s", m.Emoji, m.Name, m.UnlockLevel, state, m.Description)
+		block := p.f("%s **%s**（Lv.%d）　%s\n　📝 %s", m.Emoji, p.s(m.Name), m.UnlockLevel, state, p.s(m.Description))
 		if !m.Owned {
-			block += "\n　🧱 " + strings.Join(mats, "、")
+			block += p.s("\n　🧱 ") + strings.Join(mats, p.s("、"))
 		}
 		if m.Code == "auto_processor" && m.Owned {
-			name := "未設定"
+			name := p.s("未設定")
 			if code, _ := m.Settings["recipe"].(string); code != "" {
 				if r, ok := balance.Recipes[code]; ok {
-					name = r.Name
+					name = p.s(r.Name)
 				}
 			}
-			block += "\n　⚙️ 加工項目：" + name
+			block += p.s("\n　⚙️ 加工項目：") + name
 		}
 		blocks = append(blocks, block)
 	}
-	e := &ui.Embed{Title: "🔧 ✦ 機器 ✦", Color: Blue, Description: sections(
-		fmt.Sprintf("⭐ 農場 Lv %d　素材從「⛰️ 山洞」探索取得", st.Level),
-		Section{Title: "機器", Lines: blocks, Sep: "\n\n"},
+	e := &ui.Embed{Title: p.s("🔧 ✦ 機器 ✦"), Color: Blue, Description: sections(
+		p.f("⭐ 農場 Lv %d　素材從「⛰️ 山洞」探索取得", st.Level),
+		Section{Title: p.s("機器"), Lines: blocks, Sep: "\n\n"},
 	)}
 	if p.picker != nil {
-		e.AddField("🛒 已選擇", fmt.Sprintf("**%s**\n👇 選擇數量", p.picker.Label), false)
+		e.AddField(p.s("🛒 已選擇"), p.f("**%s**\n👇 選擇數量", p.picker.Label), false)
 	}
 
 	// 2026-11-16 選單整理：
@@ -479,12 +479,12 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 		if m.Owned || !m.Unlocked || len(m.Missing) > 0 {
 			continue
 		}
-		builds = append(builds, option{m.Name, m.Code, fmt.Sprintf("Lv.%d｜材料足夠，可以製作", m.UnlockLevel), m.Emoji})
+		builds = append(builds, option{p.s(m.Name), m.Code, p.f("Lv.%d｜材料足夠，可以製作", m.UnlockLevel), m.Emoji})
 	}
 	if p.picker != nil {
 		p.quantityButtons(0)
 	} else {
-		p.selectMenu("🛠️ 製作機器（消耗素材）…", builds, func(ctx context.Context, it ui.Interaction, code string) error {
+		p.selectMenu(p.s("🛠️ 製作機器（消耗素材）…"), builds, func(ctx context.Context, it ui.Interaction, code string) error {
 			p.act(ctx, it, p.call("build_machine", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().BuildMachine(ctx, p.playerID, code)
 			}), actOpts{})
@@ -499,38 +499,38 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 			for i, n := range r.InputOrder {
 				inputs[i] = fmt.Sprintf("%s×%d", n, r.Inputs[n])
 			}
-			incubate = append(incubate, option{"培育：" + r.Name, r.Code,
-				strings.Join(inputs, "、") + fmt.Sprintf("｜%s／份", services.LongDuration(r.Seconds)), "🧬"})
+			incubate = append(incubate, option{p.s("培育：") + p.s(r.Name), r.Code,
+				strings.Join(inputs, p.s("、")) + p.f("｜%s／份", p.dur(true, r.Seconds)), "🧬"})
 		}
 		selected := ""
 		if p.picker != nil {
 			selected = strings.TrimPrefix(p.picker.Key, "incubate:")
 		}
-		p.selectMenu("🧬 稀有作物培育…", incubate, func(ctx context.Context, it ui.Interaction, code string) error {
+		p.selectMenu(p.s("🧬 稀有作物培育…"), incubate, func(ctx context.Context, it ui.Interaction, code string) error {
 			i := slices.IndexFunc(d.incubator, func(r services.IncubatorRecipeView) bool { return r.Code == code })
 			if i < 0 {
 				return gameerr.NotFoundf("找不到這個項目。")
 			}
-			p.picker = &Picker{Key: "incubate:" + code, Label: "🧬 " + d.incubator[i].Name, Verb: "培育", Max: exploration.IncubatorMaxQuantity,
+			p.picker = &Picker{Key: "incubate:" + code, Label: "🧬 " + p.s(d.incubator[i].Name), Verb: p.s("培育"), Max: exploration.IncubatorMaxQuantity,
 				Presets: []int{1, 3, 5},
 				Run: p.callQty("start_incubation", func(ctx context.Context, q int) (services.ActionResult, error) {
 					return p.svc().StartIncubation(ctx, p.playerID, code, q)
 				})}
-			p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+			p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
 			return nil
 		}, 1, selected)
 	}
 	if m := machines["auto_processor"]; m.Owned {
 		current, _ := m.Settings["recipe"].(string)
-		procs := []option{{"不自動開單", "none", "只自動領取完成的加工品", "⏸️"}}
+		procs := []option{{p.s("不自動開單"), "none", p.s("只自動領取完成的加工品"), "⏸️"}}
 		for _, r := range d.recipes {
-			procs = append(procs, option{r.Name, r.Code, r.BuildingName, "🏭"})
+			procs = append(procs, option{p.s(r.Name), r.Code, p.s(r.BuildingName), "🏭"})
 		}
 		selected := current
 		if selected == "" {
 			selected = "none"
 		}
-		p.selectMenu("🏭 自動加工機要做什麼…", procs, func(ctx context.Context, it ui.Interaction, code string) error {
+		p.selectMenu(p.s("🏭 自動加工機要做什麼…"), procs, func(ctx context.Context, it ui.Interaction, code string) error {
 			if code == "none" {
 				code = ""
 			}
@@ -544,12 +544,12 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 		if !m.Owned || m.Code == "seed_maker" {
 			continue
 		}
-		verb := "啟用"
+		verb := p.s("啟用")
 		if m.Enabled {
-			verb = "停用"
+			verb = p.s("停用")
 		}
 		code, enable := m.Code, !m.Enabled
-		p.button(verb+m.Name, func(ctx context.Context, it ui.Interaction) error {
+		p.button(verb+p.s(m.Name), func(ctx context.Context, it ui.Interaction) error {
 			p.act(ctx, it, p.call("set_machine_enabled", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().SetMachineEnabled(ctx, p.playerID, code, enable)
 			}), actOpts{})
@@ -557,10 +557,10 @@ func (p *Panel) buildMachines(_ context.Context, data any) (*ui.Embed, error) {
 		}, btn{emoji: m.Emoji, row: 3})
 	}
 	if machines["seed_maker"].Owned {
-		p.navFirstPage("種子製造", "seedmaker", &p.seedMakerPage, btn{emoji: "🌱", row: 4})
+		p.navFirstPage(p.s("種子製造"), "seedmaker", &p.seedMakerPage, btn{emoji: "🌱", row: 4})
 	}
-	p.nav("加工", "craft", btn{emoji: "🏭", row: 4})
-	p.nav("山洞", "cave", btn{emoji: "⛰️", row: 4})
+	p.nav(p.s("加工"), "craft", btn{emoji: "🏭", row: 4})
+	p.nav(p.s("山洞"), "cave", btn{emoji: "⛰️", row: 4})
 	p.navBack(4)
 	return e, nil
 }
@@ -601,14 +601,14 @@ func (p *Panel) buildLog(_ context.Context, data any) (*ui.Embed, error) {
 		if !ok {
 			label = t.EventType
 		}
-		lines = append(lines, fmt.Sprintf("🕒 %s　**%s** %s\n　%s", tsv(t.CreatedAt), label, delta, cut(t.Description, 120)))
+		lines = append(lines, p.f("🕒 %s　**%s** %s\n　%s", tsv(t.CreatedAt), label, delta, cut(p.s(t.Description), 120)))
 	}
 	p.navBack(0)
 	p.pageButtons("", &p.logPage, pages, 0, "log")
-	e := &ui.Embed{Title: "🧾 ✦ 最近的操作紀錄 ✦", Color: Grey, Description: "目前沒有紀錄。"}
+	e := &ui.Embed{Title: p.s("🧾 ✦ 最近的操作紀錄 ✦"), Color: Grey, Description: p.s("目前沒有紀錄。")}
 	if len(lines) > 0 {
 		e.Description = sections(Section{Lines: lines, Sep: "\n\n"})
-		e.Footer = fmt.Sprintf("第 %d/%d 頁，共 %d 筆（可翻閱最近 %d 筆）", page+1, pages, len(all), logMaxRecords)
+		e.Footer = p.f("第 %d/%d 頁，共 %d 筆（可翻閱最近 %d 筆）", page+1, pages, len(all), logMaxRecords)
 	}
 	return e, nil
 }

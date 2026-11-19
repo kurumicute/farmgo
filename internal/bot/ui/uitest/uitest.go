@@ -55,6 +55,7 @@ type Interaction struct {
 	Guild    string
 	GuildNm  string
 	Attached []string // 元件所在訊息目前的附件檔名
+	Lang     string   // Discord 用戶端語言（例如 en-US；"" = 取不到）
 
 	mu   sync.Mutex
 	done bool
@@ -72,6 +73,7 @@ func (f *Interaction) AvatarURL() string            { return f.Avatar }
 func (f *Interaction) GuildID() string              { return f.Guild }
 func (f *Interaction) GuildName() string            { return f.GuildNm }
 func (f *Interaction) MessageAttachments() []string { return f.Attached }
+func (f *Interaction) Locale() string               { return f.Lang }
 
 func (f *Interaction) Responded() bool {
 	f.mu.Lock()

@@ -4,6 +4,7 @@ package bot
 // 字串長度一律以字元計算（Python len）。
 
 import (
+	"farmgm/i18n"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -97,16 +98,16 @@ func lookupOr(m map[string]string, key, fallback string) string {
 }
 
 // secondFieldHeader 第 17 格以上（第二塊農田）前面的分隔行。
-const secondFieldHeader = "━━ 🌾 第二塊農田 ━━"
+func secondFieldHeader(lang string) string { return i18n.T(lang, "ui.plot.second_field") }
 
 // plotLines 每格一行；第 17 格以上前面加「第二塊農田」分隔行。
-func plotLines(plots []services.PlotInfo, owner bool) []string {
+func plotLines(lang string, plots []services.PlotInfo, owner bool) []string {
 	lines := make([]string, 0, len(plots)+1)
 	for i, pl := range plots {
 		if i == balance.MaxPlots {
-			lines = append(lines, secondFieldHeader)
+			lines = append(lines, secondFieldHeader(lang))
 		}
-		lines = append(lines, plotLine(pl, owner))
+		lines = append(lines, plotLine(lang, pl, owner))
 	}
 	return lines
 }
@@ -180,33 +181,38 @@ var cliHint = regexp.MustCompile(`（[a-z][a-z_]*(?: [^）]*)?）`)
 func cleanMessage(text string) string { return cliHint.ReplaceAllString(text, "") }
 
 // HighlightMarks 操作結果含這些字時面板換成金色（稀有收穫、新紀錄、成就達成、新圖鑑）。
-var HighlightMarks = []string{"🎉", "✨ 稀有收穫", "✨ 偷到稀有貨", "🏆 新紀錄", "🏅 成就達成", "📖 新圖鑑"}
+var HighlightMarks = []string{"🎉", "✨ 稀有收穫", "✨ 偷到稀有貨", "🏆 新紀錄", "🏅 成就達成", "📖 新圖鑑",
+	"✨ Rare harvest", "🏆 New record", "🏅 Achievement unlocked", "📖 New in Collection"} // 英文（2026-11-19）
 
 // progressDiff 操作前後的圖鑑與成就標記差異（新圖鑑、新達成的成就）。
-func progressDiff(old, now services.ProgressMarks) string {
+func progressDiff(lang string, old, now services.ProgressMarks) string {
 	var lines []string
 	var found []string
 	for _, key := range now.CodexOrder {
 		if _, ok := old.Codex[key]; !ok {
-			found = append(found, now.Codex[key])
+			name := now.Codex[key]
+			if _, code, ok := strings.Cut(key, ":"); ok {
+				name = i18n.Name(lang, "crop."+code, name) // 目前只有作物有英文名；其他沿用中文
+			}
+			found = append(found, name)
 		}
 	}
 	if len(found) > 0 {
 		more := ""
 		if len(found) > 5 {
-			more = fmt.Sprintf(" 等 %d 項", len(found))
+			more = i18n.T(lang, "ui.progress.codex_more", "n", len(found))
 		}
-		lines = append(lines, fmt.Sprintf("📖 新圖鑑：%s%s（圖鑑 %d/%d）", strings.Join(found[:min(5, len(found))], "、"), more,
-			len(now.Codex), now.CodexTotal))
+		lines = append(lines, i18n.T(lang, "ui.progress.codex", "list", strings.Join(found[:min(5, len(found))], i18n.T(lang, "svc.list_sep")),
+			"more", more, "n", len(now.Codex), "total", now.CodexTotal))
 	}
 	var reached []string
 	for _, code := range now.ReadyOrder {
 		if _, ok := old.Ready[code]; !ok {
-			reached = append(reached, now.Ready[code])
+			reached = append(reached, i18n.Name(lang, "achievement."+code, now.Ready[code]))
 		}
 	}
 	if len(reached) > 0 {
-		lines = append(lines, fmt.Sprintf("🏅 成就達成：%s！到「🏅 成就圖鑑」領取獎勵", strings.Join(reached[:min(3, len(reached))], "、")))
+		lines = append(lines, i18n.T(lang, "ui.progress.achievement", "list", strings.Join(reached[:min(3, len(reached))], i18n.T(lang, "svc.list_sep"))))
 	}
 	var b strings.Builder
 	for _, l := range lines {
@@ -234,11 +240,11 @@ func quote(text string) string {
 // 2026-11-16 修正：太長時不再改接到說明（會跑到畫面上方、整頁太長時又最先被截掉），一律放欄位並截到欄位上限；
 // 確認問題（⚠️ 開頭）標成「⚠️ 請確認」，不和已完成的結果混在一起；
 // 有大圖的頁面（Discord 把大圖排在所有欄位之後），另外把第一行寫進 footer，footer 一定緊貼按鈕。
-func placeNotice(e *ui.Embed, notice string) {
+func placeNotice(lang string, e *ui.Embed, notice string) {
 	notice = strings.TrimSpace(notice)
-	name := "🔔 結果"
+	name := i18n.T(lang, "ui.notice.result")
 	if strings.HasPrefix(notice, "⚠️") {
-		name = "⚠️ 請確認"
+		name = i18n.T(lang, "ui.notice.confirm")
 	}
 	if len(e.Fields) >= 25 { // 欄位已滿（目前沒有頁面會到）：換掉最後一個欄位，結果仍在最下面
 		e.Fields = e.Fields[:24]
@@ -292,22 +298,22 @@ func deref(s *string) string {
 }
 
 // plotLine 一格土地的說明；owner=false 是查看別人的農田（偷菜），不顯示給主人的操作提示。
-func plotLine(p services.PlotInfo, owner bool) string {
+func plotLine(lang string, p services.PlotInfo, owner bool) string {
 	emoji := PlotEmoji[p.State]
 	if p.State == rules.PlotEmpty {
-		return fmt.Sprintf("%s `#%2d` 空地", emoji, p.PlotNumber)
+		return i18n.T(lang, "ui.plot.empty", "emoji", emoji, "n", fmt.Sprintf("%2d", p.PlotNumber))
 	}
-	genes := services.GeneticsLabel(deref(p.Quality), deref(p.Mutation))
+	genes := services.GeneticsLabelLang(lang, deref(p.Quality), deref(p.Mutation))
 	if deref(p.Mutation) == "variant" {
-		genes += "【珍稀變種】"
+		genes += i18n.T(lang, "ui.plot.variant")
 	}
-	name := fmt.Sprintf("%s %s%s", cropEmoji(deref(p.CropCode)), deref(p.CropName), genes)
+	name := fmt.Sprintf("%s %s%s", cropEmoji(deref(p.CropCode)), services.CropName(lang, deref(p.CropCode), deref(p.CropName)), genes)
 	var tail string
 	switch p.State {
 	case rules.PlotWaitingWater:
-		tail = "等待澆水"
+		tail = i18n.T(lang, "ui.plot.waiting")
 	case rules.PlotGrowing:
-		tail = "成熟 " + ts(p.ReadyAt)
+		tail = i18n.T(lang, "ui.plot.growing", "time", ts(p.ReadyAt))
 		if p.Fertilized {
 			tail += " 🧪"
 		}
@@ -321,19 +327,19 @@ func plotLine(p services.PlotInfo, owner bool) string {
 			w := rules.WitherTime(*p.ReadyAt)
 			wither = &w
 		}
-		tail = fmt.Sprintf("可收成 ×%d（%s乾枯）", qty, ts(wither))
+		tail = i18n.T(lang, "ui.plot.ready", "n", qty, "time", ts(wither))
 	default:
 		if owner {
-			tail = "已乾枯，請清除"
+			tail = i18n.T(lang, "ui.plot.withered_owner")
 		} else {
-			tail = "已乾枯"
+			tail = i18n.T(lang, "ui.plot.withered")
 		}
 	}
 	return fmt.Sprintf("%s `#%2d` %s · %s", emoji, p.PlotNumber, name, tail)
 }
 
 // summaryCounts 各狀態的格數（依 PlotState 的順序，沒有的不列）。
-func summaryCounts(plots []services.PlotInfo) string {
+func summaryCounts(lang string, plots []services.PlotInfo) string {
 	var parts []string
 	for _, s := range plotStateOrder {
 		n := 0
@@ -343,7 +349,7 @@ func summaryCounts(plots []services.PlotInfo) string {
 			}
 		}
 		if n > 0 {
-			parts = append(parts, fmt.Sprintf("%s%s %d", PlotEmoji[s], rules.PlotStateLabels[s], n))
+			parts = append(parts, fmt.Sprintf("%s%s %d", PlotEmoji[s], i18n.T(lang, "plot_state."+string(s)), n))
 		}
 	}
 	return strings.Join(parts, "　")

@@ -12,9 +12,9 @@ func TestStyledPreview(t *testing.T) {
 	pets := map[string]int{"dog": 1, "cat": 1, "rabbit": 1, "bird": 1, "hedgehog": 1}
 	plots := repeat(plot("wheat", "growing", 0.5, "", ""), 9)
 	cases := map[string]Look{
-		"snow":   {Theme: "snow", Skins: map[string]PetSkin{"dog": {Hat: "santa_hat"}, "cat": {Hat: "crown", Color: "pink"}}},
-		"sakura": {Theme: "sakura", Skins: map[string]PetSkin{"rabbit": {Hat: "flower_crown"}, "bird": {Hat: "bow", Color: "blue"}}},
-		"night":  {Theme: "night", Skins: map[string]PetSkin{"hedgehog": {Hat: "wizard_hat", Color: "gold"}, "dog": {Hat: "straw_hat", Color: "mint"}}},
+		"snow":  {Theme: "snow", Skins: map[string]PetSkin{"dog": {Hat: "santa_hat"}, "cat": {Hat: "crown", Color: "pink"}}},
+		"beach": {Theme: "beach", Skins: map[string]PetSkin{"rabbit": {Hat: "flower_crown"}, "bird": {Hat: "bow", Color: "blue"}}},
+		"night": {Theme: "night", Skins: map[string]PetSkin{"hedgehog": {Hat: "wizard_hat", Color: "gold"}, "dog": {Hat: "straw_hat", Color: "mint"}}},
 	}
 	dir := os.Getenv("FARMGM_STYLE_PREVIEW")
 	for name, look := range cases {

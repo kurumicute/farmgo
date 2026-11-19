@@ -126,7 +126,7 @@ func (s *SocialService) ExternalContext(ctx context.Context, platform, userID st
 		if err != nil || p == nil {
 			return out, err
 		}
-		out.PlayerID, out.PlayerName = &p.ID, &p.DisplayName
+		out.PlayerID, out.PlayerName, out.Language = &p.ID, &p.DisplayName, p.Language
 		if g != nil {
 			if _, err := groups.AddMember(ctx, t, g.ID, p.ID); err != nil {
 				return out, err
@@ -736,12 +736,12 @@ func (s *SocialService) StealCrop(ctx context.Context, groupID, thiefPlayerID, v
 				fmt.Sprintf("%s在第 %d 格阻止了一次偷菜（%s）", device, plotNumber, label), r); err != nil {
 				return ActionResult{}, err
 			}
-			text := fmt.Sprintf("🛡️ 偷菜失敗！%s 的%s守住了第 %d 格的%s。", victim.DisplayName, device, plotNumber, label)
+			text := txf(ctx, "🛡️ 偷菜失敗！%s 的%s守住了第 %d 格的%s。", victim.DisplayName, device, plotNumber, label)
 			if blockedBy == petrules.DogBlocker {
-				text = fmt.Sprintf("🐶 偷菜失敗！%s 的狗狗發現了你，汪汪大叫把你趕跑，第 %d 格的%s一個也沒偷到。",
+				text = txf(ctx, "🐶 偷菜失敗！%s 的狗狗發現了你，汪汪大叫把你趕跑，第 %d 格的%s一個也沒偷到。",
 					victim.DisplayName, plotNumber, label)
 			}
-			res := result(text+"這株作物你已無法再偷。", thiefFarm.Gold, 0, item, 0)
+			res := result(text+txt(ctx, "這株作物你已無法再偷。"), thiefFarm.Gold, 0, item, 0)
 			res.Success = false
 			return res, nil
 		}
@@ -780,21 +780,21 @@ func (s *SocialService) StealCrop(ctx context.Context, groupID, thiefPlayerID, v
 		}
 		tail := ""
 		if emptied {
-			tail = "，這塊土地已被偷光，恢復為空地"
+			tail = txt(ctx, "，這塊土地已被偷光，恢復為空地")
 		}
 		value, err := s.estimateValue(ctx, t, crop, quantity, quality, mutation)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		head := "🥷 得手了！"
+		head := txt(ctx, "🥷 得手了！")
 		if IsRare(quality, mutation) {
-			head = "✨ 偷到稀有貨！"
+			head = txt(ctx, "✨ 偷到稀有貨！")
 		}
 		dig, err := s.rumorDig(ctx, t, thiefFarm, victimFarm, now)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("%s成功從 %s 的第 %d 格偷走 %d 個%s%s。\n📦 約值 %s 金\n👀 %s 下次打開農場時會知道是你偷的%s",
+		return result(txf(ctx, "%s成功從 %s 的第 %d 格偷走 %d 個%s%s。\n📦 約值 %s 金\n👀 %s 下次打開農場時會知道是你偷的%s",
 			head, victim.DisplayName, plotNumber, quantity, label, tail, numfmt.Comma(value), victim.DisplayName, dig),
 			thiefFarm.Gold, 0, item, quantity), nil
 	})
@@ -852,7 +852,7 @@ func (s *SocialService) rumorDig(ctx context.Context, t *db.Tx, thiefFarm, victi
 			fmt.Sprintf("在 %s 的田裡挖到傳聞中的寶藏，金幣 +%d", victimFarm.Name, gold), rec{GoldDelta: gold}); err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("\n💎 傳聞是真的！你順手一挖，挖出一箱寶藏：金幣 **+%s**！", numfmt.Comma(gold)), nil
+		return txf(ctx, "\n💎 傳聞是真的！你順手一挖，挖出一箱寶藏：金幣 **+%s**！", numfmt.Comma(gold)), nil
 	}
 	if rumor.Real && taken {
 		return "\n🕳️ 你在傳聞說的地方挖了挖…只剩一個被挖開的空坑，寶藏已經被別人拿走了。", nil
@@ -942,15 +942,15 @@ func (s *SocialService) BuyDefense(ctx context.Context, playerID int64, key stri
 			rec{ItemCode: code, Quantity: 1, GoldDelta: -d.Price}); err != nil {
 			return ActionResult{}, err
 		}
-		where := "守護全部土地"
+		where := txt(ctx, "守護全部土地")
 		if d.Range != nil {
 			slotArg := ""
 			if d.MaxPerFarm > 1 {
 				slotArg = fmt.Sprintf(" %d", slot)
 			}
-			where = fmt.Sprintf("守護第 1–%d 格，可用 defense place %s <起始土地>%s 調整", *d.Range, code, slotArg)
+			where = txf(ctx, "守護第 1–%d 格，可用 defense place %s <起始土地>%s 調整", *d.Range, code, slotArg)
 		}
-		return result(fmt.Sprintf("已購買%s（第 %d 個），花費 %d 金幣；%s。", d.Name, slot, d.Price, where), farm.Gold, -d.Price, code, 1), nil
+		return result(txf(ctx, "已購買%s（第 %d 個），花費 %d 金幣；%s。", d.Name, slot, d.Price, where), farm.Gold, -d.Price, code, 1), nil
 	})
 }
 
@@ -994,7 +994,7 @@ func (s *SocialService) PlaceDefense(ctx context.Context, playerID int64, key st
 			fmt.Sprintf("%s（第 %d 個）改為守護第 %d–%d 格", d.Name, slot, startPlot, end), rec{}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("%s（第 %d 個）現在守護第 %d–%d 格。", d.Name, slot, startPlot, end), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "%s（第 %d 個）現在守護第 %d–%d 格。", d.Name, slot, startPlot, end), farm.Gold, 0, "", 0), nil
 	})
 }
 

@@ -4,6 +4,7 @@ package bot
 
 import (
 	"context"
+	"farmgm/i18n"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -101,12 +102,12 @@ func (p *Panel) registerPages() {
 // ======================================================================
 
 func (p *Panel) buildWelcome(_ context.Context, _ any) (*ui.Embed, error) {
-	e := &ui.Embed{Title: "🌾 歡迎來到農場！", Color: Green}
+	e := &ui.Embed{Title: p.s("🌾 歡迎來到農場！"), Color: Green}
 	if p.groupID == nil {
-		e.Description = "你還沒有農場。請到 Discord 伺服器中輸入 /farm 建立（農場會屬於那個伺服器）。"
+		e.Description = p.s("你還沒有農場。請到 Discord 伺服器中輸入 /farm 建立（農場會屬於那個伺服器）。")
 		return e, nil
 	}
-	e.Description = fmt.Sprintf("你還沒有農場。按下面的按鈕，就會在「%s」建立你的農場。\n"+
+	e.Description = p.f("你還沒有農場。按下面的按鈕，就會在「%s」建立你的農場。\n"+
 		"開始時有 %s 金幣、%d 格農田。\n"+
 		"每個 Discord 帳號只有一座農場；之後可以轉移到其他伺服器（每 7 天一次）。", p.groupName, money(balance.InitialGold), balance.InitialPlots)
 	create := func(ctx context.Context, it ui.Interaction, name string) {
@@ -134,18 +135,18 @@ func (p *Panel) buildWelcome(_ context.Context, _ any) (*ui.Embed, error) {
 		})
 		if err != nil {
 			logUnexpected(err, "建立農場失敗", "user", w.UserID)
-			p.showError(ctx, it, cleanMessage(PlayerMessage(err)))
+			p.showError(ctx, it, cleanMessage(p.msg(err)))
 			return
 		}
 		// 2026-11-16：直接到農田頁後畫面上沒有農場名稱，建立成功的提示寫出名稱（自訂名稱時玩家才知道有沒有設定成功）
-		p.refresh(ctx, it, fmt.Sprintf("🎉 農場建立完成：「%s」！👇 從下方選單選一種作物，會種滿所有空地（種子不夠會自動買）。",
-			escapeMD(created.Name)), nil, "重繪", time.Time{})
+		p.refresh(ctx, it, p.f("🎉 農場建立完成：「%s」！👇 從下方選單選一種作物，會種滿所有空地（種子不夠會自動買）。",
+			escapeMD(p.s(created.Name))), nil, p.s("重繪"), time.Time{})
 	}
-	p.button("建立農場", func(ctx context.Context, it ui.Interaction) error {
+	p.button(p.s("建立農場"), func(ctx context.Context, it ui.Interaction) error {
 		create(ctx, it, "")
 		return nil
 	}, btn{emoji: "🌱", style: ui.Success})
-	p.button("自訂名稱建立", func(ctx context.Context, it ui.Interaction) error {
+	p.button(p.s("自訂名稱建立"), func(ctx context.Context, it ui.Interaction) error {
 		return it.SendModal(ctx, nameModal(create))
 	}, btn{emoji: "✏️"})
 	return e, nil
@@ -200,19 +201,19 @@ func (p *Panel) loadMain(ctx context.Context) (any, error) {
 func (p *Panel) farmNextStep(plots []services.PlotInfo, plotsPage bool) string {
 	var parts []string
 	if n := countState(plots, rules.PlotReady); n > 0 {
-		parts = append(parts, fmt.Sprintf("✅ %d 格可收成", n))
+		parts = append(parts, p.t("ui.next.ready", "n", n))
 	}
 	if n := countState(plots, rules.PlotWaitingWater); n > 0 {
-		parts = append(parts, fmt.Sprintf("💧 %d 格待澆水", n))
+		parts = append(parts, p.t("ui.next.waiting", "n", n))
 	}
 	if n := countState(plots, rules.PlotWithered); n > 0 {
-		parts = append(parts, fmt.Sprintf("🥀 %d 格乾枯", n))
+		parts = append(parts, p.t("ui.next.withered", "n", n))
 	}
 	if n := countState(plots, rules.PlotEmpty); n > 0 {
 		if plotsPage {
-			parts = append(parts, fmt.Sprintf("⬜ %d 格空地，從下方選單選作物", n))
+			parts = append(parts, p.t("ui.next.empty_plots_page", "n", n))
 		} else {
-			parts = append(parts, fmt.Sprintf("⬜ %d 格空地", n))
+			parts = append(parts, p.t("ui.next.empty", "n", n))
 		}
 	}
 	var next *time.Time
@@ -223,13 +224,13 @@ func (p *Panel) farmNextStep(plots []services.PlotInfo, plotsPage bool) string {
 	}
 	if next != nil {
 		if left := int(next.Sub(p.cmds.now()).Seconds()); left > 0 {
-			parts = append(parts, "⏰ 下一批約 "+services.LongDuration(left)+"後成熟")
+			parts = append(parts, p.t("ui.next.next_batch", "time", services.DurationLang(p.lang, left, true)))
 		}
 	}
 	if len(parts) == 0 {
-		return "👍 一切就緒"
+		return p.t("ui.next.all_good")
 	}
-	return strings.Join(parts, "｜")
+	return strings.Join(parts, p.t("ui.next.sep"))
 }
 
 func countState(plots []services.PlotInfo, s rules.PlotState) int {
@@ -255,36 +256,35 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	waiting := countState(s.Plots, rules.PlotWaitingWater)
 	title := ""
 	if deref(s.Title) != "" {
-		title = "〔" + *s.Title + "〕"
+		title = p.s("〔") + *s.Title + p.s("〕")
 	}
-	header := fmt.Sprintf("👨‍🌾 **%s**%s　⭐ **Lv %d**　💰 **%s** 金\n━━━━━━━━ 🌱 **農田（%d 格）** ━━━━━━━━",
-		s.PlayerName, title, s.Level, money(s.Gold), len(s.Plots))
-	lines := plotLines(s.Plots, true)
-	e := &ui.Embed{Title: fmt.Sprintf("🌾 ✦ %s ✦", s.Name), Color: Green, Description: header + "\n" + strings.Join(lines, "\n")}
+	header := p.t("ui.main.header", "name", s.PlayerName, "title", title, "level", s.Level, "gold", money(s.Gold), "plots", len(s.Plots))
+	lines := plotLines(p.lang, s.Plots, true)
+	e := &ui.Embed{Title: fmt.Sprintf("🌾 ✦ %s ✦", p.s(s.Name)), Color: Green, Description: header + "\n" + strings.Join(lines, "\n")}
 	if p.AvatarURL != "" {
 		e.Thumbnail = p.AvatarURL
 	}
 	p.attachImage(e, p.farmImage(d.status)) // 圖片在交易外產生
-	e.AddField("📦 倉庫", fmt.Sprintf("%d/%d\n%s", s.WarehouseUsed, s.WarehouseCapacity, bar(s.WarehouseUsed, s.WarehouseCapacity, 8)), true)
-	home := "未設定"
+	e.AddField(p.t("ui.main.storage"), fmt.Sprintf("%d/%d\n%s", s.WarehouseUsed, s.WarehouseCapacity, bar(s.WarehouseUsed, s.WarehouseCapacity, 8)), true)
+	home := p.t("ui.main.not_set")
 	if d.home != nil {
-		home = d.home.Name
+		home = p.s(d.home.Name)
 	}
-	e.AddField("🏠 所屬群組", home, true)
-	stats := strings.ReplaceAll(summaryCounts(s.Plots), "　", "\n")
+	e.AddField(p.t("ui.main.home_server"), home, true)
+	stats := strings.ReplaceAll(summaryCounts(p.lang, s.Plots), "　", "\n")
 	if stats == "" {
 		stats = "—"
 	}
-	e.AddField("📊 農田統計", stats, true)
+	e.AddField(p.t("ui.main.plot_stats"), stats, true)
 	a := d.animals
-	animal := "還沒有動物"
+	animal := p.t("ui.main.no_animals")
 	if a.Used != 0 {
-		animal = fmt.Sprintf("🐾 %d/%d 隻\n✅ 可收集 %d｜🍽️ 待餵 %d", a.Used, a.Capacity, a.Counts["ready"], a.Counts["hungry"])
+		animal = p.t("ui.main.animal_status", "used", a.Used, "cap", a.Capacity, "ready", a.Counts["ready"], "hungry", a.Counts["hungry"])
 		if a.NextReadyAt != nil {
 			animal += "\n⏰ " + ts(a.NextReadyAt)
 		}
 	}
-	e.AddField("🐔 動物", animal, true)
+	e.AddField(p.t("ui.main.animals"), animal, true)
 	done := 0
 	var busy []services.OrderView
 	for _, o := range d.orders {
@@ -298,16 +298,16 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	sort.SliceStable(busy, func(i, j int) bool { return busy[i].ReadyAt.Before(busy[j].ReadyAt) })
 	var craft []string
 	if done > 0 {
-		craft = append(craft, fmt.Sprintf("✅ %d 張可領取", done))
+		craft = append(craft, p.t("ui.main.craft_ready", "n", done))
 	}
 	for _, o := range busy[:min(3, len(busy))] {
-		craft = append(craft, fmt.Sprintf("⚙️ %s %s", o.RecipeName, ts(&o.ReadyAt)))
+		craft = append(craft, fmt.Sprintf("⚙️ %s %s", p.s(o.RecipeName), ts(&o.ReadyAt)))
 	}
 	craftText := strings.Join(craft, "\n")
 	if craftText == "" {
-		craftText = "💤 閒置"
+		craftText = p.t("ui.main.idle")
 	}
-	e.AddField("🏭 加工", craftText, true)
+	e.AddField(p.t("ui.main.crafting"), craftText, true)
 	var events []string
 	for _, ev := range d.events {
 		name, _ := ev.View["name"].(string)
@@ -315,67 +315,67 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 		desc, _ := ev.View["description"].(string)
 		line := "🔥 **" + name + "**"
 		if ev.CropName != nil && *ev.CropName != "" {
-			line += "（限" + *ev.CropName + "）"
+			line += p.t("ui.main.event_only", "crop", *ev.CropName)
 		}
-		line += "\n　✨ 效果：" + effects
+		line += p.t("ui.main.event_effect") + effects
 		if desc != "" {
-			line += "\n　📝 " + desc
+			line += p.s("\n　📝 ") + desc
 		}
 		events = append(events, line)
 	}
-	e.AddField("🎉 現在進行中的活動", linesOr(events, "目前沒有活動，平常心種田吧 🌾", 1024), false)
+	e.AddField(p.t("ui.main.events"), linesOr(events, p.t("ui.main.no_events"), 1024), false)
 	var hints []string
 	if ready > 0 {
-		hints = append(hints, fmt.Sprintf("✅ **%d 格可以收成！**", ready))
+		hints = append(hints, p.t("ui.main.hint_ready", "n", ready))
 	}
 	if waiting > 0 {
-		hints = append(hints, fmt.Sprintf("💧 %d 格等待澆水", waiting))
+		hints = append(hints, p.t("ui.main.hint_waiting", "n", waiting))
 	}
 	if len(growing) > 0 {
 		next := slices.MinFunc(growing, func(a, b time.Time) int { return a.Compare(b) })
-		hints = append(hints, "⏰ 下一批成熟 "+ts(&next))
+		hints = append(hints, p.t("ui.main.hint_next")+ts(&next))
 	}
 	if countState(s.Plots, rules.PlotEmpty) == len(s.Plots) {
-		hints = append(hints, "🌱 農田都空著，到「🌱 農田」選作物種下吧！")
+		hints = append(hints, p.t("ui.main.hint_all_empty"))
 	}
-	more, goes := todoHints(d)
+	more, goes := todoHints(p.lang, d)
 	hints = append(hints, more...)
 	todo := strings.Join(hints, "\n")
 	if todo == "" {
-		todo = "一切就緒 👍"
+		todo = p.t("ui.main.all_good")
 	}
 	// 待辦放在最後一個欄位，緊貼下方按鈕（玩家遊玩時視線停在按鈕區）
 	if d.news != nil && !d.news.Empty {
-		e.AddField(fmt.Sprintf("📰 昨日農場日報（%s）", d.home.Name), d.news.Text, false)
+		e.AddField(p.t("ui.main.gazette", "server", p.s(d.home.Name)), d.news.Text, false)
 	}
-	e.AddField("📋 待辦", todo, false)
+	e.AddField(p.t("ui.main.todo"), todo, false)
 	e.Footer = p.farmNextStep(s.Plots, false) // 大圖排在所有欄位之後，緊貼按鈕的只有 footer：放待辦摘要
 	// 每日天氣（Go 版新增）：放在最底部（footer 第一行），每天台灣時間 0 點換
 	w := weather.Today(time.Now())
-	e.Footer = strings.TrimSuffix(fmt.Sprintf("%s 今日天氣：%s｜%s\n%s", w.Emoji, w.Name, w.EffectText(), e.Footer), "\n")
-	if g := guideHint(p.marks); g != "" { // 新手引導（2026-11-18）：footer 最後一行，緊貼按鈕
+	e.Footer = strings.TrimSuffix(p.t("ui.main.weather", "emoji", w.Emoji, "name", weatherName(p.lang, w), "effect", weatherEffect(p.lang, w))+"\n"+e.Footer, "\n")
+	if g := guideHint(p.lang, p.marks); g != "" { // 新手引導（2026-11-18）：footer 最後一行，緊貼按鈕
 		e.Footer += "\n" + g
 	}
 
-	p.button("全部澆水", p.waterAll, btn{emoji: "💧", style: ui.Primary, row: 0, disabled: waiting == 0})
-	p.button("全部收成", p.harvestAll, btn{emoji: "🧺", style: ui.Success, row: 0, disabled: ready == 0})
-	p.button("重新整理", func(ctx context.Context, it ui.Interaction) error {
+	p.button(p.t("ui.btn.water_all"), p.waterAll, btn{emoji: "💧", style: ui.Primary, row: 0, disabled: waiting == 0})
+	p.button(p.t("ui.btn.harvest_all"), p.harvestAll, btn{emoji: "🧺", style: ui.Success, row: 0, disabled: ready == 0})
+	p.button(p.t("ui.btn.refresh"), func(ctx context.Context, it ui.Interaction) error {
 		p.goTo(ctx, it, "main", "")
 		return nil
 	}, btn{emoji: "🔄", row: 0})
-	p.button("分享到頻道", p.share, btn{emoji: "📢", row: 0, disabled: p.groupID == nil})
-	p.button("說明", func(ctx context.Context, it ui.Interaction) error {
+	p.button(p.t("ui.btn.share"), p.share, btn{emoji: "📢", row: 0, disabled: p.groupID == nil})
+	p.button(p.t("ui.btn.help"), func(ctx context.Context, it ui.Interaction) error {
 		p.helpTopic = "" // 從總覽進來先看主題清單
 		p.goTo(ctx, it, "help", "")
 		return nil
 	}, btn{emoji: "❓", row: 0})
 	// 2026-11-16 總覽只留兩列按鈕：第 1 列操作、第 2 列最常用的入口；其他功能收進「更多功能」選單
 	// （原本 21 顆按鈕排滿 5 列，再加入口就沒有空位）。顏色規則：綠色＝主要操作、藍色＝次要操作，入口一律灰色，紅色只用在確認破壞性操作。
-	p.nav("農田", "plots", btn{emoji: "🌱", row: 1})
-	p.nav("背包", "backpack", btn{emoji: "🎒", row: 1})
-	p.nav("商店", "shop", btn{emoji: "🏪", row: 1})
-	p.nav("販售", "sell", btn{emoji: "💰", row: 1})
-	p.nav("動物", "animals", btn{emoji: "🐔", row: 1})
+	p.nav(p.t("ui.btn.plots"), "plots", btn{emoji: "🌱", row: 1})
+	p.nav(p.t("ui.btn.inventory"), "backpack", btn{emoji: "🎒", row: 1})
+	p.nav(p.t("ui.btn.shop"), "shop", btn{emoji: "🏪", row: 1})
+	p.nav(p.t("ui.btn.sell"), "sell", btn{emoji: "💰", row: 1})
+	p.nav(p.t("ui.btn.animals"), "animals", btn{emoji: "🐔", row: 1})
 	p.moreMenu(2)
 	p.recentButtons(3)
 	// 最後一列緊貼待辦欄位（2026-11-18）：一鍵操作＋待辦的「前往」按鈕（一列最多 5 顆）
@@ -387,11 +387,11 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	slots := 5
 	if ready > 0 {
-		p.button("收成並重種", p.harvestReplant, btn{emoji: "🔁", style: ui.Success, row: 4})
+		p.button(p.t("ui.btn.harvest_replant"), p.harvestReplant, btn{emoji: "🔁", style: ui.Success, row: 4})
 		slots--
 	}
 	if kinds := btoi(ready > 0) + btoi(animalsReady > 0) + btoi(craftsReady > 0); kinds >= 2 {
-		p.button("一鍵收齊", func(ctx context.Context, it ui.Interaction) error {
+		p.button(p.t("ui.btn.collect_everything"), func(ctx context.Context, it ui.Interaction) error {
 			p.act(ctx, it, func(ctx context.Context) (string, error) {
 				return p.collectEverything(ctx, ready > 0, animalsReady > 0, craftsReady > 0)
 			}, actOpts{})
@@ -406,7 +406,7 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 }
 
 // guideHint 新手引導的下一步（footer 是純文字，不能用粗體）：第一個還沒領獎的步驟；全部領完後不顯示。
-func guideHint(m *services.ProgressMarks) string {
+func guideHint(lang string, m *services.ProgressMarks) string {
 	if m == nil || len(m.GuideStates) == 0 {
 		return ""
 	}
@@ -416,11 +416,12 @@ func guideHint(m *services.ProgressMarks) string {
 		if !ok || state == "claimed" {
 			continue
 		}
-		name := byCode[code].Name
+		name := i18n.Name(lang, "achievement."+code, byCode[code].Name)
 		if state == "ready" {
-			return fmt.Sprintf("🔰 新手引導 %d/%d：「%s」完成！到「🧭 更多功能 → 🏅 成就圖鑑」領取獎勵", i+1, len(achievements.GuideOrder), name)
+			return i18n.T(lang, "ui.guide.ready", "i", i+1, "n", len(achievements.GuideOrder), "name", name)
 		}
-		return fmt.Sprintf("🔰 新手引導 %d/%d「%s」：%s", i+1, len(achievements.GuideOrder), name, achievements.GuideHints[code])
+		return i18n.T(lang, "ui.guide.next", "i", i+1, "n", len(achievements.GuideOrder), "name", name,
+			"hint", i18n.Name(lang, "guide."+code, achievements.GuideHints[code]))
 	}
 	return ""
 }
@@ -447,7 +448,7 @@ func (p *Panel) collectEverything(ctx context.Context, plots, animals, crafts bo
 	run := func(label string, fn func(ctx context.Context) (string, error)) error {
 		msg, err := fn(ctx)
 		if ge, ok := gameerr.As(err); ok {
-			parts = append(parts, fmt.Sprintf("⚠️ %s：%s", label, ge.Error()))
+			parts = append(parts, p.f("⚠️ %s：%s", label, ge.Error()))
 			return nil
 		}
 		if err != nil {
@@ -461,11 +462,11 @@ func (p *Panel) collectEverything(ctx context.Context, plots, animals, crafts bo
 		label string
 		fn    func(ctx context.Context) (string, error)
 	}{
-		{plots, "收成", p.call("harvest_all", func(ctx context.Context) (services.ActionResult, error) {
+		{plots, p.s("收成"), p.call("harvest_all", func(ctx context.Context) (services.ActionResult, error) {
 			return p.svc().HarvestAll(ctx, p.playerID)
 		})},
-		{animals, "收集動物產品", p.collectAll},
-		{crafts, "領取加工品", p.collectCrafts},
+		{animals, p.s("收集動物產品"), p.collectAll},
+		{crafts, p.s("領取加工品"), p.collectCrafts},
 	}
 	for _, s := range steps {
 		if !s.on {
@@ -483,7 +484,8 @@ type todoGo struct{ label, page, emoji string }
 
 // todoHints 農田以外的待辦（2026-11-18 補齊）：動物、加工、魚簍、菇房、種子實驗室、探險（2026-11-19）；
 // 有事要做的項目另外給「前往」按鈕（最多 5 顆，依列出的順序）。
-func todoHints(d mainData) (hints []string, goes []todoGo) {
+func todoHints(lang string, d mainData) (hints []string, goes []todoGo) {
+	t := func(key string, args ...any) string { return i18n.T(lang, "ui.todo."+key, args...) }
 	add := func(g todoGo) {
 		if len(goes) < 5 {
 			goes = append(goes, g)
@@ -491,13 +493,13 @@ func todoHints(d mainData) (hints []string, goes []todoGo) {
 	}
 	a := d.animals
 	if n := a.Counts["ready"]; n > 0 {
-		hints = append(hints, fmt.Sprintf("🥚 **%d 隻動物可以收集**", n))
+		hints = append(hints, t("animals_ready", "n", n))
 	}
 	if n := a.Counts["hungry"]; n > 0 {
-		hints = append(hints, fmt.Sprintf("🍽️ %d 隻動物等待餵食", n))
+		hints = append(hints, t("animals_hungry", "n", n))
 	}
 	if a.Counts["ready"]+a.Counts["hungry"] > 0 {
-		add(todoGo{"動物", "animals", "🐔"})
+		add(todoGo{t("go_animals"), "animals", "🐔"})
 	}
 	ready := 0
 	for _, o := range d.orders {
@@ -506,36 +508,36 @@ func todoHints(d mainData) (hints []string, goes []todoGo) {
 		}
 	}
 	if ready > 0 {
-		hints = append(hints, fmt.Sprintf("📦 **%d 張加工訂單可以領取**", ready))
-		add(todoGo{"領加工品", "craft", "🏭"})
+		hints = append(hints, t("crafts_ready", "n", ready))
+		add(todoGo{t("go_crafts"), "craft", "🏭"})
 	}
-	t := d.todo
-	if t.BasketCapacity > 0 && t.BasketCount >= t.BasketCapacity {
-		hints = append(hints, fmt.Sprintf("🎣 **魚簍滿了（%d/%d）**，賣掉或升級魚簍才能再放", t.BasketCount, t.BasketCapacity))
-		add(todoGo{"魚簍", "fish_basket", "🎣"})
-	} else if t.BasketCapacity > 0 && t.BasketCount*5 >= t.BasketCapacity*4 {
-		hints = append(hints, fmt.Sprintf("🎣 魚簍快滿了（%d/%d）", t.BasketCount, t.BasketCapacity))
-		add(todoGo{"魚簍", "fish_basket", "🎣"})
+	td := d.todo
+	if td.BasketCapacity > 0 && td.BasketCount >= td.BasketCapacity {
+		hints = append(hints, t("basket_full", "n", td.BasketCount, "cap", td.BasketCapacity))
+		add(todoGo{t("go_basket"), "fish_basket", "🎣"})
+	} else if td.BasketCapacity > 0 && td.BasketCount*5 >= td.BasketCapacity*4 {
+		hints = append(hints, t("basket_almost", "n", td.BasketCount, "cap", td.BasketCapacity))
+		add(todoGo{t("go_basket"), "fish_basket", "🎣"})
 	}
-	if t.CellarReady > 0 {
-		hints = append(hints, fmt.Sprintf("🍄 **%d 個菇床可以採收**", t.CellarReady))
-		add(todoGo{"菇房", "cellar", "🍄"})
-	} else if t.CellarNextAt != nil {
-		hints = append(hints, "🍄 菇床下一批成熟 "+ts(t.CellarNextAt))
+	if td.CellarReady > 0 {
+		hints = append(hints, t("cellar_ready", "n", td.CellarReady))
+		add(todoGo{t("go_cellar"), "cellar", "🍄"})
+	} else if td.CellarNextAt != nil {
+		hints = append(hints, t("cellar_next")+ts(td.CellarNextAt))
 	}
-	if t.LabReady > 0 {
-		hints = append(hints, fmt.Sprintf("🧪 **%d 項研究完成，可以領取**", t.LabReady))
-		add(todoGo{"實驗室", "lab", "🧪"})
-	} else if t.LabNextAt != nil {
-		hints = append(hints, "🧪 研究下一項完成 "+ts(t.LabNextAt))
-	} else if t.LabBuilt && t.LabFreeSlots > 0 {
-		hints = append(hints, fmt.Sprintf("🧪 實驗室有 %d 個研究槽空著", t.LabFreeSlots))
+	if td.LabReady > 0 {
+		hints = append(hints, t("lab_ready", "n", td.LabReady))
+		add(todoGo{t("go_lab"), "lab", "🧪"})
+	} else if td.LabNextAt != nil {
+		hints = append(hints, t("lab_next")+ts(td.LabNextAt))
+	} else if td.LabBuilt && td.LabFreeSlots > 0 {
+		hints = append(hints, t("lab_free", "n", td.LabFreeSlots))
 	}
-	if t.TripBack {
-		hints = append(hints, fmt.Sprintf("⛰️ **探險隊從%s回來了，可以領取獎勵**", t.TripArea))
-		add(todoGo{"領探險獎勵", "cave", "⛰️"})
-	} else if t.TripReturnAt != nil {
-		hints = append(hints, fmt.Sprintf("⛰️ 探險隊（%s）回來 %s", t.TripArea, ts(t.TripReturnAt)))
+	if td.TripBack {
+		hints = append(hints, t("trip_back", "area", td.TripArea))
+		add(todoGo{t("go_trip"), "cave", "⛰️"})
+	} else if td.TripReturnAt != nil {
+		hints = append(hints, t("trip_out", "area", td.TripArea, "time", ts(td.TripReturnAt)))
 	}
 	return hints, goes
 }
@@ -549,7 +551,7 @@ func (p *Panel) recentButtons(row int) {
 			continue
 		}
 		m := moreEntries[i]
-		p.button(m.label, func(ctx context.Context, it ui.Interaction) error {
+		p.button(p.t("ui.more."+m.page), func(ctx context.Context, it ui.Interaction) error {
 			p.openMore(ctx, it, m.page)
 			return nil
 		}, btn{emoji: m.emoji, row: row})
@@ -591,11 +593,16 @@ var moreEntries = []struct{ page, label, desc, emoji string }{
 
 // moreMenu 「更多功能」選單：選了就換頁（作物價格、紀錄從第 1 頁開始）。
 func (p *Panel) moreMenu(row int) {
-	options := make([]option, len(moreEntries))
-	for i, m := range moreEntries {
-		options[i] = option{m.label, m.page, m.desc, m.emoji}
+	options := make([]option, 0, len(moreEntries)+1)
+	for _, m := range moreEntries {
+		options = append(options, option{p.t("ui.more." + m.page), m.page, p.t("ui.more." + m.page + "_desc"), m.emoji})
 	}
-	p.selectMenu("🧭 更多功能…", options, func(ctx context.Context, it ui.Interaction, page string) error {
+	// 2026-11-19 語言切換：放在選單最後一項（總覽的按鈕列已滿）
+	options = append(options, option{p.t("ui.lang.option"), langToggle, p.t("ui.lang.option_desc"), "🌐"})
+	p.selectMenu(p.t("ui.more.placeholder"), options, func(ctx context.Context, it ui.Interaction, page string) error {
+		if page == langToggle {
+			return p.toggleLanguage(ctx, it)
+		}
 		if !slices.ContainsFunc(moreEntries, func(m struct{ page, label, desc, emoji string }) bool { return m.page == page }) {
 			return gameerr.NotFoundf("找不到這個頁面。")
 		}
@@ -604,13 +611,29 @@ func (p *Panel) moreMenu(row int) {
 	}, row, "")
 }
 
+// langToggle 「更多功能」選單裡切換語言的選項值。
+const langToggle = "__language__"
+
+// toggleLanguage 中英文互換，記在玩家設定（players.language），之後開面板都用這個語言。
+func (p *Panel) toggleLanguage(ctx context.Context, it ui.Interaction) error {
+	next := i18n.English
+	if p.lang == i18n.English {
+		next = i18n.Default
+	}
+	p.lang = next
+	p.act(ctx, it, p.call("set_language", func(ctx context.Context) (services.ActionResult, error) {
+		return p.svc().SetLanguage(ctx, p.playerID, next)
+	}), actOpts{noProgress: true, prefix: " "})
+	return nil
+}
+
 // shareCooldown 公開分享（農場、魚卡）的冷卻時間，避免連按洗版。
 const shareCooldown = 30 * time.Second
 
 // shareWait 還在冷卻時重繪面板提示並回傳 true；否則記下這次分享的時間並回傳 false。
 func (p *Panel) shareWait(ctx context.Context, it ui.Interaction) bool {
 	if left := shareCooldown - time.Since(p.lastShareAt); !p.lastShareAt.IsZero() && left > 0 {
-		p.refresh(ctx, it, fmt.Sprintf("⚠️ 剛剛才分享過，請 %d 秒後再分享。", int(left.Seconds())+1), nil, "重繪", time.Time{})
+		p.refresh(ctx, it, p.f("⚠️ 剛剛才分享過，請 %d 秒後再分享。", int(left.Seconds())+1), nil, p.s("重繪"), time.Time{})
 		return true
 	}
 	p.lastShareAt = time.Now()
@@ -637,29 +660,29 @@ func (p *Panel) share(ctx context.Context, it ui.Interaction) error {
 	})
 	if err != nil {
 		p.lastShareAt = time.Time{} // 沒有分享出去，不算冷卻
-		_, _ = it.Followup(ctx, ui.Message{Content: ptr("❌ " + PlayerMessage(err)), Ephemeral: true})
+		_, _ = it.Followup(ctx, ui.Message{Content: ptr("❌ " + p.msg(err)), Ephemeral: true})
 		return nil
 	}
-	lines := plotLines(status.Plots, false) // 公開訊息：不顯示「請清除」這類給主人看的提示
+	lines := plotLines(p.lang, status.Plots, false) // 公開訊息：不顯示「請清除」這類給主人看的提示
 	desc := strings.Join(lines, "\n")
 	if r := []rune(desc); len(r) > 4000 {
 		desc = string(r[:4000])
 	}
-	e := &ui.Embed{Title: fmt.Sprintf("🌾 %s（Lv %d）", status.Name, status.Level), Color: Green, Description: desc,
+	e := &ui.Embed{Title: p.f("🌾 %s（Lv %d）", p.s(status.Name), status.Level), Color: Green, Description: desc,
 		AuthorName: status.PlayerName}
-	e.AddField("💰 金幣", money(status.Gold), true)
+	e.AddField(p.s("💰 金幣"), money(status.Gold), true)
 	msg := ui.Message{Embed: e}
 	if len(png) > 0 {
 		e.Image = "attachment://" + FarmImage
 		msg.Files = []ui.File{{Name: FarmImage, Data: png}}
 	}
-	notice := "📢 已分享到這個頻道！"
+	notice := p.s("📢 已分享到這個頻道！")
 	if _, err := it.Followup(ctx, msg); err != nil {
 		slog.Warn("分享農場失敗", "type", fmt.Sprintf("%T", err))
 		p.lastShareAt = time.Time{}
-		notice = "⚠️ 訊息沒有送出（Bot 可能沒有這個頻道的發言權限）。"
+		notice = p.s("⚠️ 訊息沒有送出（Bot 可能沒有這個頻道的發言權限）。")
 	}
-	p.refresh(ctx, it, notice, nil, "重繪", time.Time{})
+	p.refresh(ctx, it, notice, nil, p.s("重繪"), time.Time{})
 	return nil
 }
 
@@ -736,16 +759,20 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 	var seedParts []string
 	for _, x := range bp.Seeds {
 		seeds[x.Code] = x.Quantity
-		seedParts = append(seedParts, fmt.Sprintf("%s%s ×**%d**", cropEmoji(x.Code), x.Name, x.Quantity))
+		name := p.s(x.Name)
+		if p.lang != i18n.Default {
+			name = p.t("ui.plots.seed_name", "crop", services.CropName(p.lang, x.Code, p.s(x.Name)))
+		}
+		seedParts = append(seedParts, p.t("ui.plots.seed_line", "emoji", cropEmoji(x.Code), "name", name, "n", x.Quantity))
 	}
-	seedText := strings.Join(seedParts, "　")
+	seedText := strings.Join(seedParts, p.s("　"))
 	if seedText == "" {
-		seedText = "沒有種子"
+		seedText = p.t("ui.plots.no_seeds")
 	}
-	e := &ui.Embed{Title: fmt.Sprintf("🌱 ✦ 農田（%d 格）✦", len(s.Plots)), Color: Green, Description: sections(
-		fmt.Sprintf("💰 金幣 **%s**\n🌰 %s", money(s.Gold), seedText),
-		Section{Title: "農田", Lines: plotLines(s.Plots, true)},
-		"📊 "+summaryCounts(s.Plots),
+	e := &ui.Embed{Title: p.t("ui.plots.title", "n", len(s.Plots)), Color: Green, Description: sections(
+		p.t("ui.plots.gold_seeds", "gold", money(s.Gold), "seeds", seedText),
+		Section{Title: p.t("ui.plots.section"), Lines: plotLines(p.lang, s.Plots, true)},
+		"📊 "+summaryCounts(p.lang, s.Plots),
 	), Footer: p.farmNextStep(s.Plots, true)} // 下一步放 footer：大圖排在欄位之後，footer 才是緊貼按鈕的位置
 	p.attachImage(e, p.farmImage(d.status)) // 圖片在交易外產生
 	if empty := countState(s.Plots, rules.PlotEmpty); empty > 0 {
@@ -754,48 +781,49 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 			if !(c.ShopBuyable || seeds[c.Code] > 0) || !c.InSeason { // 不在季節的不列出
 				continue
 			}
-			label := fmt.Sprintf("%s（種子 %s 金，持有 %d）", c.Name, money(c.SeedPrice), seeds[c.Code])
+			cname := services.CropName(p.lang, c.Code, p.s(c.Name))
+			label := p.t("ui.plots.crop_option", "crop", cname, "price", money(c.SeedPrice), "have", seeds[c.Code])
 			if !c.ShopBuyable {
-				label = fmt.Sprintf("%s（稀有種子，持有 %d）", c.Name, seeds[c.Code])
+				label = p.t("ui.plots.crop_option_rare", "crop", cname, "have", seeds[c.Code])
 			}
 			// 2026-11-19 顯示種下澆水後實際要長多久（限時活動、溫室、蚯蚓、灑水器等加速都算進去），不再顯示作物原本的時間
 			grow, ok := d.grow[c.Code]
 			if !ok {
 				grow = c.GrowSeconds
 			}
-			timeText := services.LongDuration(grow)
+			timeText := services.DurationLang(p.lang, grow, true)
 			if grow < c.GrowSeconds {
-				timeText += "（已含加速）"
+				timeText += p.t("ui.plots.boosted")
 			}
 			options = append(options, option{label, c.Code,
-				fmt.Sprintf("⏱️ %s｜🧺 收成 ×%d %s｜🏷️ %s 金／個", timeText, c.HarvestQuantity, c.Name, money(c.SellPrice)),
+				p.t("ui.plots.crop_desc", "time", timeText, "qty", c.HarvestQuantity, "crop", cname, "price", money(c.SellPrice)),
 				cropEmoji(c.Code)})
 		}
-		p.selectMenu(fmt.Sprintf("🌱 選擇作物，種到 %d 格空地…", empty), options, func(ctx context.Context, it ui.Interaction, code string) error {
+		p.selectMenu(p.t("ui.plots.plant_placeholder", "n", empty), options, func(ctx context.Context, it ui.Interaction, code string) error {
 			p.act(ctx, it, p.call("plant_all", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().PlantAll(ctx, p.playerID, code)
 			}), actOpts{noProgress: true})
 			return nil
 		}, 0, "")
 	}
-	p.button("全部澆水", p.waterAll, btn{emoji: "💧", style: ui.Primary, row: 1, disabled: countState(s.Plots, rules.PlotWaitingWater) == 0})
-	p.button("全部收成", p.harvestAll, btn{emoji: "🧺", style: ui.Success, row: 1, disabled: countState(s.Plots, rules.PlotReady) == 0})
-	p.button("清除乾枯", p.clearAll, btn{emoji: "🥀", row: 1, disabled: countState(s.Plots, rules.PlotWithered) == 0})
+	p.button(p.t("ui.btn.water_all"), p.waterAll, btn{emoji: "💧", style: ui.Primary, row: 1, disabled: countState(s.Plots, rules.PlotWaitingWater) == 0})
+	p.button(p.t("ui.btn.harvest_all"), p.harvestAll, btn{emoji: "🧺", style: ui.Success, row: 1, disabled: countState(s.Plots, rules.PlotReady) == 0})
+	p.button(p.t("ui.btn.clear_withered"), p.clearAll, btn{emoji: "🥀", row: 1, disabled: countState(s.Plots, rules.PlotWithered) == 0})
 	price, ok := expansion.LandPrice(len(s.Plots))
 	confirming := p.confirm == "upgrade"
-	label := fmt.Sprintf("擴建（%s 金）", money(price))
+	label := p.t("ui.plots.expand", "price", money(price))
 	style := ui.Secondary
 	switch {
 	case !ok:
-		label = "已達上限"
+		label = p.t("ui.plots.at_max")
 	case confirming:
-		label, style = "確認擴建", ui.Danger
+		label, style = p.t("ui.plots.confirm_expand"), ui.Danger
 	}
 	p.button(label, func(ctx context.Context, it ui.Interaction) error {
 		if p.confirm != "upgrade" {
 			p.confirm = "upgrade"
-			p.refresh(ctx, it, fmt.Sprintf("⚠️ 擴建需要 %s 金幣（+%d 格），再按一次「確認擴建」。", money(price), balance.UpgradePlotsAdded),
-				nil, "重繪", time.Time{})
+			p.refresh(ctx, it, p.t("ui.plots.confirm_expand_note", "price", money(price), "n", balance.UpgradePlotsAdded),
+				nil, p.s("重繪"), time.Time{})
 			return nil
 		}
 		p.act(ctx, it, p.call("upgrade_farm", func(ctx context.Context) (services.ActionResult, error) {
@@ -812,7 +840,7 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 	if fert := lineQty(bp.Consumables, balance.ItemFertilizer); len(growing) > 0 && fert > 0 {
 		// 2026-11-15 起可以複選：勾選要施肥的農田（最多持有的化肥數量），選完直接施肥
 		growing = growing[:min(len(growing), ui.MaxOptions)]
-		multi := &ui.Select{Placeholder: fmt.Sprintf("🧪 勾選要施化肥的農田（持有 %d，剩餘時間 -%d%%，可複選）…", fert, balance.FertilizerPct),
+		multi := &ui.Select{Placeholder: p.t("ui.plots.fertilize_placeholder", "have", fert, "pct", balance.FertilizerPct),
 			Row: 2, MinValues: 1, MaxValues: min(len(growing), fert),
 			OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
 				plots := make([]int, 0, len(values))
@@ -827,18 +855,19 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 				return nil
 			}}
 		for _, pl := range growing {
-			desc := fmt.Sprintf("剩餘時間 -%d%%", balance.FertilizerPct)
+			desc := p.t("ui.plots.fertilize_desc", "pct", balance.FertilizerPct)
 			if pl.RemainingSeconds > 0 {
-				desc += "，目前還要 " + rules.FormatDuration(pl.RemainingSeconds)
+				desc += p.t("ui.plots.fertilize_left") + services.DurationLang(p.lang, pl.RemainingSeconds, false)
 			}
-			multi.Options = append(multi.Options, ui.SelectOption{Label: cut(fmt.Sprintf("#%d %s", pl.PlotNumber, deref(pl.CropName)), 100),
+			multi.Options = append(multi.Options, ui.SelectOption{Label: cut(fmt.Sprintf("#%d %s", pl.PlotNumber,
+				services.CropName(p.lang, deref(pl.CropCode), p.s(deref(pl.CropName)))), 100),
 				Value: fmt.Sprint(pl.PlotNumber), Emoji: "🧪", Description: cut(desc, 100)})
 		}
 		p.add(multi)
 	}
 	if worms := lineQty(bp.Consumables, balance.ItemEarthworm); worms > 0 {
 		// 第 3 列讓給特殊種子選單（2026-11-15）
-		p.button(fmt.Sprintf("使用蚯蚓（持有 %d）", worms), func(ctx context.Context, it ui.Interaction) error {
+		p.button(p.t("ui.plots.earthworm", "n", worms), func(ctx context.Context, it ui.Interaction) error {
 			p.act(ctx, it, p.call("use_earthworm", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().UseEarthworm(ctx, p.playerID)
 			}), actOpts{})
@@ -859,9 +888,9 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 			}
 		}
 		if picking {
-			opts, page, pages := pagedOptions(cropFilterOptions(d.labSeeds, "所有作物的特殊種子一起列出"), p.plotSeedPage)
+			opts, page, pages := pagedOptions(cropFilterOptions(d.labSeeds, p.t("ui.plots.lab_filter_all")), p.plotSeedPage)
 			p.plotSeedPage = page
-			p.selectMenu(fmt.Sprintf("🔎 篩選特殊種子：選擇要看的作物（共 %d 顆，空地 %d 格）…", len(d.labSeeds), empty), opts,
+			p.selectMenu(p.t("ui.plots.lab_filter_placeholder", "n", len(d.labSeeds), "empty", empty), opts,
 				func(ctx context.Context, it ui.Interaction, value string) error {
 					if !turnPage(value, &p.plotSeedPage, pages) {
 						p.plotSeedCrop, p.plotSeedPage = strings.TrimPrefix(value, cropFilterPrefix), 0
@@ -872,20 +901,20 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 		} else {
 			all := make([]option, 0, len(seeds)+1)
 			if len(codes) > 1 {
-				filterLabel := "🔎 篩選作物（只看某種作物）"
+				filterLabel := p.t("ui.plots.lab_filter")
 				if name := cropFilterName(d.labSeeds, p.plotSeedCrop); name != "" {
-					filterLabel = "🔎 改選其他作物（目前只看" + name + "）"
+					filterLabel = p.t("ui.plots.lab_filter_change", "crop", name)
 				}
-				all = append(all, option{filterLabel, cropFilterPrefix, "選這項會打開作物清單，不會種下", "🔎"})
+				all = append(all, option{filterLabel, cropFilterPrefix, p.t("ui.plots.lab_filter_desc"), "🔎"})
 			}
 			for _, sv := range seeds {
 				all = append(all, option{seedOptionLabel(sv), fmt.Sprint(sv.ID), seedOptionDesc(sv), cropEmoji(sv.CropCode)})
 			}
 			opts, page, pages := pagedOptions(all, p.plotSeedPage)
 			p.plotSeedPage = page
-			holder := fmt.Sprintf("🧬 勾選特殊種子，每顆種到 1 格空地（空地 %d 格，可複選）…", empty)
+			holder := p.t("ui.plots.lab_placeholder", "empty", empty)
 			if pages > 1 {
-				holder = fmt.Sprintf("🧬 勾選特殊種子種到空地（空地 %d 格，第 %d/%d 頁，選單頭尾可翻頁）…", empty, page+1, pages)
+				holder = p.t("ui.plots.lab_placeholder_paged", "empty", empty, "page", page+1, "pages", pages)
 			}
 			multi := &ui.Select{Placeholder: holder, Row: 3, MinValues: 1, MaxValues: min(len(opts), empty),
 				OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
@@ -920,11 +949,11 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 			p.add(multi)
 		}
 	}
-	p.nav("地下菇房", "cellar", btn{emoji: "🍄", row: 4, style: ui.Primary})
-	p.nav("種子實驗室", "lab", btn{emoji: "🧪", row: 4, style: ui.Primary})
-	p.nav("庭院擺設", "decor", btn{emoji: "🎨", row: 4})
+	p.nav(p.t("ui.btn.cellar"), "cellar", btn{emoji: "🍄", row: 4, style: ui.Primary})
+	p.nav(p.t("ui.btn.lab"), "lab", btn{emoji: "🧪", row: 4, style: ui.Primary})
+	p.nav(p.t("ui.btn.decor"), "decor", btn{emoji: "🎨", row: 4})
 	if bp.SeedMaker {
-		p.navFirstPage("種子製造", "seedmaker", &p.seedMakerPage, btn{emoji: "🌱", row: 4, style: ui.Primary})
+		p.navFirstPage(p.t("ui.btn.seed_maker"), "seedmaker", &p.seedMakerPage, btn{emoji: "🌱", row: 4, style: ui.Primary})
 	}
 	p.navBack(4)
 	return e, nil
@@ -965,66 +994,66 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 	for _, t := range bp.Tools {
 		switch {
 		case !t.Owned:
-			tools = append(tools, fmt.Sprintf("🔒 %s（未購買）", t.Name))
+			tools = append(tools, p.f("🔒 %s（未購買）", p.s(t.Name)))
 		case t.Enabled:
-			tools = append(tools, fmt.Sprintf("✅ %s（啟用中）", t.Name))
+			tools = append(tools, p.f("✅ %s（啟用中）", p.s(t.Name)))
 		default:
-			tools = append(tools, fmt.Sprintf("⏸️ %s（已停用）", t.Name))
+			tools = append(tools, p.f("⏸️ %s（已停用）", p.s(t.Name)))
 		}
 	}
 	for _, x := range bp.Effects {
 		if x.Status == "active" {
-			effects = append(effects, fmt.Sprintf("🪱 %s：%s結束", x.Name, ts(x.ExpiresAt)))
+			effects = append(effects, p.f("🪱 %s：%s結束", p.s(x.Name), ts(x.ExpiresAt)))
 		}
 	}
 	for _, x := range bp.Seeds {
-		line := fmt.Sprintf("%s %s　×**%d**", cropEmoji(x.Code), x.Name, x.Quantity)
+		line := p.f("%s %s　×**%d**", cropEmoji(x.Code), p.s(x.Name), x.Quantity)
 		seeds = append(seeds, line)
 	}
 	for _, x := range bp.Produce {
-		produce = append(produce, fmt.Sprintf("%s %s%s　×**%d**　（%s 金／個）", cropEmoji(x.Code), x.Name,
+		produce = append(produce, p.f("%s %s%s　×**%d**　（%s 金／個）", cropEmoji(x.Code), p.s(x.Name),
 			services.GeneticsLabel(x.Quality, x.Mutation), x.Quantity, money(x.Price)))
 	}
 	for _, x := range bp.Goods {
-		goods = append(goods, fmt.Sprintf("🥚 %s　×**%d**　（%s 金／個）", x.Name, x.Quantity, money(x.Price)))
+		goods = append(goods, p.f("🥚 %s　×**%d**　（%s 金／個）", p.s(x.Name), x.Quantity, money(x.Price)))
 	}
 	for _, x := range bp.Consumables {
-		consumables = append(consumables, fmt.Sprintf("%s %s　×**%d**", lookupOr(ItemEmoji, x.Code, "🎁"), x.Name, x.Quantity))
+		consumables = append(consumables, p.f("%s %s　×**%d**", lookupOr(ItemEmoji, x.Code, "🎁"), p.s(x.Name), x.Quantity))
 	}
 	for _, x := range bp.Prizes {
-		prizes = append(prizes, fmt.Sprintf("🏆 %s　×**%d**　（價值 ×%d，%s 金／個）", x.Name, x.Quantity, x.Multiplier, money(x.UnitPrice)))
+		prizes = append(prizes, p.f("🏆 %s　×**%d**　（價值 ×%d，%s 金／個）", p.s(x.Name), x.Quantity, x.Multiplier, money(x.UnitPrice)))
 	}
 	for _, x := range bp.Materials {
-		materials = append(materials, fmt.Sprintf("%s %s　×**%d**　（%s）", lookupOr(MaterialEmoji, x.Code, "🪨"), x.Name, x.Quantity, x.Description))
+		materials = append(materials, p.f("%s %s　×**%d**　（%s）", lookupOr(MaterialEmoji, x.Code, "🪨"), p.s(x.Name), x.Quantity, p.s(x.Description)))
 	}
 	for _, f := range basket.Fish[:min(8, len(basket.Fish))] {
 		fish = append(fish, fishLine(f, 0))
 	}
 	if len(basket.Fish) > 8 {
-		fish = append(fish, fmt.Sprintf("…還有 %d 隻，到「🎣 魚簍」查看", len(basket.Fish)-8))
+		fish = append(fish, p.f("…還有 %d 隻，到「🎣 魚簍」查看", len(basket.Fish)-8))
 	}
 	// 三種容量集中在第一行：倉庫（農產品、動物產品、道具…）、素材背包（素材與種子）、魚簍
-	e := &ui.Embed{Title: "🎒 ✦ 背包 ✦", Color: Blue, Description: sections(
-		fmt.Sprintf("📦 倉庫 **%d/%d**　⛰️ 素材背包 **%d/%d**（含種子）　🎣 魚簍 **%d/%d**\n%s",
+	e := &ui.Embed{Title: p.s("🎒 ✦ 背包 ✦"), Color: Blue, Description: sections(
+		p.f("📦 倉庫 **%d/%d**　⛰️ 素材背包 **%d/%d**（含種子）　🎣 魚簍 **%d/%d**\n%s",
 			bp.Used, bp.Capacity, bp.MaterialUsed, bp.MaterialCapacity, len(basket.Fish), basket.Capacity, bar(bp.Used, bp.Capacity, 16)),
-		Section{Title: "🌰 種子", Lines: seeds},
-		Section{Title: "🧺 農產品", Lines: produce},
-		Section{Title: "🥚 動物產品與加工品", Lines: goods},
-		Section{Title: "🧪 道具", Lines: consumables},
-		Section{Title: "🏆 賭場獎品", Lines: prizes},
-		Section{Title: "⛰️ 素材", Lines: materials},
-		Section{Title: "🔧 工具（按下方按鈕切換開關）", Lines: tools},
-		Section{Title: "✨ 生效中的效果", Lines: effects},
-		Section{Title: fmt.Sprintf("🎣 魚簍（全部價值 %s 金）", money(basket.TotalValue)), Lines: fish},
+		Section{Title: p.s("🌰 種子"), Lines: seeds},
+		Section{Title: p.s("🧺 農產品"), Lines: produce},
+		Section{Title: p.s("🥚 動物產品與加工品"), Lines: goods},
+		Section{Title: p.s("🧪 道具"), Lines: consumables},
+		Section{Title: p.s("🏆 賭場獎品"), Lines: prizes},
+		Section{Title: p.s("⛰️ 素材"), Lines: materials},
+		Section{Title: p.s("🔧 工具（按下方按鈕切換開關）"), Lines: tools},
+		Section{Title: p.s("✨ 生效中的效果"), Lines: effects},
+		Section{Title: p.f("🎣 魚簍（全部價值 %s 金）", money(basket.TotalValue)), Lines: fish},
 	)}
 	// 工具開關：按鈕顯示「目前狀態」，開＝綠色 ✅、關＝灰色 ⏸️，按下切換
 	for _, t := range bp.Tools {
 		if !t.Owned {
 			continue
 		}
-		label, emoji, style := t.Name+"：關", "⏸️", ui.Secondary
+		label, emoji, style := p.s(t.Name)+p.s("：關"), "⏸️", ui.Secondary
 		if t.Enabled {
-			label, emoji, style = t.Name+"：開", "✅", ui.Success
+			label, emoji, style = p.s(t.Name)+p.s("：開"), "✅", ui.Success
 		}
 		p.button(label, func(ctx context.Context, it ui.Interaction) error {
 			p.act(ctx, it, p.call("set_tool_enabled", func(ctx context.Context) (services.ActionResult, error) {
@@ -1033,23 +1062,23 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 			return nil
 		}, btn{emoji: emoji, style: style, row: 0})
 	}
-	p.nav("前往販售", "sell", btn{emoji: "💰", row: 1})
-	p.nav("商店", "shop", btn{emoji: "🏪", row: 1})
-	p.nav("魚簍", "fish_basket", btn{emoji: "🎣", row: 1})
-	p.nav("增益道具", "boosts", btn{emoji: "✨", row: 1, style: ui.Primary})
+	p.nav(p.s("前往販售"), "sell", btn{emoji: "💰", row: 1})
+	p.nav(p.s("商店"), "shop", btn{emoji: "🏪", row: 1})
+	p.nav(p.s("魚簍"), "fish_basket", btn{emoji: "🎣", row: 1})
+	p.nav(p.s("增益道具"), "boosts", btn{emoji: "✨", row: 1, style: ui.Primary})
 	if coins := lineQty(bp.Materials, exploration.FakeCoin); coins > 0 {
-		p.button(fmt.Sprintf("兌換假幣（持有 %d）", coins), func(ctx context.Context, it ui.Interaction) error {
-			p.picker = &Picker{Key: "fake_coin", Label: fmt.Sprintf("💱 兌換假幣（1 個 = %s 金）", money(exploration.FakeCoinRate())),
-				Verb: "換", Max: coins, Presets: []int{1, 5, 10},
+		p.button(p.f("兌換假幣（持有 %d）", coins), func(ctx context.Context, it ui.Interaction) error {
+			p.picker = &Picker{Key: "fake_coin", Label: p.f("💱 兌換假幣（1 個 = %s 金）", money(exploration.FakeCoinRate())),
+				Verb: p.s("換"), Max: coins, Presets: []int{1, 5, 10},
 				Run: p.callQty("exchange_fake_coins", func(ctx context.Context, q int) (services.ActionResult, error) {
 					return p.svc().ExchangeFakeCoins(ctx, p.playerID, q)
 				})}
-			p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+			p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
 			return nil
 		}, btn{emoji: "💱", row: 1, style: ui.Success})
 		if p.picker != nil && p.picker.Key == "fake_coin" {
 			p.picker.Max = coins
-			e.AddField("💱 兌換假幣", fmt.Sprintf("持有 **%d** 個，1 個 = **%s** 金\n👇 選擇兌換數量", coins, money(exploration.FakeCoinRate())), false)
+			e.AddField(p.s("💱 兌換假幣"), p.f("持有 **%d** 個，1 個 = **%s** 金\n👇 選擇兌換數量", coins, money(exploration.FakeCoinRate())), false)
 			p.quantityButtons(2)
 		}
 	}
@@ -1061,19 +1090,19 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 		var picked []string
 		for _, o := range sv.Options {
 			if o.Selected {
-				picked = append(picked, o.Name)
+				picked = append(picked, p.s(o.Name))
 			}
 		}
-		text := "全部都賣"
+		text := p.s("全部都賣")
 		if !sv.All {
-			text = "只賣 " + strings.Join(picked, "、")
+			text = p.s("只賣 ") + strings.Join(picked, p.s("、"))
 		}
 		if !sv.Enabled {
-			text += "（目前停用）"
+			text += p.s("（目前停用）")
 		}
-		e.AddField("🏧 自動販售機販售項目", runes(text, 1000)+"\n👇 用下方選單勾選要自動賣的東西", false)
+		e.AddField(p.s("🏧 自動販售機販售項目"), runes(text, 1000)+p.s("\n👇 用下方選單勾選要自動賣的東西"), false)
 		opts := sv.Options[:min(len(sv.Options), ui.MaxOptions)]
-		multi := &ui.Select{Placeholder: "🏧 勾選自動販售機要賣的東西（可複選）…", Row: 3, MinValues: 1, MaxValues: len(opts),
+		multi := &ui.Select{Placeholder: p.s("🏧 勾選自動販售機要賣的東西（可複選）…"), Row: 3, MinValues: 1, MaxValues: len(opts),
 			OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
 				p.act(ctx, it, p.call("set_auto_seller_items", func(ctx context.Context) (services.ActionResult, error) {
 					return p.svc().SetAutoSellerItems(ctx, p.playerID, values)
@@ -1088,7 +1117,7 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 			case services.AutoSellFish:
 				emoji = "🐟"
 			}
-			multi.Options = append(multi.Options, ui.SelectOption{Label: o.Name, Value: o.Code, Emoji: emoji, Default: o.Selected})
+			multi.Options = append(multi.Options, ui.SelectOption{Label: p.s(o.Name), Value: o.Code, Emoji: emoji, Default: o.Selected})
 		}
 		p.add(multi)
 	}
@@ -1112,14 +1141,14 @@ func (p *Panel) loadHelp(ctx context.Context) (any, error) {
 		return nil, err
 	}
 	cost, err := p.svc().RenameCost(ctx, p.playerID)
-	return helpData{st.Name, st.Gold, cost}, err
+	return helpData{p.s(st.Name), st.Gold, cost}, err
 }
 
 // buildHelp 說明頁：用下拉選單選主題，一次只顯示一個主題（不再一次列出整面文字）；沒選主題時顯示主題清單與改名。
 func (p *Panel) buildHelp(_ context.Context, data any) (*ui.Embed, error) {
 	d := data.(helpData)
 	full := HelpEmbed()
-	e := &ui.Embed{Title: full.Title, Color: full.Color, Description: full.Description}
+	e := &ui.Embed{Title: full.Title, Color: full.Color, Description: p.s(full.Description)}
 	topic := -1
 	if i, err := strconv.Atoi(p.helpTopic); err == nil && i >= 0 && i < len(full.Fields) {
 		topic = i
@@ -1127,33 +1156,33 @@ func (p *Panel) buildHelp(_ context.Context, data any) (*ui.Embed, error) {
 	cost := d.renameCost
 	if topic >= 0 {
 		f := full.Fields[topic]
-		e.AddField(f.Name, f.Value, false) // 選取的主題放在最下方，貼近選單
+		e.AddField(p.s(f.Name), f.Value, false) // 選取的主題放在最下方，貼近選單
 	} else {
 		names := make([]string, len(full.Fields))
 		for i, f := range full.Fields {
-			names[i] = f.Name
+			names[i] = p.s(f.Name)
 		}
-		e.AddField("🏡 農場名稱", fmt.Sprintf("目前：**%s**　這次改名 %s（你有 %s 金幣）\n改名費逐次加價，%d 天沒改名會降一級",
+		e.AddField(p.s("🏡 農場名稱"), p.f("目前：**%s**　這次改名 %s（你有 %s 金幣）\n改名費逐次加價，%d 天沒改名會降一級",
 			d.name, renameCostText(cost), money(d.gold), expansion.Current().RenameDecayDays), false)
-		e.AddField("📚 主題", strings.Join(names, "　")+"\n👇 從下方選單選一個主題", false)
+		e.AddField(p.s("📚 主題"), strings.Join(names, p.s("　"))+p.s("\n👇 從下方選單選一個主題"), false)
 	}
 	options := make([]option, len(full.Fields))
 	for i, f := range full.Fields {
-		options[i] = option{f.Name, strconv.Itoa(i), "", ""}
+		options[i] = option{p.s(f.Name), strconv.Itoa(i), "", ""}
 	}
-	p.selectMenu("📚 選擇說明主題…", options, func(ctx context.Context, it ui.Interaction, value string) error {
+	p.selectMenu(p.s("📚 選擇說明主題…"), options, func(ctx context.Context, it ui.Interaction, value string) error {
 		p.helpTopic = value
-		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+		p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
 		return nil
 	}, 1, p.helpTopic)
 	if topic >= 0 {
-		p.button("主題清單", func(ctx context.Context, it ui.Interaction) error {
+		p.button(p.s("主題清單"), func(ctx context.Context, it ui.Interaction) error {
 			p.helpTopic = ""
-			p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+			p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
 			return nil
 		}, btn{emoji: "📚", row: 0})
 	}
-	p.button(fmt.Sprintf("更改農場名稱（%s）", renameCostText(cost)), func(ctx context.Context, it ui.Interaction) error {
+	p.button(p.f("更改農場名稱（%s）", renameCostText(cost)), func(ctx context.Context, it ui.Interaction) error {
 		return it.SendModal(ctx, renameModal(d.name, cost, func(ctx context.Context, mit ui.Interaction, name string) {
 			p.act(ctx, mit, p.call("rename_farm", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().RenameFarm(ctx, p.playerID, name)
@@ -1231,4 +1260,25 @@ func caveHelpText() string {
 		"• 帶回素材、🪵木屑、稀有種子與假幣（「🎒 背包」兌換，1 個 = %s 金）\n"+
 		"• 「⛰️ 山洞」→「🔧 機器」用素材製作種子製造機、自動收割機、自動加工機、稀有作物培育器",
 		strings.Join(names, "、"), strings.Join(hours, "／"), money(exploration.FakeCoinRate()))
+}
+
+// weatherName 天氣名稱（繁中用天氣表的名稱）。
+func weatherName(lang string, w weather.Kind) string {
+	return i18n.Name(lang, "weather."+w.Code, w.Name)
+}
+
+// weatherEffect 天氣效果說明（繁中沿用 EffectText，數字一樣從天氣表來）。
+func weatherEffect(lang string, w weather.Kind) string {
+	if lang == i18n.Default {
+		return w.EffectText()
+	}
+	switch {
+	case w.GrowReductionPct > 0:
+		return i18n.T(lang, "weather.effect_sunny", "pct", w.GrowReductionPct)
+	case w.FreeWater > 0:
+		return i18n.T(lang, "weather.effect_rainy")
+	case w.HarvestLoss > 0:
+		return i18n.T(lang, "weather.effect_storm", "n", w.HarvestLoss, "block", weather.StormDefenseBlock)
+	}
+	return i18n.T(lang, "weather.effect_cloudy")
 }

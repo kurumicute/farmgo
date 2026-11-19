@@ -125,10 +125,10 @@ func (s *GameService) BuyDecor(ctx context.Context, playerID int64, code string)
 			return ActionResult{}, err
 		}
 		var slot any
-		where := "，已收進庭院擺設（擺飾區滿了，到「🎨 庭院擺設」換位置）"
+		where := txt(ctx, "，已收進庭院擺設（擺飾區滿了，到「🎨 庭院擺設」換位置）")
 		for n := 1; n <= decor.Slots; n++ {
 			if !used[n] {
-				slot, where = n, fmt.Sprintf("，擺在庭院的%s", decor.SlotName(n))
+				slot, where = n, txf(ctx, "，擺在庭院的%s", decor.SlotName(n))
 				break
 			}
 		}
@@ -136,15 +136,15 @@ func (s *GameService) BuyDecor(ctx context.Context, playerID int64, code string)
 			db.C("acquired_at", s.now())); err != nil {
 			return ActionResult{}, err
 		}
-		kind := "裝飾"
+		kind := txt(ctx, "裝飾")
 		if it.Season != "" {
-			kind = "限定裝飾"
+			kind = txt(ctx, "限定裝飾")
 		}
 		if err := s.record(ctx, t, farm, rules.EvBuyItem, fmt.Sprintf("購買%s%s，金幣 -%d", kind, it.Name, it.Price),
 			rec{ItemCode: "decor_" + code, Quantity: 1, GoldDelta: -it.Price}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🎨 買下%s %s，花費 %s 金幣%s。", it.Emoji, it.Name, numfmt.Comma(it.Price), where),
+		return result(txf(ctx, "🎨 買下%s %s，花費 %s 金幣%s。", it.Emoji, it.Name, numfmt.Comma(it.Price), where),
 			farm.Gold, -it.Price, "", 0), nil
 	})
 }
@@ -180,11 +180,11 @@ func (s *GameService) PlaceDecor(ctx context.Context, playerID int64, slot int, 
 				farm.ID, slot, code); err != nil {
 				return ActionResult{}, err
 			}
-			return result(fmt.Sprintf("🎨 把%s %s擺到庭院的%s。", it.Emoji, it.Name, decor.SlotName(slot)), farm.Gold, 0, "", 0), nil
+			return result(txf(ctx, "🎨 把%s %s擺到庭院的%s。", it.Emoji, it.Name, decor.SlotName(slot)), farm.Gold, 0, "", 0), nil
 		}
 		if _, err := t.Exec(ctx, "UPDATE farm_decorations SET slot = NULL WHERE farm_id = $1 AND slot = $2", farm.ID, slot); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🎨 庭院的%s已清空。", decor.SlotName(slot)), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "🎨 庭院的%s已清空。", decor.SlotName(slot)), farm.Gold, 0, "", 0), nil
 	})
 }

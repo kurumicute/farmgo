@@ -11,7 +11,7 @@ import (
 )
 
 // AlembicHead Go 版程式對應的 Alembic 版本。
-const AlembicHead = "0046" // 0046：金幣回收第二波（名牌、主題、寵物造型、素材背包、聲望、拍賣，2026-11-19）
+const AlembicHead = "0047" // 0047：玩家介面語言（players.language，2026-11-19）
 
 // StartupCheckError 啟動檢查失敗。
 type StartupCheckError struct{ Msg string }

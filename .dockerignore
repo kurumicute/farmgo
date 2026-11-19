@@ -1,8 +1,9 @@
-# 只需要 go.mod、go.sum、cmd、internal；其他（舊版 Python、說明檔、機密）不送進建置環境
+# 只需要 go.mod、go.sum、cmd、internal、i18n（翻譯檔，go:embed）；其他（舊版 Python、說明檔、機密）不送進建置環境
 *
 !go.mod
 !go.sum
 !cmd/
 !internal/
+!i18n/
 **/*_test.go
 **/testdata/

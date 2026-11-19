@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"farmgm/i18n"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/services"
 )
@@ -83,11 +84,13 @@ type App struct {
 	opt    Options
 	music  Music
 	stats  *cache
-	guide  *cache
-	parts  map[string]*cache // 操作手冊的各部分（services.GuideParts），各自快取
+	guide  map[string]*cache            // 語言 → 手冊
+	parts  map[string]map[string]*cache // 語言 → 操作手冊的各部分（services.GuideParts），各自快取
 	mux    *http.ServeMux
 	static fs.FS
 	etags  map[string]string
+	// pages 翻譯好的頁面：語言 → 檔名 → 內容（繁體中文直接讀嵌入的原檔）
+	pages map[string]map[string][]byte
 }
 
 // New 建立網站。
@@ -102,10 +105,24 @@ func New(opt Options) *App {
 	static, _ := fs.Sub(staticFS, "static")
 	a := &App{opt: opt, music: music, mux: http.NewServeMux(), static: static, etags: map[string]string{}}
 	a.stats = &cache{ttl: StatsCacheSeconds * time.Second, load: a.loadStats}
-	a.guide = &cache{ttl: GuideCacheSeconds * time.Second, load: a.loadGuide}
-	a.parts = map[string]*cache{}
-	for part := range services.GuideParts {
-		a.parts[part] = &cache{ttl: GuideCacheSeconds * time.Second, load: func(ctx context.Context) ([]byte, error) { return a.loadGuidePart(ctx, part) }}
+	a.guide = map[string]*cache{}
+	a.parts = map[string]map[string]*cache{}
+	a.pages = map[string]map[string][]byte{}
+	for _, lang := range siteLangs {
+		a.guide[lang] = &cache{ttl: GuideCacheSeconds * time.Second, load: func(ctx context.Context) ([]byte, error) { return a.loadGuide(ctx, lang) }}
+		a.parts[lang] = map[string]*cache{}
+		for part := range services.GuideParts {
+			a.parts[lang][part] = &cache{ttl: GuideCacheSeconds * time.Second, load: func(ctx context.Context) ([]byte, error) { return a.loadGuidePart(ctx, part, lang) }}
+		}
+		if lang == i18n.Default {
+			continue
+		}
+		a.pages[lang] = map[string][]byte{}
+		for name, tr := range map[string]func([]byte, string) []byte{"index.html": translateHTML, "site.js": translateJS} {
+			if data, err := fs.ReadFile(static, name); err == nil {
+				a.pages[lang][name] = tr(data, lang)
+			}
+		}
 	}
 	_ = fs.WalkDir(static, ".", func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
@@ -116,13 +133,19 @@ func New(opt Options) *App {
 		}
 		return nil
 	})
+	for lang, files := range a.pages {
+		for name, data := range files {
+			sum := sha256.Sum256(data)
+			a.etags[lang+"/"+name] = `"` + hex.EncodeToString(sum[:16]) + `"`
+		}
+	}
 	a.mux.HandleFunc("GET /api/info", a.info)
 	a.mux.HandleFunc("GET /api/guide", func(w http.ResponseWriter, r *http.Request) {
-		a.serveCached(w, r, a.guide, "介紹網站手冊資料查詢失敗", guideUnavailable)
+		a.serveCached(w, r, a.guide[langOf(r)], "介紹網站手冊資料查詢失敗", guideUnavailable)
 	})
 	// 分段讀取：首頁只讀 summary，操作手冊的欄位打開時才讀對應的部分（2026-11-14）
 	a.mux.HandleFunc("GET /api/guide/{part}", func(w http.ResponseWriter, r *http.Request) {
-		c, ok := a.parts[r.PathValue("part")]
+		c, ok := a.parts[langOf(r)][r.PathValue("part")]
 		if !ok {
 			writeJSON(w, http.StatusNotFound, map[string]string{"detail": "沒有這個手冊部分。"})
 			return
@@ -139,6 +162,11 @@ func New(opt Options) *App {
 		a.serveStatic(w, r, "favicon.svg")
 	})
 	a.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		// 網址帶 ?lang= 時記住選擇（語言切換按鈕就是連到 /?lang=…）
+		if l, ok := normalizeLang(r.URL.Query().Get("lang")); ok {
+			http.SetCookie(w, &http.Cookie{Name: LangCookie, Value: l, Path: "/", MaxAge: 365 * 24 * 3600,
+				HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil})
+		}
 		a.serveStatic(w, r, "index.html")
 	})
 	return a
@@ -235,7 +263,7 @@ func (a *App) loadStats(ctx context.Context) ([]byte, error) {
 	}{st, StatsCacheSeconds})
 }
 
-func (a *App) loadGuide(ctx context.Context) ([]byte, error) {
+func (a *App) loadGuide(ctx context.Context, lang string) ([]byte, error) {
 	if a.opt.Service == nil {
 		return nil, errNoService
 	}
@@ -243,10 +271,10 @@ func (a *App) loadGuide(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return marshal(g.Set("cached_seconds", GuideCacheSeconds))
+	return marshalLang(g.Set("cached_seconds", GuideCacheSeconds), lang)
 }
 
-func (a *App) loadGuidePart(ctx context.Context, part string) ([]byte, error) {
+func (a *App) loadGuidePart(ctx context.Context, part, lang string) ([]byte, error) {
 	if a.opt.Service == nil {
 		return nil, errNoService
 	}
@@ -254,7 +282,16 @@ func (a *App) loadGuidePart(ctx context.Context, part string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return marshal(g.Set("cached_seconds", GuideCacheSeconds))
+	return marshalLang(g.Set("cached_seconds", GuideCacheSeconds), lang)
+}
+
+// marshalLang 轉成 JSON；非繁體中文時把文字翻譯成該語言。
+func marshalLang(v any, lang string) ([]byte, error) {
+	body, err := marshal(v)
+	if err != nil || lang == i18n.Default {
+		return body, err
+	}
+	return translateJSON(body, lang)
 }
 
 func (a *App) serveCached(w http.ResponseWriter, r *http.Request, c *cache, logMsg, detail string) {
@@ -292,6 +329,13 @@ func (a *App) serveStatic(w http.ResponseWriter, r *http.Request, name string) {
 	if err != nil {
 		http.NotFound(w, r)
 		return
+	}
+	if name == "index.html" || name == "site.js" {
+		w.Header().Set("Vary", "Cookie, Accept-Language")
+		lang := langOf(r)
+		if tr, ok := a.pages[lang][name]; ok {
+			data, etag = tr, a.etags[lang+"/"+name]
+		}
 	}
 	if ct, ok := contentTypes[path.Ext(name)]; ok {
 		w.Header().Set("Content-Type", ct)

@@ -978,12 +978,12 @@ func (x *ExplorationService) AttackGuardian(ctx context.Context, playerID int64,
 			rec{ItemCode: code, Quantity: qty}); err != nil {
 			return ActionResult{}, err
 		}
-		text := fmt.Sprintf("⚔️ 用 %s ×%d 攻擊%s，造成 **%d** 點傷害！", name, qty, ruins.GuardianName, dealt)
+		text := txf(ctx, "⚔️ 用 %s ×%d 攻擊%s，造成 **%d** 點傷害！", name, qty, ruins.GuardianName, dealt)
 		if qty < quantity {
-			text += "（剩餘 HP 只需要這些，其餘留在背包）"
+			text += txt(ctx, "（剩餘 HP 只需要這些，其餘留在背包）")
 		}
 		if defeated {
-			text += fmt.Sprintf("\n🎉 %s倒下了！本週古代遺跡探索每次多 %d 份獎勵，遺跡也安全度過這一週。",
+			text += txf(ctx, "\n🎉 %s倒下了！本週古代遺跡探索每次多 %d 份獎勵，遺跡也安全度過這一週。",
 				ruins.GuardianName, ruins.DefeatBonusRolls)
 		}
 		return result(text, farm.Gold, 0, code, qty), nil
@@ -1077,9 +1077,9 @@ func (x *ExplorationService) DonateRuins(ctx context.Context, playerID int64, it
 			rec{ItemCode: code, Quantity: qty}); err != nil {
 			return ActionResult{}, err
 		}
-		text := fmt.Sprintf("🏛️ 捐出 %s ×%d，幫忙%s。", name, qty, info.Name)
+		text := txf(ctx, "🏛️ 捐出 %s ×%d，幫忙%s。", name, qty, info.Name)
 		if qty < quantity {
-			text += fmt.Sprintf("（這個階段只差 %d 個，其餘留在背包）", qty)
+			text += txf(ctx, "（這個階段只差 %d 個，其餘留在背包）", qty)
 		}
 		if ruins.StageDone(row.Stage, row.Progress) {
 			row.Stage++
@@ -1095,9 +1095,9 @@ func (x *ExplorationService) DonateRuins(ctx context.Context, playerID int64, it
 						return ActionResult{}, err
 					}
 				}
-				text += fmt.Sprintf("\n🎉 古代遺跡修復完成！整個群組都能到山洞探索「🏛️ 古代遺跡」，所有出過力的成員獲得稱號「%s」。", ruins.Title)
+				text += txf(ctx, "\n🎉 古代遺跡修復完成！整個群組都能到山洞探索「🏛️ 古代遺跡」，所有出過力的成員獲得稱號「%s」。", ruins.Title)
 			} else {
-				text += fmt.Sprintf("\n✨ 「%s」完成！下一階段：「%s」。", info.Name, ruins.Stages[row.Stage].Name)
+				text += txf(ctx, "\n✨ 「%s」完成！下一階段：「%s」。", info.Name, ruins.Stages[row.Stage].Name)
 			}
 		}
 		if err := ruinsrepo.Save(ctx, t, row); err != nil {
@@ -1140,7 +1140,7 @@ func (x *ExplorationService) ExchangeFakeCoins(ctx context.Context, playerID int
 			rec{ItemCode: exploration.FakeCoin, Quantity: quantity, GoldDelta: gold}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已兌換 %d 個%s，獲得 %d 金幣。", quantity, name, gold), farm.Gold, gold, exploration.FakeCoin, quantity), nil
+		return result(txf(ctx, "已兌換 %d 個%s，獲得 %d 金幣。", quantity, name, gold), farm.Gold, gold, exploration.FakeCoin, quantity), nil
 	})
 }
 
@@ -1257,7 +1257,7 @@ func (x *ExplorationService) BuildMachine(ctx context.Context, playerID int64, k
 			rec{ItemCode: code, Quantity: 1}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("%s %s製作完成！消耗 %s。", m.Emoji, m.Name, used), farm.Gold, 0, code, 1), nil
+		return result(txf(ctx, "%s %s製作完成！消耗 %s。", m.Emoji, m.Name, used), farm.Gold, 0, code, 1), nil
 	})
 }
 
@@ -1297,7 +1297,7 @@ func (x *ExplorationService) SetMachineEnabled(ctx context.Context, playerID int
 		if enabled {
 			word = "啟用"
 		}
-		return result(fmt.Sprintf("%s已%s。", exploration.Machines[code].Name, word), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "%s已%s。", exploration.Machines[code].Name, word), farm.Gold, 0, "", 0), nil
 	})
 }
 
@@ -1327,7 +1327,7 @@ func (x *ExplorationService) SetProcessorRecipe(ctx context.Context, playerID in
 		if _, err := db.UpdateByID(ctx, t, models.TableFarmTool, tool.ID, db.C("settings", settings)); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("自動加工機的加工項目設為：%s。", label), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "自動加工機的加工項目設為：%s。", label), farm.Gold, 0, "", 0), nil
 	})
 }
 
@@ -1391,7 +1391,7 @@ func (x *ExplorationService) MakeSeeds(ctx context.Context, playerID int64, crop
 		if err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🌱 用 %d 個%s做出 %d 顆%s種子。%s", quantity, crop.Name, seeds, crop.Name, auto), farm.Gold, 0, item, seeds), nil
+		return result(txf(ctx, "🌱 用 %d 個%s做出 %d 顆%s種子。%s", quantity, crop.Name, seeds, crop.Name, auto), farm.Gold, 0, item, seeds), nil
 	})
 }
 
@@ -1545,7 +1545,7 @@ func (x *ExplorationService) autoHarvest(ctx context.Context, t *db.Tx, farm *mo
 	for _, p := range targets {
 		_, qty, _, err := x.harvestLocked(ctx, t, farm, &p.FarmPlot, p.Crop, &details)
 		if gameerr.Is(err, gameerr.WarehouseFull) {
-			stopped = fmt.Sprintf("倉庫已滿，還有 %d 格沒收。", len(targets)-done)
+			stopped = txf(ctx, "倉庫已滿，還有 %d 格沒收。", len(targets)-done)
 			break
 		}
 		if err != nil {
@@ -1556,7 +1556,7 @@ func (x *ExplorationService) autoHarvest(ctx context.Context, t *db.Tx, farm *mo
 	}
 	text := ""
 	if done > 0 {
-		text = HarvestHighlight(details) + fmt.Sprintf("🚜 自動收割機收成 %d 格，共 %d 個作物。", done, total)
+		text = HarvestHighlight(details) + txf(ctx, "🚜 自動收割機收成 %d 格，共 %d 個作物。", done, total)
 	}
 	text += stopped
 	if done > 0 {
@@ -1588,7 +1588,7 @@ func (x *ExplorationService) autoProcess(ctx context.Context, t *db.Tx, farm *mo
 		}
 		if _, err := x.collectOrder(ctx, t, farm, locked, "自動加工機："); err != nil {
 			if gameerr.Is(err, gameerr.WarehouseFull) {
-				notes = append(notes, "倉庫已滿，部分加工品還沒領取。")
+				notes = append(notes, txt(ctx, "倉庫已滿，部分加工品還沒領取。"))
 				break
 			}
 			return "", err
@@ -1596,7 +1596,7 @@ func (x *ExplorationService) autoProcess(ctx context.Context, t *db.Tx, farm *mo
 		collected++
 	}
 	if collected > 0 {
-		notes = append([]string{fmt.Sprintf("🏭 自動加工機領取 %d 張訂單。", collected)}, notes...)
+		notes = append([]string{txf(ctx, "🏭 自動加工機領取 %d 張訂單。", collected)}, notes...)
 	}
 	code, _ := tool.Settings["recipe"].(string)
 	if rc, ok := balance.Recipes[code]; ok {
@@ -1610,7 +1610,7 @@ func (x *ExplorationService) autoProcess(ctx context.Context, t *db.Tx, farm *mo
 		}
 		switch {
 		case n == 0:
-			notes = append(notes, fmt.Sprintf("自動加工機：需要先建造%s。", balance.Buildings[rc.Building].Name))
+			notes = append(notes, txf(ctx, "自動加工機：需要先建造%s。", balance.Buildings[rc.Building].Name))
 		case busy == nil:
 			quantity := balance.CraftMaxQuantity
 			for _, item := range rc.InputOrder {
@@ -1625,7 +1625,7 @@ func (x *ExplorationService) autoProcess(ctx context.Context, t *db.Tx, farm *mo
 					rc.Output, rc.OutputQty, rc.Seconds}, quantity, "自動加工機："); err != nil {
 					return "", err
 				}
-				notes = append(notes, fmt.Sprintf("🏭 自動加工機開始加工 %d 份%s。", rc.OutputQty*quantity, rc.Name))
+				notes = append(notes, txf(ctx, "🏭 自動加工機開始加工 %d 份%s。", rc.OutputQty*quantity, rc.Name))
 			}
 		}
 	}

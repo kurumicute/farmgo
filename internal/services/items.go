@@ -133,7 +133,7 @@ func (s *GameService) BuyItem(ctx context.Context, playerID int64, itemCode stri
 				return ActionResult{}, err
 			}
 		}
-		return result(fmt.Sprintf("已購買 %d 個%s，花費 %d 金幣。%s", quantity, it.Name, cost, auto), farm.Gold, -cost, itemCode, quantity), nil
+		return result(txf(ctx, "已購買 %d 個%s，花費 %d 金幣。%s", quantity, it.Name, cost, auto), farm.Gold, -cost, itemCode, quantity), nil
 	})
 }
 
@@ -226,7 +226,7 @@ func (s *GameService) fertilizePlot(ctx context.Context, t *db.Tx, farm *models.
 		return "", err
 	}
 	left := rules.FormatDuration(rules.RemainingSeconds(&newReady, now))
-	return fmt.Sprintf("已對第 %d 格施%s，剩餘時間減少 %d%%，還需要 %s成熟。", plotNumber, name, balance.FertilizerPct, left), nil
+	return txf(ctx, "已對第 %d 格施%s，剩餘時間減少 %d%%，還需要 %s成熟。", plotNumber, name, balance.FertilizerPct, left), nil
 }
 
 func (s *GameService) UseEarthworm(ctx context.Context, playerID int64) (ActionResult, error) {
@@ -280,17 +280,17 @@ func (s *GameService) UseEarthworm(ctx context.Context, playerID int64) (ActionR
 			return ActionResult{}, err
 		}
 		until := taipeiFmt(effect.ExpiresAt, "01-02 15:04")
-		detail := fmt.Sprintf("使用%s（%s），生長加速至 %s", name, action, until)
+		detail := txf(ctx, "使用%s（%s），生長加速至 %s", name, action, until)
 		growing := ""
 		if boosted > 0 {
-			detail += fmt.Sprintf("，生長中的 %d 格一起加速", boosted)
-			growing = fmt.Sprintf("正在生長的 %d 格剩餘時間也 ×%v；", boosted, balance.EarthwormGrowMultiplier)
+			detail += txf(ctx, "，生長中的 %d 格一起加速", boosted)
+			growing = txf(ctx, "正在生長的 %d 格剩餘時間也 ×%v；", boosted, balance.EarthwormGrowMultiplier)
 		}
 		if err := s.record(ctx, t, farm, rules.EvUseItem, detail, rec{ItemCode: balance.ItemEarthworm, Quantity: 1}); err != nil {
 			return ActionResult{}, err
 		}
 		left := LongDuration(rules.RemainingSeconds(&effect.ExpiresAt, now))
-		return result(fmt.Sprintf("已%s%s效果：%s之後澆水的作物生長時間 ×%v，剩餘 %s。", action, name, growing,
+		return result(txf(ctx, "已%s%s效果：%s之後澆水的作物生長時間 ×%v，剩餘 %s。", action, name, growing,
 			balance.EarthwormGrowMultiplier, left), farm.Gold, 0, "", 0), nil
 	})
 }
@@ -386,6 +386,6 @@ func (s *GameService) SetToolEnabled(ctx context.Context, playerID int64, toolKe
 		if enabled {
 			word = "啟用"
 		}
-		return result(fmt.Sprintf("%s已%s。%s", name, word, note), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "%s已%s。%s", name, word, note), farm.Gold, 0, "", 0), nil
 	})
 }

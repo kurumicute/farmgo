@@ -339,7 +339,7 @@ var guideKeys = []guideKey{
 		buildings := []map[string]any{}
 		for _, code := range balance.BuildingOrder {
 			b := balance.Buildings[code]
-			buildings = append(buildings, map[string]any{"name": b.Name, "price": b.Price, "max": b.MaxPerFarm})
+			buildings = append(buildings, map[string]any{"code": code, "name": b.Name, "price": b.Price, "max": b.MaxPerFarm})
 		}
 		return buildings, nil
 	}},
@@ -935,7 +935,7 @@ func buildWorldBoss(ctx context.Context, t *db.Tx, names map[string]string, now 
 		if sc.GroupID != nil {
 			scope = "指定伺服器"
 		}
-		schedules = append(schedules, map[string]any{"name": sc.Name, "scope": scope, "interval_days": sc.IntervalDays,
+		schedules = append(schedules, map[string]any{"name": sc.Name, "scope": scope, "global": sc.GroupID == nil, "interval_days": sc.IntervalDays,
 			"time": fmt.Sprintf("%02d:%02d", sc.SpawnHour, sc.SpawnMinute), "duration_minutes": sc.DurationMinutes,
 			"max_hp": sc.MaxHP, "rewards": NewBossRewardsText(decodeBossRewards(sc.Rewards), names)})
 	}

@@ -371,9 +371,9 @@ func (r *RanchService) Build(ctx context.Context, playerID int64, key string) (A
 		}
 		extra := ""
 		if code == "barn" {
-			extra = fmt.Sprintf("，養殖容量 +%d", balance.BarnSlots)
+			extra = txf(ctx, "，養殖容量 +%d", balance.BarnSlots)
 		}
-		return result(fmt.Sprintf("已建造%s（第 %d 座），花費 %d 金幣%s。", b.Name, slot, b.Price, extra), farm.Gold, -b.Price, code, 1), nil
+		return result(txf(ctx, "已建造%s（第 %d 座），花費 %d 金幣%s。", b.Name, slot, b.Price, extra), farm.Gold, -b.Price, code, 1), nil
 	})
 }
 
@@ -417,7 +417,7 @@ func (r *RanchService) UpgradeBuilding(ctx context.Context, playerID int64, code
 			rec{ItemCode: code, Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("%s升到 Lv.%d，之後新開的加工訂單時間 -%d%%，花費 %d 金幣。", b.Name, next, pct, price), farm.Gold, -price, code, 1), nil
+		return result(txf(ctx, "%s升到 Lv.%d，之後新開的加工訂單時間 -%d%%，花費 %d 金幣。", b.Name, next, pct, price), farm.Gold, -price, code, 1), nil
 	})
 }
 
@@ -542,7 +542,7 @@ func (r *RanchService) BuyAnimals(ctx context.Context, playerID int64, key strin
 			rec{ItemCode: at.Code, Quantity: quantity, GoldDelta: -cost}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已購買 %d 隻%s（編號 %d–%d），花費 %d 金幣。記得餵食（animal feed <編號>）才會開始生產。",
+		return result(txf(ctx, "已購買 %d 隻%s（編號 %d–%d），花費 %d 金幣。記得餵食（animal feed <編號>）才會開始生產。",
 			quantity, at.Name, first, last, cost), farm.Gold, -cost, at.Code, quantity), nil
 	})
 }
@@ -658,7 +658,7 @@ func (r *RanchService) FeedAnimal(ctx context.Context, playerID int64, animalNo 
 		if _, err := r.feed(ctx, t, farm, a, now, *at); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已餵食 %s#%d，花費 %d 金幣，%s後可收集。", at.Name, animalNo, at.FeedCost,
+		return result(txf(ctx, "已餵食 %s#%d，花費 %d 金幣，%s後可收集。", at.Name, animalNo, at.FeedCost,
 			rules.FormatDuration(at.CycleSeconds)), farm.Gold, -at.FeedCost, "", 0), nil
 	})
 }
@@ -682,7 +682,7 @@ func (r *RanchService) FeedAll(ctx context.Context, playerID int64) (ActionResul
 			}
 		}
 		if len(hungry) == 0 {
-			return result("目前沒有需要餵食的動物。", farm.Gold, 0, "", 0), nil
+			return result(txt(ctx, "目前沒有需要餵食的動物。"), farm.Gold, 0, "", 0), nil
 		}
 		types, err := animals.ByCode(ctx, t)
 		if err != nil {
@@ -714,9 +714,9 @@ func (r *RanchService) FeedAll(ctx context.Context, playerID int64) (ActionResul
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足，沒有餵食任何動物（下一隻%s需要 %d，目前只有 %d）。",
 				label(skipped[0]), types[skipped[0].AnimalCode].FeedCost, farm.Gold)
 		}
-		msg := fmt.Sprintf("已餵食 %d 隻（%s），花費 %d 金幣。", len(fed), labels(fed), spent)
+		msg := txf(ctx, "已餵食 %d 隻（%s），花費 %d 金幣。", len(fed), labels(fed), spent)
 		if len(skipped) > 0 {
-			msg += fmt.Sprintf(" 金幣不足，未餵食：%s。", labels(skipped))
+			msg += txf(ctx, " 金幣不足，未餵食：%s。", labels(skipped))
 		}
 		return result(msg, farm.Gold, -spent, "", len(fed)), nil
 	})
@@ -765,7 +765,7 @@ func (r *RanchService) CollectAnimal(ctx context.Context, playerID int64, animal
 			rec{ItemCode: at.ProductCode, Quantity: qty}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("從%s#%d 收集了 %d 個%s。記得再次餵食以開始下一個週期。", at.Name, animalNo, qty, at.ProductName),
+		return result(txf(ctx, "從%s#%d 收集了 %d 個%s。記得再次餵食以開始下一個週期。", at.Name, animalNo, qty, at.ProductName),
 			farm.Gold, 0, at.ProductCode, qty), nil
 	})
 }
@@ -795,7 +795,7 @@ func (r *RanchService) ReleaseAnimal(ctx context.Context, playerID int64, animal
 		}
 		note := ""
 		if state == rules.AnimalProducing {
-			note = "（正在生產中，這次的餵食不會退還）"
+			note = txt(ctx, "（正在生產中，這次的餵食不會退還）")
 		}
 		capacity, err := r.capacity(ctx, t, farm.ID)
 		if err != nil {
@@ -805,7 +805,7 @@ func (r *RanchService) ReleaseAnimal(ctx context.Context, playerID int64, animal
 		if err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已放生 %s#%d%s，畜舍欄位 %d/%d，可以再買其他動物了。", at.Name, animalNo, note, used, capacity),
+		return result(txf(ctx, "已放生 %s#%d%s，畜舍欄位 %d/%d，可以再買其他動物了。", at.Name, animalNo, note, used, capacity),
 			farm.Gold, 0, a.AnimalCode, 1), nil
 	})
 }
@@ -995,7 +995,7 @@ func (r *RanchService) startOrder(ctx context.Context, t *db.Tx, farm *models.Fa
 			return ActionResult{}, err
 		}
 		if have < amount {
-			lacking = append(lacking, fmt.Sprintf("%s 需要 %d、只有 %d", ItemName(item, names), amount, have))
+			lacking = append(lacking, txf(ctx, "%s 需要 %d、只有 %d", ItemName(item, names), amount, have))
 		}
 	}
 	if len(lacking) > 0 {
@@ -1030,9 +1030,9 @@ func (r *RanchService) startOrder(ctx context.Context, t *db.Tx, farm *models.Fa
 	}
 	wait := ""
 	if len(active) > 0 {
-		wait = fmt.Sprintf("排在訂單 #%d 之後，", active[len(active)-1].ID)
+		wait = txf(ctx, "排在訂單 #%d 之後，", active[len(active)-1].ID)
 	}
-	return result(fmt.Sprintf("已建立加工訂單 #%d：%s加工 %d 份%s，扣除原料 %s，%s%s後完成。", order.ID, buildingName, out, sp.Name,
+	return result(txf(ctx, "已建立加工訂單 #%d：%s加工 %d 份%s，扣除原料 %s，%s%s後完成。", order.ID, buildingName, out, sp.Name,
 		used, wait, rules.FormatDuration(rules.RemainingSeconds(&order.ReadyAt, now))), farm.Gold, 0, sp.Output, out), nil
 }
 
@@ -1152,7 +1152,7 @@ func (r *RanchService) CancelCraft(ctx context.Context, playerID, orderID int64)
 			rec{ItemCode: order.OutputCode}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已取消加工訂單（%d 份%s），退回原料 %s。", order.OutputQuantity, outName, returned),
+		return result(txf(ctx, "已取消加工訂單（%d 份%s），退回原料 %s。", order.OutputQuantity, outName, returned),
 			farm.Gold, 0, order.OutputCode, 0), nil
 	})
 }
@@ -1201,7 +1201,7 @@ func (r *RanchService) collectOrder(ctx context.Context, t *db.Tx, farm *models.
 		rec{ItemCode: order.OutputCode, Quantity: order.OutputQuantity}); err != nil {
 		return ActionResult{}, err
 	}
-	return result(fmt.Sprintf("已領取訂單 #%d：%d 份%s。", order.ID, order.OutputQuantity, outName),
+	return result(txf(ctx, "已領取訂單 #%d：%d 份%s。", order.ID, order.OutputQuantity, outName),
 		farm.Gold, 0, order.OutputCode, order.OutputQuantity), nil
 }
 
@@ -1245,7 +1245,7 @@ func (r *RanchService) SellGoods(ctx context.Context, playerID int64, key string
 			rec{ItemCode: g.code, Quantity: quantity, GoldDelta: income, UnitPrice: &price}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已出售 %d 個%s，獲得 %d 金幣。%s", quantity, g.name, income, GoldChange(farm.Gold, income)),
+		return result(txf(ctx, "已出售 %d 個%s，獲得 %d 金幣。%s", quantity, g.name, income, GoldChange(farm.Gold, income)),
 			farm.Gold, income, g.code, quantity), nil
 	})
 }
@@ -1362,7 +1362,7 @@ func (r *RanchService) BuyPet(ctx context.Context, playerID int64, petCode strin
 			return ActionResult{}, err
 		}
 		nxt, _ := petrules.UpgradePrice(0)
-		return result(fmt.Sprintf("%s 領養了%s！牠會出現在農場上。現在是 Lv0：%s；升到 Lv1 需要 %s 金幣：%s。%s",
+		return result(txf(ctx, "%s 領養了%s！牠會出現在農場上。現在是 Lv0：%s；升到 Lv1 需要 %s 金幣：%s。%s",
 			pet.Emoji, pet.Name, petrules.EffectText(petCode, intPtr(0)), numfmt.Comma(nxt), petrules.EffectText(petCode, intPtr(1)),
 			GoldChange(farm.Gold, -price)), farm.Gold, -price, item, 1), nil
 	})
@@ -1409,11 +1409,11 @@ func (r *RanchService) UpgradePet(ctx context.Context, playerID int64, petCode s
 			rec{ItemCode: item, Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		tail := "已達最高等級。"
+		tail := txt(ctx, "已達最高等級。")
 		if nxt, ok := petrules.UpgradePrice(lv); ok {
-			tail = fmt.Sprintf("下一級需要 %s 金幣。", numfmt.Comma(nxt))
+			tail = txf(ctx, "下一級需要 %s 金幣。", numfmt.Comma(nxt))
 		}
-		return result(fmt.Sprintf("%s %s升到 Lv%d：%s。\n📈 Lv%d → Lv%d：%d%% → %d%%%s\n%s", pet.Emoji, pet.Name, lv, effect,
+		return result(txf(ctx, "%s %s升到 Lv%d：%s。\n📈 Lv%d → Lv%d：%d%% → %d%%%s\n%s", pet.Emoji, pet.Name, lv, effect,
 			lv-1, lv, petrules.BonusPct(intPtr(lv-1)), petrules.BonusPct(&lv), GoldChange(farm.Gold, -price), tail),
 			farm.Gold, -price, item, 1), nil
 	})

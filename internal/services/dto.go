@@ -261,6 +261,7 @@ type ExternalContext struct {
 	PlayerID   *int64
 	PlayerName *string
 	HasFarm    bool
+	Language   *string // 玩家自己選的介面語言（nil = 跟著 Discord 用戶端，Migration 0047）
 }
 
 // ---------- GameService 其他回傳（Python 以 dict 回傳） ----------

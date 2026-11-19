@@ -287,7 +287,7 @@ func (s *GameService) crop(ctx context.Context, t *db.Tx, key string, requireAct
 		}
 		names := make([]string, len(all))
 		for i, c := range all {
-			names[i] = fmt.Sprintf("%s（%s）", c.Code, c.Name)
+			names[i] = txf(ctx, "%s（%s）", c.Code, c.Name)
 		}
 		return nil, gameerr.NotFoundf("沒有「%s」這種作物。可用作物：%s", key, joinStr(names, "、"))
 	}

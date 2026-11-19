@@ -6,7 +6,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"strings"
 
@@ -151,7 +150,7 @@ func (s *GameService) SetAutoSellerItems(ctx context.Context, playerID int64, co
 		for k, v := range tool.Settings {
 			settings[k] = v
 		}
-		msg := "🏧 自動販售機改為全部都賣（之後新增的作物也會賣）。"
+		msg := txt(ctx, "🏧 自動販售機改為全部都賣（之後新增的作物也會賣）。")
 		if len(picked) == len(choices) {
 			delete(settings, autoSellOnlyKey)
 		} else {
@@ -160,7 +159,7 @@ func (s *GameService) SetAutoSellerItems(ctx context.Context, playerID int64, co
 				list[i] = c
 			}
 			settings[autoSellOnlyKey] = list
-			msg = fmt.Sprintf("🏧 自動販售機只賣：%s。沒勾選的作物收成後放進倉庫。", strings.Join(names, "、"))
+			msg = txf(ctx, "🏧 自動販售機只賣：%s。沒勾選的作物收成後放進倉庫。", strings.Join(names, txt(ctx, "、")))
 		}
 		if len(settings) == 0 {
 			settings = nil

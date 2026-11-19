@@ -8,6 +8,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
+COPY i18n ./i18n
 # 純 Go（沒有 cgo），產生靜態執行檔
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ ./cmd/...
 

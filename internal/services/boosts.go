@@ -51,7 +51,7 @@ func (s *GameService) Boosts(ctx context.Context, playerID int64) ([]BoostView, 
 			if _, ok := balance.Items[code]; ok {
 				v.Price = balance.ItemPrice(code)
 			} else if rc, ok := balance.Recipes[code]; ok {
-				v.Recipe = fmt.Sprintf("在%s用%s製作", balance.Buildings[rc.Building].Name, recipeInputsText(rc))
+				v.Recipe = txf(ctx, "在%s用%s製作", balance.Buildings[rc.Building].Name, recipeInputsText(rc))
 			}
 			e, err := items.GetEffect(ctx, t, farm.ID, code)
 			if err != nil {
@@ -126,7 +126,7 @@ func (s *GameService) UseBoost(ctx context.Context, playerID int64, code string)
 			return ActionResult{}, err
 		}
 		left := LongDuration(rules.RemainingSeconds(&e.ExpiresAt, now))
-		return result(fmt.Sprintf("已%s%s：%s。效果剩餘 %s（到 %s）。", action, name, b.Desc, left, until), farm.Gold, 0, code, 1), nil
+		return result(txf(ctx, "已%s%s：%s。效果剩餘 %s（到 %s）。", action, name, b.Desc, left, until), farm.Gold, 0, code, 1), nil
 	})
 }
 

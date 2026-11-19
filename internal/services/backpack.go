@@ -343,11 +343,11 @@ func (s *GameService) MutationTable(ctx context.Context) ([]MutationRow, error) 
 		return nil, err
 	}
 	effects := map[string]string{
-		"giant":  fmt.Sprintf("收成數量 ×%d", settings.GiantMultiplier),
-		"golden": fmt.Sprintf("基本售價 ×%s", pyG(float64(settings.GoldenPricePct)/100)),
-		"fast": fmt.Sprintf("生長時間減少 %s（最短 %s，仍需澆水）", rules.FormatDuration(settings.FastReductionSeconds),
+		"giant":  txf(ctx, "收成數量 ×%d", settings.GiantMultiplier),
+		"golden": txf(ctx, "基本售價 ×%s", pyG(float64(settings.GoldenPricePct)/100)),
+		"fast": txf(ctx, "生長時間減少 %s（最短 %s，仍需澆水）", rules.FormatDuration(settings.FastReductionSeconds),
 			rules.FormatDuration(balance.MinGrowSeconds)),
-		"variant": fmt.Sprintf("長成獨立的珍稀變種作物，基本售價 = 原作物 ×%s", pyG(float64(settings.VariantPricePct)/100)),
+		"variant": txf(ctx, "長成獨立的珍稀變種作物，基本售價 = 原作物 ×%s", pyG(float64(settings.VariantPricePct)/100)),
 	}
 	rows := make([]MutationRow, len(genetics.MutationOrder))
 	for i, m := range genetics.MutationOrder {

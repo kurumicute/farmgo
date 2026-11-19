@@ -10,6 +10,7 @@ package bot
 import (
 	"context"
 	"errors"
+	"farmgm/i18n"
 	"io"
 	"net"
 
@@ -27,7 +28,17 @@ const (
 )
 
 // PlayerMessage 錯誤 → 給玩家看的訊息（Python player_message）。
-func PlayerMessage(err error) string {
+func PlayerMessage(err error) string { return PlayerMessageLang(i18n.Default, err) }
+
+// PlayerMessageLang 依語言顯示錯誤（遊戲錯誤用原始格式重組，其他固定訊息查文字表）。
+func PlayerMessageLang(lang string, err error) string {
+	if ge, ok := gameerr.As(err); ok {
+		return ge.Localized(lang)
+	}
+	return i18n.Text(lang, playerMessage(err))
+}
+
+func playerMessage(err error) string {
 	if ge, ok := gameerr.As(err); ok {
 		return ge.Error()
 	}

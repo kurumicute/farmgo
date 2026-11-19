@@ -5,6 +5,12 @@
   const num = new Intl.NumberFormat("zh-TW");
   const time = new Intl.DateTimeFormat("zh-TW", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Taipei" });
 
+  // 語言切換：標出目前的語言
+  const pageLang = document.documentElement.lang === "en" ? "en" : "zh-Hant";
+  document.querySelectorAll(".lang-switch a[hreflang]").forEach((a) => {
+    if (a.getAttribute("hreflang") === pageLang) a.setAttribute("aria-current", "true");
+  });
+
   function setText(id, value) {
     const node = $(id);
     if (node) node.textContent = value;
@@ -141,7 +147,7 @@
   }
 
   function renderBarn(g) {
-    const barn = g.buildings.find((b) => b.name === "畜舍");
+    const barn = g.buildings.find((b) => b.code === "barn");
     if (barn) setText("g-barn", `${num.format(barn.price)} 金幣，每座 ${g.start.barn_slots} 個欄位，最多 ${barn.max} 座`);
   }
 
@@ -416,7 +422,7 @@
       ? "目前沒有全服活動或排程，表格為預設值；伺服器自己的活動由管理員設定，實際內容以 Discord「📖 活動說明」為準。"
       : `補給目標與獎勵為${src.kind === "event" ? "本場" : "排程"}全服世界 Boss「${src.name}」的設定；`
         + "伺服器自己的活動由管理員設定，實際內容以 Discord「📖 活動說明」為準。");
-    const first = (b.schedules || []).find((x) => x.scope === "全服") || (b.schedules || [])[0];
+    const first = (b.schedules || []).find((x) => x.global) || (b.schedules || [])[0];
     if (first) {
       const [h, m] = first.time.split(":").map(Number);
       const part = h < 5 ? "凌晨" : h < 11 ? "早上" : h < 13 ? "中午" : h < 18 ? "下午" : "晚上";

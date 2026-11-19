@@ -283,11 +283,11 @@ func (s *GameService) SendGift(ctx context.Context, groupID, playerID, targetPla
 			rec{ItemCode: crop.Code, Quantity: quantity, Quality: "normal", Mutation: "none"}); err != nil {
 			return ActionResult{}, err
 		}
-		msg := fmt.Sprintf("🎁 已送 %d 個%s給 %s", quantity, crop.Name, theirName)
+		msg := txf(ctx, "🎁 已送 %d 個%s給 %s", quantity, crop.Name, theirName)
 		if gold > 0 {
-			msg += fmt.Sprintf("，雙方各得 %d 金幣", gold)
+			msg += txf(ctx, "，雙方各得 %d 金幣", gold)
 		}
-		return result(msg+fmt.Sprintf("（今天已送 %d／%d 份）。", mine.GiftSent+1, cfg.GiftSendPerDay), me.Gold, gold, crop.Code, quantity), nil
+		return result(msg+txf(ctx, "（今天已送 %d／%d 份）。", mine.GiftSent+1, cfg.GiftSendPerDay), me.Gold, gold, crop.Code, quantity), nil
 	})
 }
 
@@ -349,10 +349,10 @@ func (s *GameService) HelpWeed(ctx context.Context, groupID, playerID, targetPla
 			them, fmt.Sprintf("%s 幫忙拔草，%d 格作物剩餘生長時間 -%d%%", myName, n, aid.WeedGrowPct), rec{}); err != nil {
 			return ActionResult{}, err
 		}
-		msg := fmt.Sprintf("🌿 已幫 %s 拔草，%d 格作物的剩餘生長時間減少 %d%%", theirName, n, aid.WeedGrowPct)
+		msg := txf(ctx, "🌿 已幫 %s 拔草，%d 格作物的剩餘生長時間減少 %d%%", theirName, n, aid.WeedGrowPct)
 		if gold > 0 {
-			msg += fmt.Sprintf("，雙方各得 %d 金幣", gold)
+			msg += txf(ctx, "，雙方各得 %d 金幣", gold)
 		}
-		return result(msg+fmt.Sprintf("（今天已幫 %d／%d 位）。", mine.WeedSent+1, cfg.WeedSendPerDay), me.Gold, gold, "", 0), nil
+		return result(msg+txf(ctx, "（今天已幫 %d／%d 位）。", mine.WeedSent+1, cfg.WeedSendPerDay), me.Gold, gold, "", 0), nil
 	})
 }

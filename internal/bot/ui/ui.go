@@ -190,6 +190,17 @@ type SentMessage interface {
 
 // Interaction 一次互動（斜線指令、元件點擊或對話框送出）。回應規則與 Discord 相同：
 // 首次回應（SendMessage、SendModal、Defer、EditMessage）只能一次，之後用 EditOriginal、Followup。
+// Localer 能提供 Discord 用戶端語言的互動（選用介面：測試用的互動不一定有）。
+type Localer interface{ Locale() string }
+
+// LocaleOf 互動的用戶端語言（沒有時為 ""）。
+func LocaleOf(it Interaction) string {
+	if l, ok := it.(Localer); ok {
+		return l.Locale()
+	}
+	return ""
+}
+
 type Interaction interface {
 	UserID() string
 	UserName() string // 顯示名稱（伺服器暱稱優先）

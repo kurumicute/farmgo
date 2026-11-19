@@ -37,6 +37,7 @@ type Player struct {
 	DisplayName      string    `db:"display_name"`
 	ExternalPlatform *string   `db:"external_platform"`
 	ExternalUserID   *string   `db:"external_user_id"`
+	Language         *string   `db:"language"`   // 玩家選的介面語言（zh-TW／en，Migration 0047）；NULL = 跟著 Discord 用戶端
 	CreatedAt        time.Time `db:"created_at"` // server_default now()
 	UpdatedAt        time.Time `db:"updated_at"` // server_default now()；Python onupdate=now()，Go 更新時要自行設定
 }

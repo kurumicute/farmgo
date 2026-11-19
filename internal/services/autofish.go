@@ -332,11 +332,11 @@ func (s *GameService) UpgradeAutoFisherSpeed(ctx context.Context, playerID int64
 			rec{ItemCode: "auto_fisher_speed", Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		tail := "已經是最快了。"
+		tail := txt(ctx, "已經是最快了。")
 		if m, p, ok := autofish.NextSpeed(level + 1); ok {
-			tail = fmt.Sprintf("下一級每 %d 分鐘 1 條，需要 %s 金幣。", m, numfmt.Comma(p))
+			tail = txf(ctx, "下一級每 %d 分鐘 1 條，需要 %s 金幣。", m, numfmt.Comma(p))
 		}
-		return result(fmt.Sprintf("⚡ 自動釣魚機加速：每 %d 分鐘 → 每 **%d** 分鐘釣 1 條，花費 %s 金幣。%s", before, minutes,
+		return result(txf(ctx, "⚡ 自動釣魚機加速：每 %d 分鐘 → 每 **%d** 分鐘釣 1 條，花費 %s 金幣。%s", before, minutes,
 			numfmt.Comma(price), tail), farm.Gold, -price, "", 0), nil
 	})
 }
@@ -381,11 +381,11 @@ func (s *GameService) UpgradeFishBasket(ctx context.Context, playerID int64) (Ac
 			rec{ItemCode: "fish_basket", Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		tail := "已經是最大的魚簍了。"
+		tail := txt(ctx, "已經是最大的魚簍了。")
 		if c, p, ok := autofish.NextBasket(farm.FishBasketLevel); ok {
-			tail = fmt.Sprintf("下一級 %d 格，需要 %s 金幣。", c, numfmt.Comma(p))
+			tail = txf(ctx, "下一級 %d 格，需要 %s 金幣。", c, numfmt.Comma(p))
 		}
-		return result(fmt.Sprintf("🧺 魚簍升級：%d → **%d** 格，花費 %s 金幣。%s", before, after, numfmt.Comma(price), tail),
+		return result(txf(ctx, "🧺 魚簍升級：%d → **%d** 格，花費 %s 金幣。%s", before, after, numfmt.Comma(price), tail),
 			farm.Gold, -price, "", 0), nil
 	})
 }

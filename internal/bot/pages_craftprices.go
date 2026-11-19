@@ -62,22 +62,22 @@ func (p *Panel) buildCraftPrices(_ context.Context, data any) (*ui.Embed, error)
 		if len(lines) == 0 {
 			continue
 		}
-		title := "🏭 " + balance.Buildings[code].Name
+		title := "🏭 " + p.s(balance.Buildings[code].Name)
 		if i := indexRecipeBuilding(recipes, code); i >= 0 && !recipes[i].Built {
-			title += "（🔒 未建造）"
+			title += p.s("（🔒 未建造）")
 		}
 		parts = append(parts, Section{Title: title, Lines: lines})
 	}
-	parts = append(parts, "📈／📉 是和「原料直接賣掉」相比的損益（普通品質、目前季節的價格）；售價是一份成品的價格。")
+	parts = append(parts, p.s("📈／📉 是和「原料直接賣掉」相比的損益（普通品質、目前季節的價格）；售價是一份成品的價格。"))
 	for _, r := range recipes {
 		if !r.PriceUntil.IsZero() {
-			parts = append(parts, fmt.Sprintf("🎲 加工品售價每 %d 天抽一次，範圍是總成本 -%d%%～+%d%%（括號內）；下次換價：%s（台灣時間）。",
+			parts = append(parts, p.f("🎲 加工品售價每 %d 天抽一次，範圍是總成本 -%d%%～+%d%%（括號內）；下次換價：%s（台灣時間）。",
 				craftprice.PeriodDays, craftprice.DownPct, craftprice.UpPct, r.PriceUntil.In(clock.TaipeiTZ).Format("01-02 15:04")))
 			break
 		}
 	}
-	e := &ui.Embed{Title: "📋 ✦ 加工品售價表 ✦", Color: Blue, Description: runes(sections(parts...), 4000)}
-	p.nav("回加工", "craft", btn{emoji: "↩️", row: 0})
+	e := &ui.Embed{Title: p.s("📋 ✦ 加工品售價表 ✦"), Color: Blue, Description: runes(sections(parts...), 4000)}
+	p.nav(p.s("回加工"), "craft", btn{emoji: "↩️", row: 0})
 	p.navBack(0)
 	return e, nil
 }

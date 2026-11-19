@@ -144,8 +144,8 @@ func (p *Panel) usageControls(e *ui.Embed, bp services.Backpack, row int) {
 	}
 	if i := slices.IndexFunc(items, func(u usageItem) bool { return u.key == p.usageItem }); i >= 0 {
 		u := items[i]
-		e.AddField(fmt.Sprintf("🔍 %s %s 的用途", u.emoji, u.name), runes(strings.Join(itemUsageLines(u), "\n"), 1000)+
-			"\n（世界 Boss 依預設設定，實際以活動設定為準）", false)
+		e.AddField(p.f("🔍 %s %s 的用途", u.emoji, u.name), runes(strings.Join(itemUsageLines(u), "\n"), 1000)+
+			p.s("\n（世界 Boss 依預設設定，實際以活動設定為準）"), false)
 	} else {
 		p.usageItem = ""
 	}
@@ -153,9 +153,9 @@ func (p *Panel) usageControls(e *ui.Embed, bp services.Backpack, row int) {
 	for _, u := range items[:min(len(items), ui.MaxOptions)] {
 		options = append(options, option{u.name, u.key, "", u.emoji})
 	}
-	p.selectMenu("🔍 查詢物品用途（可以做成什麼、賣價、能不能捐 Boss）…", options, func(ctx context.Context, it ui.Interaction, key string) error {
+	p.selectMenu(p.s("🔍 查詢物品用途（可以做成什麼、賣價、能不能捐 Boss）…"), options, func(ctx context.Context, it ui.Interaction, key string) error {
 		p.usageItem = key
-		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+		p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
 		return nil
 	}, row, p.usageItem)
 }

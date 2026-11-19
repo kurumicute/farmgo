@@ -5,6 +5,8 @@ package gameerr
 import (
 	"errors"
 	"fmt"
+
+	"farmgm/i18n"
 )
 
 // Kind 錯誤種類（對應 Python 的 GameError 子類別）。
@@ -32,9 +34,31 @@ const (
 type Error struct {
 	Kind Kind
 	Msg  string
+	// Format、Args 原始的格式與參數（2026-11-19 中英文切換）：面板依玩家的語言用 Localized 重組訊息。
+	Format string
+	Args   []any
 }
 
 func (e *Error) Error() string { return e.Msg }
+
+// Localized 依語言重組錯誤訊息：格式字串查 i18n 文字表，字串參數（例如作物名稱）也查一次；沒有翻譯時與 Error() 相同。
+func (e *Error) Localized(lang string) string {
+	if lang == i18n.Default || e.Format == "" {
+		return e.Msg
+	}
+	args := make([]any, len(e.Args))
+	for i, a := range e.Args {
+		if s, ok := a.(string); ok {
+			args[i] = i18n.Text(lang, s)
+		} else {
+			args[i] = a
+		}
+	}
+	if len(args) == 0 {
+		return i18n.Text(lang, e.Format)
+	}
+	return i18n.Sprintf(lang, e.Format, args...)
+}
 
 // New 建立指定種類的錯誤；args 為空時 format 原樣使用。
 func New(kind Kind, format string, args ...any) *Error {
@@ -42,7 +66,7 @@ func New(kind Kind, format string, args ...any) *Error {
 	if len(args) > 0 {
 		msg = fmt.Sprintf(format, args...)
 	}
-	return &Error{Kind: kind, Msg: msg}
+	return &Error{Kind: kind, Msg: msg, Format: format, Args: args}
 }
 
 // Validationf 等同 raise ValidationError(...)。

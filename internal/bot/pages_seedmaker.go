@@ -5,7 +5,6 @@ package bot
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -40,47 +39,47 @@ func seedMakerValue(x services.BackpackLine) string {
 func (p *Panel) buildSeedMaker(_ context.Context, data any) (*ui.Embed, error) {
 	bp := data.(services.Backpack)
 	m := exploration.Machines["seed_maker"]
-	e := &ui.Embed{Title: "🌱 ✦ 種子製造機 ✦", Color: Green}
+	e := &ui.Embed{Title: p.s("🌱 ✦ 種子製造機 ✦"), Color: Green}
 	if !bp.SeedMaker {
-		e.Description = fmt.Sprintf("🔒 還沒有種子製造機。\n\n農場 **Lv.%d** 起可以在「⛰️ 山洞」→「🔧 機器」用探索素材製作，"+
+		e.Description = p.f("🔒 還沒有種子製造機。\n\n農場 **Lv.%d** 起可以在「⛰️ 山洞」→「🔧 機器」用探索素材製作，"+
 			"之後就能把收成的作物做成種子：1 個作物 = %d 顆種子。", m.UnlockLevel, exploration.SeedMakerRatio)
-		p.nav("機器", "machines", btn{emoji: "🔧", row: 0})
-		p.nav("回農田", "plots", btn{emoji: "🌱", row: 0})
+		p.nav(p.s("機器"), "machines", btn{emoji: "🔧", row: 0})
+		p.nav(p.s("回農田"), "plots", btn{emoji: "🌱", row: 0})
 		p.navBack(0)
 		return e, nil
 	}
 	stacks := seedMakerStacks(bp)
 	lines := make([]string, len(stacks))
 	for i, x := range stacks {
-		lines[i] = fmt.Sprintf("%s %s%s　×**%d**　（%s 金／個）", cropEmoji(x.Code), x.Name,
+		lines[i] = p.f("%s %s%s　×**%d**　（%s 金／個）", cropEmoji(x.Code), p.s(x.Name),
 			services.GeneticsLabel(x.Quality, x.Mutation), x.Quantity, money(x.Price))
 	}
-	rule := fmt.Sprintf("1 個作物 = **%d 顆**對應的種子，**普通、優良**品質的作物都可以（突變不限），做出來的一律是普通種子。"+
+	rule := p.f("1 個作物 = **%d 顆**對應的種子，**普通、優良**品質的作物都可以（突變不限），做出來的一律是普通種子。"+
 		"\n稀有、傳說品質的作物不能做成種子。", exploration.SeedMakerRatio)
 	if !exploration.SeedMakerRareCrops {
-		rule += "琥珀瓜、月光花等稀有作物也不行。"
+		rule += p.s("琥珀瓜、月光花等稀有作物也不行。")
 	}
-	e.Description = sections(rule, Section{Title: "🧺 可以做成種子的作物", Lines: lines})
+	e.Description = sections(rule, Section{Title: p.s("🧺 可以做成種子的作物"), Lines: lines})
 	if len(stacks) == 0 {
-		e.Description += "\n\n背包裡沒有可以做成種子的作物，先去收成吧。"
+		e.Description += p.s("\n\n背包裡沒有可以做成種子的作物，先去收成吧。")
 	}
-	e.Footer = "高品質或突變作物的售價比較高，做成種子前先比較一下。種子放素材背包，不佔倉庫。"
+	e.Footer = p.s("高品質或突變作物的售價比較高，做成種子前先比較一下。種子放素材背包，不佔倉庫。")
 	if p.picker != nil {
-		e.AddField("🛒 已選擇", fmt.Sprintf("**%s**\n👇 選擇數量", p.picker.Label), false)
+		e.AddField(p.s("🛒 已選擇"), p.f("**%s**\n👇 選擇數量", p.picker.Label), false)
 	}
 
 	page, cur, pages := pageOf(stacks, p.seedMakerPage)
 	p.seedMakerPage = cur
 	options := make([]option, len(page))
 	for i, x := range page {
-		options[i] = option{fmt.Sprintf("%s%s（持有 %d）", x.Name, services.GeneticsLabel(x.Quality, x.Mutation), x.Quantity),
-			seedMakerValue(x), fmt.Sprintf("1 個 → %d 顆種子｜售價 %s 金／個", exploration.SeedMakerRatio, money(x.Price)), cropEmoji(x.Code)}
+		options[i] = option{p.f("%s%s（持有 %d）", p.s(x.Name), services.GeneticsLabel(x.Quality, x.Mutation), x.Quantity),
+			seedMakerValue(x), p.f("1 個 → %d 顆種子｜售價 %s 金／個", exploration.SeedMakerRatio, money(x.Price)), cropEmoji(x.Code)}
 	}
 	selected := ""
 	if p.picker != nil {
 		selected = p.picker.Key
 	}
-	p.selectMenu("🌱 選擇要做成種子的作物…", options, func(ctx context.Context, it ui.Interaction, value string) error {
+	p.selectMenu(p.s("🌱 選擇要做成種子的作物…"), options, func(ctx context.Context, it ui.Interaction, value string) error {
 		i := slices.IndexFunc(stacks, func(x services.BackpackLine) bool { return seedMakerValue(x) == value })
 		if i < 0 {
 			return gameerr.NotFoundf("找不到這個作物。")
@@ -90,19 +89,19 @@ func (p *Panel) buildSeedMaker(_ context.Context, data any) (*ui.Embed, error) {
 		if x.Quantity > 10 { // 「全部」：持有數量（不超過一次上限）
 			presets = append(presets, min(x.Quantity, exploration.SeedMakerMax))
 		}
-		p.picker = &Picker{Key: value, Label: fmt.Sprintf("🌱 %s%s（1 個 → %d 顆種子）", x.Name, services.GeneticsLabel(x.Quality, x.Mutation),
-			exploration.SeedMakerRatio), Verb: "用", Max: max(1, min(x.Quantity, exploration.SeedMakerMax)), Presets: presets,
-			LabelFor: func(q int) string { return fmt.Sprintf("用 %d 個 → %d 顆", q, q*exploration.SeedMakerRatio) }, // 直接寫出會得到幾顆
+		p.picker = &Picker{Key: value, Label: p.f("🌱 %s%s（1 個 → %d 顆種子）", p.s(x.Name), services.GeneticsLabel(x.Quality, x.Mutation),
+			exploration.SeedMakerRatio), Verb: p.s("用"), Max: max(1, min(x.Quantity, exploration.SeedMakerMax)), Presets: presets,
+			LabelFor: func(q int) string { return p.f("用 %d 個 → %d 顆", q, q*exploration.SeedMakerRatio) }, // 直接寫出會得到幾顆
 			Run: p.callQty("make_seeds", func(ctx context.Context, q int) (services.ActionResult, error) {
 				return p.svc().MakeSeeds(ctx, p.playerID, x.Code, q, x.Quality, x.Mutation)
 			})}
-		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+		p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
 		return nil
 	}, 0, selected)
 	p.quantityButtons(1)
-	p.pageButtons("作物", &p.seedMakerPage, pages, 2, "seedmaker")
-	p.nav("回農田", "plots", btn{emoji: "🌱", row: 3})
-	p.nav("機器", "machines", btn{emoji: "🔧", row: 3})
+	p.pageButtons(p.s("作物"), &p.seedMakerPage, pages, 2, "seedmaker")
+	p.nav(p.s("回農田"), "plots", btn{emoji: "🌱", row: 3})
+	p.nav(p.s("機器"), "machines", btn{emoji: "🔧", row: 3})
 	p.navBack(3)
 	return e, nil
 }

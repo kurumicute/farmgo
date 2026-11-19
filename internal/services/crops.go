@@ -4,6 +4,7 @@ package services
 
 import (
 	"context"
+	"farmgm/i18n"
 	"fmt"
 	"strings"
 	"time"
@@ -124,7 +125,7 @@ func (s *GameService) BuySeeds(ctx context.Context, playerID int64, cropKey stri
 		if err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已購買 %d 顆%s種子，花費 %d 金幣。%s", quantity, crop.Name, cost, auto),
+		return result(txf(ctx, "已購買 %d 顆%s種子，花費 %d 金幣。%s", quantity, crop.Name, cost, auto),
 			farm.Gold, -cost, item, quantity), nil
 	})
 }
@@ -166,11 +167,11 @@ func (s *GameService) PlantCrop(ctx context.Context, playerID int64, plotNumber 
 		if err != nil {
 			return ActionResult{}, err
 		}
-		tail := fmt.Sprintf("請記得澆水（water %d），澆水後開始生長。", plotNumber)
+		tail := txf(ctx, "請記得澆水（water %d），澆水後開始生長。", plotNumber)
 		if seconds != nil {
-			tail = fmt.Sprintf("已自動澆水，%s後成熟。", rules.FormatDuration(*seconds))
+			tail = txf(ctx, "已自動澆水，%s後成熟。", rules.FormatDuration(*seconds))
 		}
-		return result(fmt.Sprintf("已在第 %d 格種下%s%s，%s", plotNumber, crop.Name, label, tail), farm.Gold, 0, item, 1), nil
+		return result(txf(ctx, "已在第 %d 格種下%s%s，%s", plotNumber, crop.Name, label, tail), farm.Gold, 0, item, 1), nil
 	})
 }
 
@@ -324,10 +325,11 @@ func (s *GameService) autoPlant(ctx context.Context, t *db.Tx, farm *models.Farm
 			if _, _, err := s.plant(ctx, t, farm, plot, e.crop, "自動播種機："); err != nil {
 				return err
 			}
-			if planted[e.crop.Name] == 0 {
-				order = append(order, e.crop.Name)
+			name := cropNameCtx(ctx, e.crop)
+			if planted[name] == 0 {
+				order = append(order, name)
 			}
-			planted[e.crop.Name]++
+			planted[name]++
 		}
 		return nil
 	})
@@ -335,14 +337,14 @@ func (s *GameService) autoPlant(ctx context.Context, t *db.Tx, farm *models.Farm
 		return "", err
 	}
 	if len(order) == 0 {
-		return " 🤖 自動播種機：背包沒有種子可以種。", nil
+		return tr(ctx, "svc.autoplant.no_seed"), nil
 	}
 	total, parts := 0, make([]string, len(order))
 	for i, name := range order {
 		parts[i] = fmt.Sprintf("%s×%d", name, planted[name])
 		total += planted[name]
 	}
-	return fmt.Sprintf(" 🤖 自動播種機種下 %d 格（%s）。", total, strings.Join(parts, "、")), nil
+	return tr(ctx, "svc.autoplant.done", "n", total, "list", strings.Join(parts, tr(ctx, "svc.list_sep"))), nil
 }
 
 // growBoosts 這座農場目前的生長加速（澆水與種植選單的預估時間共用，2026-11-19 抽出）。
@@ -508,7 +510,7 @@ func (s *GameService) WaterCrop(ctx context.Context, playerID int64, plotNumber 
 		if err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已為第 %d 格的%s澆水，%s後成熟。", plotNumber, crop.Name, rules.FormatDuration(seconds)),
+		return result(txf(ctx, "已為第 %d 格的%s澆水，%s後成熟。", plotNumber, crop.Name, rules.FormatDuration(seconds)),
 			farm.Gold, 0, "", 0), nil
 	})
 }
@@ -667,7 +669,11 @@ func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.
 		}
 	}
 	if details != nil {
-		*details = append(*details, HarvestDetail{name, quantity, quality, mutation, catBonus, stolen, lost, value, autoSell})
+		shown := name // 交易紀錄維持中文；給玩家看的摘要用面板的語言
+		if lang := i18n.LangOf(ctx); lang != i18n.Default {
+			shown = ProduceNameLang(lang, crop.Code, crop.Name, crop.VariantCode, crop.VariantName, mutation) + GeneticsLabelLang(lang, quality, mutation)
+		}
+		*details = append(*details, HarvestDetail{shown, quantity, quality, mutation, catBonus, stolen, lost, value, autoSell})
 	}
 	return message, quantity, item, nil
 }
@@ -681,7 +687,7 @@ func (s *GameService) recordNote(ctx context.Context, t *db.Tx, farm *models.Far
 	if err != nil || old == nil {
 		return "", err
 	}
-	return RecordNote(key, value, *old), nil
+	return RecordNoteLang(i18n.LangOf(ctx), key, value, *old), nil
 }
 
 // NoteSale 面板販售後檢查「一次販售」個人紀錄（全部販售是多筆交易，由面板加總後呼叫）。
@@ -750,7 +756,7 @@ func (s *GameService) ClearWithered(ctx context.Context, playerID int64, plotNum
 		if err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已清除第 %d 格乾枯的%s，土地恢復為空地。%s%s", plotNumber, crop.Name, saved, auto), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "已清除第 %d 格乾枯的%s，土地恢復為空地。%s%s", plotNumber, crop.Name, saved, auto), farm.Gold, 0, "", 0), nil
 	})
 }
 
@@ -792,7 +798,7 @@ func (s *GameService) PlantAll(ctx context.Context, playerID int64, cropKey stri
 			return ActionResult{}, err
 		}
 		if len(plots) == 0 {
-			return ActionResult{}, gameerr.Validationf("沒有空地可以種植。")
+			return ActionResult{}, gameerr.Validationf("%s", tr(ctx, "svc.plant.no_empty"))
 		}
 		text, count, err := s.plantOnPlots(ctx, t, farm, crop, plots)
 		if err != nil {
@@ -814,12 +820,12 @@ func (s *GameService) plantOnPlots(ctx context.Context, t *db.Tx, farm *models.F
 	bought := 0
 	if len(plots) > have && !crop.ShopBuyable {
 		if have <= 0 {
-			return "", 0, gameerr.New(gameerr.InsufficientItems, "沒有%s種子（商店不販售，只能從山洞探索或培育取得）。", crop.Name)
+			return "", 0, gameerr.New(gameerr.InsufficientItems, "%s", tr(ctx, "svc.plant.no_seed_rare", "crop", cropNameCtx(ctx, crop)))
 		}
 	} else if len(plots) > have {
 		bought = min(len(plots)-have, numfmt.FloorDiv(farm.Gold, crop.SeedPrice))
 		if bought <= 0 && have <= 0 {
-			return "", 0, gameerr.New(gameerr.InsufficientGold, "金幣不足：%s種子每顆 %d 金幣。", crop.Name, crop.SeedPrice)
+			return "", 0, gameerr.New(gameerr.InsufficientGold, "%s", tr(ctx, "svc.plant.no_gold", "crop", cropNameCtx(ctx, crop), "price", crop.SeedPrice))
 		}
 		if bought > 0 {
 			cost := crop.SeedPrice * bought
@@ -845,7 +851,7 @@ func (s *GameService) plantOnPlots(ctx context.Context, t *db.Tx, farm *models.F
 			return "", 0, err
 		}
 		if !ok {
-			return "", 0, gameerr.New(gameerr.InsufficientItems, "%s種子不足。", crop.Name)
+			return "", 0, gameerr.New(gameerr.InsufficientItems, "%s", tr(ctx, "svc.plant.seed_short", "crop", cropNameCtx(ctx, crop)))
 		}
 	}
 	if err := t.Bulk(ctx, func() error {
@@ -862,21 +868,21 @@ func (s *GameService) plantOnPlots(ctx context.Context, t *db.Tx, farm *models.F
 	}); err != nil {
 		return "", 0, err
 	}
-	text := fmt.Sprintf("在 %d 格種下%s", count, crop.Name)
+	text := tr(ctx, "svc.plant.done", "n", count, "crop", cropNameCtx(ctx, crop))
 	if bought > 0 {
-		text += fmt.Sprintf("（購買 %d 顆種子）", bought)
+		text += tr(ctx, "svc.plant.bought", "n", bought)
 	}
 	if count < len(plots) {
-		reason := "種子不夠"
+		reason := tr(ctx, "svc.plant.reason_seed")
 		if crop.ShopBuyable {
-			reason = "金幣不夠"
+			reason = tr(ctx, "svc.plant.reason_gold")
 		}
-		text += fmt.Sprintf("；%s，還有 %d 格空著", reason, len(plots)-count)
+		text += tr(ctx, "svc.plant.left_empty", "reason", reason, "n", len(plots)-count)
 	}
 	if watered == count {
-		text += "，已自動澆水。"
+		text += tr(ctx, "svc.plant.watered")
 	} else {
-		text += "。記得按「💧 全部澆水」。"
+		text += tr(ctx, "svc.plant.remember_water")
 	}
 	return text, count, nil
 }
@@ -892,7 +898,7 @@ func (s *GameService) WaterAll(ctx context.Context, playerID int64) (ActionResul
 			return ActionResult{}, err
 		}
 		if len(plots) == 0 {
-			return ActionResult{}, gameerr.Validationf("沒有需要澆水的土地。")
+			return ActionResult{}, gameerr.Validationf("%s", tr(ctx, "svc.water.none"))
 		}
 		now := s.now()
 		fastest := 0
@@ -914,7 +920,7 @@ func (s *GameService) WaterAll(ctx context.Context, playerID int64) (ActionResul
 		}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已為 %d 格澆水，最快 %s後成熟。", len(plots), rules.FormatDuration(fastest)),
+		return result(tr(ctx, "svc.water.done", "n", len(plots), "time", DurationLang(i18n.LangOf(ctx), fastest, false)),
 			farm.Gold, 0, "", len(plots)), nil
 	})
 }
@@ -942,7 +948,7 @@ func (s *GameService) harvestAll(ctx context.Context, playerID int64, replant bo
 			return ActionResult{}, err
 		}
 		if len(plots) == 0 {
-			return ActionResult{}, gameerr.Validationf("目前沒有可收成的作物。")
+			return ActionResult{}, gameerr.Validationf("%s", tr(ctx, "svc.harvest.none"))
 		}
 		done, total, stopped, record, auto, replanted := 0, 0, "", "", "", ""
 		var details []HarvestDetail
@@ -956,7 +962,7 @@ func (s *GameService) harvestAll(ctx context.Context, playerID int64, replant bo
 				fromLab := plot.LabSeedID != nil // 收成會清掉土地，先記下是不是特殊種子種的
 				_, quantity, _, err := s.harvestLocked(ctx, t, farm, plot, crop, &details)
 				if gameerr.Is(err, gameerr.WarehouseFull) {
-					stopped = fmt.Sprintf("\n⚠️ 還有 %d 格沒收：%s", len(plots)-done, err.Error())
+					stopped = tr(ctx, "svc.harvest.stopped", "n", len(plots)-done, "reason", err.Error())
 					break
 				}
 				if err != nil {
@@ -985,9 +991,9 @@ func (s *GameService) harvestAll(ctx context.Context, playerID int64, replant bo
 		}); err != nil {
 			return ActionResult{}, err
 		}
-		msg := HarvestSummary(details) + record + stopped
+		msg := HarvestSummaryLang(i18n.LangOf(ctx), details) + record + stopped
 		if replanted != "" {
-			msg += "\n🌱 重種：" + replanted
+			msg += tr(ctx, "svc.harvest.replant") + replanted
 		}
 		if auto != "" {
 			msg += "\n" + strings.TrimSpace(auto)
@@ -1033,11 +1039,11 @@ func (s *GameService) replantLocked(ctx context.Context, t *db.Tx, farm *models.
 	var parts []string
 	for _, crop := range order {
 		if !crop.Active {
-			parts = append(parts, crop.Name+"已停用，沒有重種")
+			parts = append(parts, crop.Name+txt(ctx, "已停用，沒有重種"))
 			continue
 		}
 		if err := s.checkSeason(crop); err != nil {
-			parts = append(parts, crop.Name+"現在不能種，沒有重種")
+			parts = append(parts, crop.Name+txt(ctx, "現在不能種，沒有重種"))
 			continue
 		}
 		text, _, err := s.plantOnPlots(ctx, t, farm, crop, byCrop[crop.ID])
@@ -1064,7 +1070,7 @@ func (s *GameService) ClearAllWithered(ctx context.Context, playerID int64) (Act
 			return ActionResult{}, err
 		}
 		if len(plots) == 0 {
-			return ActionResult{}, gameerr.Validationf("沒有乾枯的作物。")
+			return ActionResult{}, gameerr.Validationf("%s", tr(ctx, "svc.clear.none"))
 		}
 		auto, saved := "", ""
 		if err := t.Bulk(ctx, func() error {
@@ -1092,7 +1098,7 @@ func (s *GameService) ClearAllWithered(ctx context.Context, playerID int64) (Act
 		}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已清除 %d 格乾枯的作物。%s%s", len(plots), saved, auto), farm.Gold, 0, "", len(plots)), nil
+		return result(tr(ctx, "svc.clear.done", "n", len(plots))+saved+auto, farm.Gold, 0, "", len(plots)), nil
 	})
 }
 
@@ -1108,7 +1114,7 @@ func (s *GameService) salvageWithered(ctx context.Context, t *db.Tx, farm *model
 		return "", nil
 	}
 	if err := s.ensureSpace(ctx, t, farm, quantity); gameerr.Is(err, gameerr.WarehouseFull) {
-		return fmt.Sprintf(" 🦔 刺蝟想救回第 %d 格的%s，但倉庫放不下。", plot.PlotNumber, crop.Name), nil
+		return txf(ctx, " 🦔 刺蝟想救回第 %d 格的%s，但倉庫放不下。", plot.PlotNumber, crop.Name), nil
 	} else if err != nil {
 		return "", err
 	}
@@ -1122,7 +1128,7 @@ func (s *GameService) salvageWithered(ctx context.Context, t *db.Tx, farm *model
 		rec{ItemCode: item, Quantity: quantity, Quality: quality, Mutation: mutation}); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf(" 🦔 刺蝟從第 %d 格救回 %d 個%s。", plot.PlotNumber, quantity, crop.Name), nil
+	return txf(ctx, " 🦔 刺蝟從第 %d 格救回 %d 個%s。", plot.PlotNumber, quantity, crop.Name), nil
 }
 
 // ---------- 販售與擴建 ----------
@@ -1166,7 +1172,7 @@ func (s *GameService) SellCrop(ctx context.Context, playerID int64, cropKey stri
 		if err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已出售 %d 個%s（單價 %d），獲得 %d 金幣。%s", quantity, name, price, income,
+		return result(txf(ctx, "已出售 %d 個%s（單價 %d），獲得 %d 金幣。%s", quantity, name, price, income,
 			GoldChange(farm.Gold, income)), farm.Gold, income, item, quantity), nil
 	})
 }
@@ -1222,10 +1228,10 @@ func (s *GameService) UpgradeFarm(ctx context.Context, playerID int64) (ActionRe
 		}
 		cost, ok := expansion.LandPrice(n)
 		if !ok {
-			return ActionResult{}, gameerr.Validationf("農田已達上限 %d 格，無法再擴建。", expansion.MaxPlots())
+			return ActionResult{}, gameerr.Validationf("%s", tr(ctx, "svc.upgrade.max", "n", expansion.MaxPlots()))
 		}
 		if farm.Gold < cost {
-			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：擴建需要 %d，目前只有 %d。", cost, farm.Gold)
+			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "%s", tr(ctx, "svc.upgrade.no_gold", "need", cost, "have", farm.Gold))
 		}
 		farm.Gold -= cost
 		farm.Level++
@@ -1248,17 +1254,16 @@ func (s *GameService) UpgradeFarm(ctx context.Context, playerID int64) (ActionRe
 		if err != nil {
 			return ActionResult{}, err
 		}
-		tail := "農田已達上限。"
+		tail := tr(ctx, "svc.upgrade.tail_max")
 		if nxt, ok := expansion.LandPrice(total); ok {
-			tail = fmt.Sprintf("下一次擴建需要 %d 金幣。", nxt)
+			tail = tr(ctx, "svc.upgrade.tail_next", "n", nxt)
 		}
 		if total == balance.MaxPlots+1 {
-			tail = "🌾 開闢了第二塊農田！農田頁可以切換「第一塊／第二塊」。" + tail
+			tail = tr(ctx, "svc.upgrade.field2") + tail
 		}
-		return result(fmt.Sprintf("擴建完成！農場升到 %d 級，新增第 %d 格，共 %d 格土地，花費 %d 金幣。\n"+
-			"🌱 農田 %d → %d 格｜⭐ 等級 %d → %d%s\n%s%s",
-			farm.Level, numbers[0], total, cost, total-len(numbers), total, farm.Level-1, farm.Level,
-			GoldChange(farm.Gold, -cost), tail, auto), farm.Gold, -cost, "", len(numbers)), nil
+		return result(tr(ctx, "svc.upgrade.done", "level", farm.Level, "plot", numbers[0], "total", total, "cost", cost,
+			"before", total-len(numbers), "old_level", farm.Level-1)+
+			GoldChangeLang(i18n.LangOf(ctx), farm.Gold, -cost)+"\n"+tail+auto, farm.Gold, -cost, "", len(numbers)), nil
 	})
 }
 
@@ -1289,11 +1294,11 @@ func (s *GameService) ExpandMaterialBag(ctx context.Context, playerID int64) (Ac
 			rec{ItemCode: "material_bag", Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		tail := "已達最高等級。"
+		tail := txt(ctx, "已達最高等級。")
 		if nxt, ok := expansion.MaterialBagPrice(farm.MaterialBagLevel); ok {
-			tail = fmt.Sprintf("下一級需要 %d 金幣。", nxt)
+			tail = txf(ctx, "下一級需要 %d 金幣。", nxt)
 		}
-		return result(fmt.Sprintf("🎒 素材背包擴充到 Lv.%d，花費 %d 金幣。\n素材背包 %d → %d 格%s\n%s",
+		return result(txf(ctx, "🎒 素材背包擴充到 Lv.%d，花費 %d 金幣。\n素材背包 %d → %d 格%s\n%s",
 			farm.MaterialBagLevel, price, before, after, GoldChange(farm.Gold, -price), tail), farm.Gold, -price, "", 0), nil
 	})
 }
@@ -1324,11 +1329,11 @@ func (s *GameService) ExpandWarehouse(ctx context.Context, playerID int64) (Acti
 			rec{ItemCode: code, Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		tail := "已達最大容量。"
+		tail := txt(ctx, "已達最大容量。")
 		if nxt, ok := expansion.WarehousePrice(farm.WarehouseCapacity); ok {
-			tail = fmt.Sprintf("下一次擴大需要 %d 金幣。", nxt)
+			tail = txf(ctx, "下一次擴大需要 %d 金幣。", nxt)
 		}
-		return result(fmt.Sprintf("倉庫擴大為 %d 格，花費 %d 金幣。\n📦 倉庫 %d → %d 格%s\n%s",
+		return result(txf(ctx, "倉庫擴大為 %d 格，花費 %d 金幣。\n📦 倉庫 %d → %d 格%s\n%s",
 			farm.WarehouseCapacity, price, before, farm.WarehouseCapacity, GoldChange(farm.Gold, -price), tail),
 			farm.Gold, -price, code, 1), nil
 	})
@@ -1360,11 +1365,11 @@ func (s *GameService) UpgradeGreenhouse(ctx context.Context, playerID int64) (Ac
 			rec{ItemCode: code, Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		tail := "已達最高等級。"
+		tail := txt(ctx, "已達最高等級。")
 		if nxt, ok := specialshop.GreenhousePrice(farm.GreenhouseLevel); ok {
-			tail = fmt.Sprintf("下一級需要 %s 金幣。", numfmt.Comma(nxt))
+			tail = txf(ctx, "下一級需要 %s 金幣。", numfmt.Comma(nxt))
 		}
-		return result(fmt.Sprintf("🏡 溫室升到 %d 級，之後澆水的作物生長時間 -%d%%。\n⏱️ 生長時間 -%d%% → -%d%%%s\n%s",
+		return result(txf(ctx, "🏡 溫室升到 %d 級，之後澆水的作物生長時間 -%d%%。\n⏱️ 生長時間 -%d%% → -%d%%%s\n%s",
 			farm.GreenhouseLevel, pct, specialshop.GreenhousePct(farm.GreenhouseLevel-1), pct, GoldChange(farm.Gold, -price), tail),
 			farm.Gold, -price, code, 1), nil
 	})

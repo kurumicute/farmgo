@@ -70,16 +70,16 @@ func (p *Panel) fishCall(ctx context.Context, it ui.Interaction, name string, wo
 	})
 	if err != nil {
 		logUnexpected(err, "釣魚操作失敗", "player", p.playerID)
-		p.showError(ctx, it, cleanMessage(PlayerMessage(err)))
+		p.showError(ctx, it, cleanMessage(p.msg(err)))
 		return
 	}
 	notice := ""
 	if view.Stale {
-		notice = "⚠️ 剛才那一下已經處理過了，請依最新畫面操作。"
+		notice = p.s("⚠️ 剛才那一下已經處理過了，請依最新畫面操作。")
 	}
 	p.fishCache = &view
 	p.Page, p.picker, p.confirm = "fish_game", nil, ""
-	p.refresh(ctx, it, notice, nil, "重繪", time.Time{})
+	p.refresh(ctx, it, notice, nil, p.s("重繪"), time.Time{})
 }
 
 // scheduleFishTimer 釣魚畫面在上鉤、反應期限或拉扯逾時的時間點自動更新（同一面板只保留一個計時器）。
@@ -142,9 +142,9 @@ func gearText(g *services.GearView) string {
 func (p *Panel) buildFishing(_ context.Context, data any) (*ui.Embed, error) {
 	d := data.(fishingData)
 	o := d.o
-	bait := "❌ 尚未裝備"
+	bait := p.s("❌ 尚未裝備")
 	if o.Bait != nil {
-		bait = fmt.Sprintf("%s **%d** 個", o.Bait.Name, o.BaitQuantity)
+		bait = p.f("%s **%d** 個", p.s(o.Bait.Name), o.BaitQuantity)
 	}
 	st := o.Stats
 	rate := "—"
@@ -158,53 +158,53 @@ func (p *Panel) buildFishing(_ context.Context, data any) (*ui.Embed, error) {
 	var status string
 	switch {
 	case o.Active:
-		status = "🎣 釣魚中！按「繼續釣魚」回到釣竿旁"
+		status = p.s("🎣 釣魚中！按「繼續釣魚」回到釣竿旁")
 	case o.Rod == nil || o.Line == nil || o.Bait == nil:
-		status = "🛒 先到「釣具商店」買魚竿、魚線和魚餌"
+		status = p.s("🛒 先到「釣具商店」買魚竿、魚線和魚餌")
 	case o.BaitQuantity <= 0:
-		status = "🪱 魚餌用完了，到「釣具商店」補充"
+		status = p.s("🪱 魚餌用完了，到「釣具商店」補充")
 	case o.Basket >= o.BasketCapacity:
-		status = "🧺 魚簍滿了，先賣掉一些魚"
+		status = p.s("🧺 魚簍滿了，先賣掉一些魚")
 	default:
-		status = "準備釣魚"
+		status = p.s("準備釣魚")
 	}
-	e := &ui.Embed{Title: "🎣 釣魚中心", Color: Sea, Description: autoFishNote(o.AutoFish) + fmt.Sprintf(
+	e := &ui.Embed{Title: p.s("🎣 釣魚中心"), Color: Sea, Description: autoFishNote(o.AutoFish) + p.f(
 		"%s（部分魚只在特定季節或時段出現，見魚類圖鑑）\n%s\n🎋 魚竿：%s\n🪢 魚線：%s\n🪱 魚餌：%s\n🧺 魚簍：**%d / %d**%s\n\n"+
 			"🎲 這次魚餌的出現機率：%s\n✅ 基礎成功率 **%d%%**（稀有度只影響拉扯難度）\n"+
 			"📊 你的紀錄：釣魚 %d 次｜成功 %d（%s）｜🟡 傳說 %d\n%s\n🌊 目前狀態：**%s**",
-		seasons.NowText(time.Now()), Line, gearText(o.Rod), gearText(o.Line), bait, o.Basket, o.BasketCapacity, autoFishLine(o.AutoFish),
-		strings.Join(chances, "　"), o.BaseSuccessPct, st.Sessions, st.Landed, rate, st.Legendary, Line, status)}
+		seasons.NowTextLang(p.lang, time.Now()), Line, gearText(o.Rod), gearText(o.Line), bait, o.Basket, o.BasketCapacity, autoFishLine(o.AutoFish),
+		strings.Join(chances, p.s("　")), o.BaseSuccessPct, st.Sessions, st.Landed, rate, st.Legendary, Line, status)}
 	// 目前狀態（下一步要做什麼）放在最後一行，緊貼按鈕；拉扯規則在搏鬥畫面第 1 回合顯示
 	if o.Active {
-		p.button("繼續釣魚", func(ctx context.Context, it ui.Interaction) error {
+		p.button(p.s("繼續釣魚"), func(ctx context.Context, it ui.Interaction) error {
 			p.fishCache = nil
 			p.goTo(ctx, it, "fish_game", "")
 			return nil
 		}, btn{emoji: "🎣", style: ui.Success, row: 0})
 	} else {
-		p.button("開始釣魚", func(ctx context.Context, it ui.Interaction) error {
+		p.button(p.s("開始釣魚"), func(ctx context.Context, it ui.Interaction) error {
 			p.fishCall(ctx, it, "start_fishing", func(ctx context.Context) (services.FishingView, error) {
 				return p.svc().StartFishing(ctx, p.playerID)
 			})
 			return nil
 		}, btn{emoji: "🎣", style: ui.Success, row: 0})
 	}
-	p.nav("我的魚簍", "fish_basket", btn{emoji: "🎒", row: 0})
-	p.nav("魚類圖鑑", "fish_codex", btn{emoji: "📖", row: 0})
-	p.nav("釣具商店", "fish_shop", btn{emoji: "🛒", row: 1})
-	p.nav("釣魚排行榜", "fish_rank", btn{emoji: "🏆", row: 1})
-	p.nav("回總覽", "main", btn{emoji: "🏠", row: 1})
+	p.nav(p.s("我的魚簍"), "fish_basket", btn{emoji: "🎒", row: 0})
+	p.nav(p.s("魚類圖鑑"), "fish_codex", btn{emoji: "📖", row: 0})
+	p.nav(p.s("釣具商店"), "fish_shop", btn{emoji: "🛒", row: 1})
+	p.nav(p.s("釣魚排行榜"), "fish_rank", btn{emoji: "🏆", row: 1})
+	p.nav(p.s("回總覽"), "main", btn{emoji: "🏠", row: 1})
 	// 自動釣魚機加速（2026-11-15）：有機器而且還沒滿級時顯示，按兩次確認
 	if a := o.AutoFish; a.Owned && a.NextSpeedMinutes > 0 {
-		label, style := fmt.Sprintf("釣魚機加速（%d 分鐘，%s 金）", a.NextSpeedMinutes, money(a.NextSpeedPrice)), ui.Secondary
+		label, style := p.f("釣魚機加速（%d 分鐘，%s 金）", a.NextSpeedMinutes, money(a.NextSpeedPrice)), ui.Secondary
 		if p.confirm == "auto_fisher_speed" {
-			label, style = "確認加速", ui.Danger
+			label, style = p.s("確認加速"), ui.Danger
 		}
 		p.button(label, func(ctx context.Context, it ui.Interaction) error {
 			if p.confirm != "auto_fisher_speed" {
 				p.confirm = "auto_fisher_speed"
-				p.refresh(ctx, it, fmt.Sprintf("⚠️ 自動釣魚機加速到每 %d 分鐘 1 條需要 %s 金幣（魚餌也會用得比較快），再按一次「確認加速」。",
-					a.NextSpeedMinutes, money(a.NextSpeedPrice)), nil, "重繪", time.Time{})
+				p.refresh(ctx, it, p.f("⚠️ 自動釣魚機加速到每 %d 分鐘 1 條需要 %s 金幣（魚餌也會用得比較快），再按一次「確認加速」。",
+					a.NextSpeedMinutes, money(a.NextSpeedPrice)), nil, p.s("重繪"), time.Time{})
 				return nil
 			}
 			p.act(ctx, it, p.call("upgrade_auto_fisher_speed", func(ctx context.Context) (services.ActionResult, error) {
@@ -223,13 +223,13 @@ func (p *Panel) equipSelect(items []services.GearView, row int) {
 		if !i.Owned || i.Equipped {
 			continue
 		}
-		label := fmt.Sprintf("裝備%s：%s", i.KindName, i.Name)
+		label := p.f("裝備%s：%s", p.s(i.KindName), p.s(i.Name))
 		if i.Kind == "bait" {
-			label += fmt.Sprintf("（%d 個）", i.Quantity)
+			label += p.f("（%d 個）", i.Quantity)
 		}
-		options = append(options, option{label, i.Code, i.EffectsText, i.Emoji})
+		options = append(options, option{label, i.Code, p.s(i.EffectsText), i.Emoji})
 	}
-	p.selectMenu("🔧 更換裝備…", options, func(ctx context.Context, it ui.Interaction, code string) error {
+	p.selectMenu(p.s("🔧 更換裝備…"), options, func(ctx context.Context, it ui.Interaction, code string) error {
 		p.act(ctx, it, p.call("equip_fishing_gear", func(ctx context.Context) (services.ActionResult, error) {
 			return p.svc().EquipFishingGear(ctx, p.playerID, code)
 		}), actOpts{})
@@ -281,7 +281,7 @@ func (p *Panel) buildCheck(v services.FishingView) *ui.Embed {
 	if v.Note != "" {
 		note = v.Note + "\n\n"
 	}
-	e := &ui.Embed{Title: "🤖 釣魚人機確認", Color: Gold, Description: fmt.Sprintf(
+	e := &ui.Embed{Title: p.s("🤖 釣魚人機確認"), Color: Gold, Description: p.f(
 		"%s請按下 **%s**\n\n%s\n⏰ %s前作答，答對就會直接拋竿。\n⚠️ 答錯會暫停釣魚一段時間（不會扣金幣、魚或魚餌）。", note, v.Target, Line, ts(v.ExpiresAt))}
 	for _, o := range v.Options {
 		code := o.Code
@@ -292,21 +292,21 @@ func (p *Panel) buildCheck(v services.FishingView) *ui.Embed {
 			return nil
 		}, btn{emoji: o.Emoji, row: 0})
 	}
-	p.nav("回釣魚中心", "fishing", btn{emoji: "🎣", row: 1})
+	p.nav(p.s("回釣魚中心"), "fishing", btn{emoji: "🎣", row: 1})
 	return e
 }
 
 func (p *Panel) buildCheckFailed(v services.FishingView) *ui.Embed {
-	e := &ui.Embed{Title: "🚫 人機確認沒有通過", Color: Red, Description: fmt.Sprintf(
+	e := &ui.Embed{Title: p.s("🚫 人機確認沒有通過"), Color: Red, Description: p.f(
 		"釣魚暫停 **%d** 分鐘，%s可以再拋竿。\n\n%s\n金幣、魚和魚餌都沒有被扣。農場的其他功能照常可以使用。", v.Minutes, ts(v.LockedUntil), Line)}
-	p.nav("回釣魚中心", "fishing", btn{emoji: "🎣", row: 0})
-	p.nav("回總覽", "main", btn{emoji: "🏠", row: 0})
+	p.nav(p.s("回釣魚中心"), "fishing", btn{emoji: "🎣", row: 0})
+	p.nav(p.s("回總覽"), "main", btn{emoji: "🏠", row: 0})
 	return e
 }
 
 func (p *Panel) giveUpButton(v services.FishingView, row int) {
 	id := v.ID
-	p.button("收竿放棄", func(ctx context.Context, it ui.Interaction) error {
+	p.button(p.s("收竿放棄"), func(ctx context.Context, it ui.Interaction) error {
 		p.fishCall(ctx, it, "give_up_fishing", func(ctx context.Context) (services.FishingView, error) {
 			return p.svc().GiveUpFishing(ctx, p.playerID, id)
 		})
@@ -316,10 +316,10 @@ func (p *Panel) giveUpButton(v services.FishingView, row int) {
 
 func (p *Panel) buildWaiting(v services.FishingView) *ui.Embed {
 	p.fishDue = &fishDue{v.BiteAt, timerSlack}
-	e := &ui.Embed{Title: "🎣 你已經拋出魚竿！", Color: Sea, Description: fmt.Sprintf(
+	e := &ui.Embed{Title: p.s("🎣 你已經拋出魚竿！"), Color: Sea, Description: p.f(
 		"🌊 水面很平靜……\n\n🐟 好像有東西靠近了！\n\n%s\n🎋 %s　🪢 %s　🪱 %s\n👀 魚上鉤時這個畫面會自動更新，「🎣 拉竿」按鈕亮起就快按！",
 		Line, pyStr(v.Rod), pyStr(v.Line), pyStr(v.Bait))}
-	p.button("拉竿", p.noop, btn{emoji: "🎣", row: 0, disabled: true})
+	p.button(p.s("拉竿"), p.noop, btn{emoji: "🎣", row: 0, disabled: true})
 	p.giveUpButton(v, 0)
 	return e
 }
@@ -335,8 +335,8 @@ func pyStr(s *string) string {
 func (p *Panel) buildBite(v services.FishingView) *ui.Embed {
 	p.fishDue = &fishDue{v.ReactDeadline, deadlineSlack}
 	id := v.ID
-	e := &ui.Embed{Title: "‼️ 魚上鉤了！", Color: Red, Description: fmt.Sprintf("⚡ **快點拉竿！**\n\n⏰ %s之前按下「🎣 拉竿」\n\n%s", tsv(v.ReactDeadline), Line)}
-	p.button("拉竿", func(ctx context.Context, it ui.Interaction) error {
+	e := &ui.Embed{Title: p.s("‼️ 魚上鉤了！"), Color: Red, Description: p.f("⚡ **快點拉竿！**\n\n⏰ %s之前按下「🎣 拉竿」\n\n%s", tsv(v.ReactDeadline), Line)}
+	p.button(p.s("拉竿"), func(ctx context.Context, it ui.Interaction) error {
 		p.fishCall(ctx, it, "hook_fish", func(ctx context.Context) (services.FishingView, error) {
 			return p.svc().HookFish(ctx, p.playerID, id)
 		})
@@ -354,26 +354,26 @@ func (p *Panel) buildFight(v services.FishingView) *ui.Embed {
 	if v.Distance >= float64(v.EscapeDistance)*0.8 {
 		farWarn = " ⚠️"
 	}
-	hint := fmt.Sprintf("🎣 收線張力 +%d", v.NextReelTension)
+	hint := p.f("🎣 收線張力 +%d", v.NextReelTension)
 	if v.ReelStreak != 0 {
-		hint = fmt.Sprintf("🔥 連續收線 ×%s，下一次收線張力 **+%d**", num(v.ReelStreak), v.NextReelTension)
+		hint = p.f("🔥 連續收線 ×%s，下一次收線張力 **+%d**", num(v.ReelStreak), v.NextReelTension)
 	}
 	hints := []string{hint}
 	if v.Need != 0 {
-		hints = append([]string{fmt.Sprintf("🎯 還要成功拉 **%d** 下（%s%s）", v.PullsLeft, strings.Repeat("🟢", v.Progress),
+		hints = append([]string{p.f("🎯 還要成功拉 **%d** 下（%s%s）", v.PullsLeft, strings.Repeat("🟢", v.Progress),
 			strings.Repeat("⚪", max(0, v.PullsLeft)))}, hints...)
 	}
 	prompt := fmt.Sprintf("💬 **%s**", v.IntentText)
 	if v.Dodge != "" {
 		// 魚竄向一邊時只能壓同方向：魚的狀態照樣顯示，但拿掉「⭐ 按收線」這類建議，避免和竄動提示互相矛盾（2026-11-16）
 		state, _, _ := strings.Cut(v.IntentText, "⭐")
-		prompt = fmt.Sprintf("💬 **%s**\n💬 %s（先處理竄動）", v.DodgeText, strings.TrimSpace(state))
+		prompt = p.f("💬 **%s**\n💬 %s（先處理竄動）", v.DodgeText, strings.TrimSpace(state))
 	}
 	last := ""
 	if v.LastText != nil && *v.LastText != "" {
 		last = fmt.Sprintf("📝 %s\n", *v.LastText)
 	}
-	e := &ui.Embed{Title: "🎣 正在與魚搏鬥！", Color: rarityColor[v.Rarity], Description: fmt.Sprintf(
+	e := &ui.Embed{Title: p.s("🎣 正在與魚搏鬥！"), Color: rarityColor[v.Rarity], Description: p.f(
 		"🐟 對手：**%s**級的魚　🔁 第 %d 回合\n%s\n"+
 			"🐟 魚的體力：**%s / %s**\n%s\n\n"+
 			"📏 魚的距離：**%s / %d**%s\n%s\n\n"+
@@ -385,7 +385,7 @@ func (p *Panel) buildFight(v services.FishingView) *ui.Embed {
 		last, strings.Join(hints, "\n"), prompt)}
 	// 魚的意圖與期限放在最後，緊貼操作按鈕；規則說明只在第 1 回合顯示，之後不再隔在提示和按鈕中間
 	if v.Turn == 0 {
-		e.Footer = "收線成功算 1 下，連續收線張力越來越高｜等待：張力下降｜放線：張力大降、魚游遠｜魚竄向一邊：一定要壓同方向（算 1 下），按其他鍵都會被扯。"
+		e.Footer = p.s("收線成功算 1 下，連續收線張力越來越高｜等待：張力下降｜放線：張力大降、魚游遠｜魚竄向一邊：一定要壓同方向（算 1 下），按其他鍵都會被扯。")
 	}
 	id, turn := v.ID, v.Turn
 	for _, b := range fightButtons {
@@ -421,31 +421,31 @@ func (p *Panel) buildFishResult(v services.FishingView) *ui.Embed {
 	if fish := v.Fish; v.Status == "landed" && fish != nil {
 		record := ""
 		if v.Record != nil && v.Record.Species {
-			record = "🏆 個人紀錄：你釣過最重的" + fish.Name + "！\n"
+			record = p.s("🏆 個人紀錄：你釣過最重的") + p.s(fish.Name) + p.s("！\n")
 			if v.Record.Overall {
-				record = "🏆 個人紀錄：你釣過最重的魚！\n"
+				record = p.s("🏆 個人紀錄：你釣過最重的魚！\n")
 			}
 		}
-		e = &ui.Embed{Title: fmt.Sprintf("🎉 釣到了 %s %s！", fish.Emoji, fish.Name), Color: rarityColor[fish.Rarity], Description: fmt.Sprintf(
+		e = &ui.Embed{Title: p.f("🎉 釣到了 %s %s！", fish.Emoji, p.s(fish.Name)), Color: rarityColor[fish.Rarity], Description: p.f(
 			"%s\n🐟 魚類：**%s**\n%s 稀有度：**%s**\n⚖️ 重量：**%s**\n💰 價值：**%s** 金幣\n%s%s\n%s\n🧺 已放進魚簍",
-			Line, fish.Name, fish.RarityEmoji, fish.RarityName, fish.WeightText, money(fish.Price), record, Line, celebrate[fish.Rarity])}
+			Line, p.s(fish.Name), fish.RarityEmoji, p.s(fish.RarityName), fish.WeightText, money(fish.Price), record, Line, celebrate[fish.Rarity])}
 		id := fish.ID
 		p.fishSelected = &id
-		p.button("再釣一次", again, btn{emoji: "🎣", style: ui.Success, row: 0})
-		p.button("分享到頻道", func(ctx context.Context, it ui.Interaction) error {
+		p.button(p.s("再釣一次"), again, btn{emoji: "🎣", style: ui.Success, row: 0})
+		p.button(p.s("分享到頻道"), func(ctx context.Context, it ui.Interaction) error {
 			p.shareFish(ctx, it, id, false)
 			return nil
 		}, btn{emoji: "📢", row: 0, disabled: p.groupID == nil})
 	} else {
-		e = &ui.Embed{Title: "😢 " + v.StatusName, Color: Grey, Description: fmt.Sprintf(
+		e = &ui.Embed{Title: "😢 " + v.StatusName, Color: Grey, Description: p.f(
 			"%s\n\n%s\n這次的對手是 **%s** 級的魚。\n💡 拉扯時看 💬 提示：魚衝刺時先放線或等待，竄向一邊就壓同方向，平靜、累了的時候收線；別連續收線，張力會越來越高。",
 			deref(v.LastText), Line, rarityTag(v.Rarity))}
-		p.button("再釣一次", again, btn{emoji: "🎣", style: ui.Success, row: 0})
+		p.button(p.s("再釣一次"), again, btn{emoji: "🎣", style: ui.Success, row: 0})
 	}
-	p.nav("我的魚簍", "fish_basket", btn{emoji: "🎒", row: 0})
-	p.nav("釣具商店", "fish_shop", btn{emoji: "🛒", row: 0}) // 2026-11-19：結算後直接補魚餌、換裝備
-	p.nav("回釣魚中心", "fishing", btn{emoji: "🎣", row: 0})
-	e.AddField("🎒 剩餘資源", suppliesText(v), false)
+	p.nav(p.s("我的魚簍"), "fish_basket", btn{emoji: "🎒", row: 0})
+	p.nav(p.s("釣具商店"), "fish_shop", btn{emoji: "🛒", row: 0}) // 2026-11-19：結算後直接補魚餌、換裝備
+	p.nav(p.s("回釣魚中心"), "fishing", btn{emoji: "🎣", row: 0})
+	e.AddField(p.s("🎒 剩餘資源"), suppliesText(v), false)
 	return e
 }
 
@@ -489,21 +489,21 @@ func (p *Panel) buildFishBasket(_ context.Context, data any) (*ui.Embed, error) 
 	for i, f := range shown {
 		lines[i] = fishLine(f, p.fishPage*basketPage+i+1)
 	}
-	list := "魚簍空空的，去釣魚吧！🎣"
+	list := p.s("魚簍空空的，去釣魚吧！🎣")
 	if len(lines) > 0 {
 		list = strings.Join(lines, "\n")
 	}
-	e := &ui.Embed{Title: "🎒 我的魚簍", Color: Sea, Description: runes(autoFishNote(d.AutoFish)+fmt.Sprintf("🧺 **%d / %d** 隻　💰 全部價值 **%s** 金　💳 金幣 **%s**%s\n%s\n%s",
+	e := &ui.Embed{Title: p.s("🎒 我的魚簍"), Color: Sea, Description: runes(autoFishNote(d.AutoFish)+p.f("🧺 **%d / %d** 隻　💰 全部價值 **%s** 金　💳 金幣 **%s**%s\n%s\n%s",
 		len(fish), d.Capacity, money(d.TotalValue), money(d.Gold), autoFishLine(d.AutoFish), Line, list), 4000)}
 	if pages > 1 {
-		e.Footer = fmt.Sprintf("第 %d / %d 頁　🏆 = 該魚種的個人最重紀錄", p.fishPage+1, pages)
+		e.Footer = p.f("第 %d / %d 頁　🏆 = 該魚種的個人最重紀錄", p.fishPage+1, pages)
 	} else {
-		e.Footer = "🏆 = 該魚種的個人最重紀錄"
+		e.Footer = p.s("🏆 = 該魚種的個人最重紀錄")
 	}
 	// 2026-11-16 原本有「選一隻魚」與「勾選多隻魚」兩個內容相同的選單，合併成一個：
 	// 選 1 隻 → 打開這隻魚（查看、出售、分享）；選多隻 → 一起出售，按「確認出售」才賣。
 	if len(shown) > 0 {
-		multi := &ui.Select{Placeholder: "🐟 選魚：1 隻可查看／分享，多隻一起出售…", Row: 0, MinValues: 1, MaxValues: len(shown),
+		multi := &ui.Select{Placeholder: p.s("🐟 選魚：1 隻可查看／分享，多隻一起出售…"), Row: 0, MinValues: 1, MaxValues: len(shown),
 			OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
 				var ids []int64
 				for _, v := range values {
@@ -519,12 +519,12 @@ func (p *Panel) buildFishBasket(_ context.Context, data any) (*ui.Embed, error) 
 					return nil
 				}
 				p.fishSellIDs, p.confirm = ids, ""
-				p.refresh(ctx, it, "👇 確認要賣的魚，再按「確認出售」。", nil, "重繪", time.Time{})
+				p.refresh(ctx, it, p.s("👇 確認要賣的魚，再按「確認出售」。"), nil, p.s("重繪"), time.Time{})
 				return nil
 			}}
 		for _, f := range shown {
-			multi.Options = append(multi.Options, ui.SelectOption{Label: runes(f.Name+" "+f.WeightText, 100), Value: fmt.Sprint(f.ID),
-				Description: runes(fmt.Sprintf("%s｜💰 %s 金", f.RarityName, money(f.Price)), 100), Emoji: f.RarityEmoji,
+			multi.Options = append(multi.Options, ui.SelectOption{Label: runes(p.s(f.Name)+" "+f.WeightText, 100), Value: fmt.Sprint(f.ID),
+				Description: runes(p.f("%s｜💰 %s 金", p.s(f.RarityName), money(f.Price)), 100), Emoji: f.RarityEmoji,
 				Default: slices.Contains(p.fishSellIDs, f.ID)})
 		}
 		p.add(multi)
@@ -542,35 +542,35 @@ func (p *Panel) buildFishBasket(_ context.Context, data any) (*ui.Embed, error) 
 		for i, f := range chosen {
 			chosenLines[i] = fishLine(f, 0)
 		}
-		e.AddField("⚠️ 確認出售", runes(strings.Join(chosenLines, "\n"), 900)+fmt.Sprintf("\n共 **%d** 隻，**%s** 金幣", len(chosen), money(total)), false)
-		p.button(fmt.Sprintf("確認出售 %d 隻（%s 金）", len(chosen), money(total)), func(ctx context.Context, it ui.Interaction) error {
+		e.AddField(p.s("⚠️ 確認出售"), runes(strings.Join(chosenLines, "\n"), 900)+p.f("\n共 **%d** 隻，**%s** 金幣", len(chosen), money(total)), false)
+		p.button(p.f("確認出售 %d 隻（%s 金）", len(chosen), money(total)), func(ctx context.Context, it ui.Interaction) error {
 			ids := p.fishSellIDs
 			p.fishSellIDs = nil
 			p.act(ctx, it, p.sellFish(ids), actOpts{})
 			return nil
 		}, btn{emoji: "✅", row: 2, style: ui.Danger})
-		p.button("取消", func(ctx context.Context, it ui.Interaction) error {
+		p.button(p.s("取消"), func(ctx context.Context, it ui.Interaction) error {
 			p.fishSellIDs = nil
-			p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+			p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
 			return nil
 		}, btn{emoji: "✖️", row: 2})
 	}
 	confirming := p.confirm == "fish_sell_all"
-	label, style := "全部出售", ui.Success
+	label, style := p.s("全部出售"), ui.Success
 	if confirming {
-		label, style = "確認全部出售", ui.Danger
+		label, style = p.s("確認全部出售"), ui.Danger
 	}
 	p.button(label, func(ctx context.Context, it ui.Interaction) error {
 		if p.confirm != "fish_sell_all" {
 			p.confirm = "fish_sell_all"
-			p.refresh(ctx, it, fmt.Sprintf("⚠️ 確定要把魚簍裡全部 %d 隻魚賣掉嗎（共 %s 金幣）？再按一次「確認全部出售」。", len(fish), money(d.TotalValue)),
-				nil, "重繪", time.Time{})
+			p.refresh(ctx, it, p.f("⚠️ 確定要把魚簍裡全部 %d 隻魚賣掉嗎（共 %s 金幣）？再按一次「確認全部出售」。", len(fish), money(d.TotalValue)),
+				nil, p.s("重繪"), time.Time{})
 			return nil
 		}
 		p.act(ctx, it, p.sellFish(nil), actOpts{})
 		return nil
 	}, btn{emoji: "💰", row: 3, disabled: len(fish) == 0, style: style})
-	p.button("展示最珍貴的魚", func(ctx context.Context, it ui.Interaction) error {
+	p.button(p.s("展示最珍貴的魚"), func(ctx context.Context, it ui.Interaction) error {
 		p.shareFish(ctx, it, fish[0].ID, true)
 		return nil
 	}, btn{emoji: "🏆", row: 3, disabled: len(fish) == 0 || p.groupID == nil})
@@ -579,26 +579,26 @@ func (p *Panel) buildFishBasket(_ context.Context, data any) (*ui.Embed, error) 
 			return func(ctx context.Context, it ui.Interaction) error {
 				p.fishPage = ((p.fishPage+step)%pages + pages) % pages
 				p.fishSellIDs = nil
-				p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+				p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
 				return nil
 			}
 		}
-		p.button("上一頁", turn(-1), btn{emoji: "◀️", row: 3})
-		p.button("下一頁", turn(1), btn{emoji: "▶️", row: 3})
+		p.button(p.s("上一頁"), turn(-1), btn{emoji: "◀️", row: 3})
+		p.button(p.s("下一頁"), turn(1), btn{emoji: "▶️", row: 3})
 	}
-	p.nav("回釣魚中心", "fishing", btn{emoji: "🎣", row: 4})
-	p.nav("回總覽", "main", btn{emoji: "🏠", row: 4})
+	p.nav(p.s("回釣魚中心"), "fishing", btn{emoji: "🎣", row: 4})
+	p.nav(p.s("回總覽"), "main", btn{emoji: "🏠", row: 4})
 	// 魚簍升級（2026-11-15）：價格高，按兩次確認
 	if d.NextCapacity > 0 {
-		label, style := fmt.Sprintf("升級魚簍（%d 格，%s 金）", d.NextCapacity, money(d.NextPrice)), ui.Primary
+		label, style := p.f("升級魚簍（%d 格，%s 金）", d.NextCapacity, money(d.NextPrice)), ui.Primary
 		if p.confirm == "fish_basket_upgrade" {
-			label, style = "確認升級魚簍", ui.Danger
+			label, style = p.s("確認升級魚簍"), ui.Danger
 		}
 		p.button(label, func(ctx context.Context, it ui.Interaction) error {
 			if p.confirm != "fish_basket_upgrade" {
 				p.confirm = "fish_basket_upgrade"
-				p.refresh(ctx, it, fmt.Sprintf("⚠️ 魚簍升級到 %d 格需要 %s 金幣，再按一次「確認升級魚簍」。", d.NextCapacity, money(d.NextPrice)),
-					nil, "重繪", time.Time{})
+				p.refresh(ctx, it, p.f("⚠️ 魚簍升級到 %d 格需要 %s 金幣，再按一次「確認升級魚簍」。", d.NextCapacity, money(d.NextPrice)),
+					nil, p.s("重繪"), time.Time{})
 				return nil
 			}
 			p.act(ctx, it, p.call("upgrade_fish_basket", func(ctx context.Context) (services.ActionResult, error) {
@@ -607,7 +607,7 @@ func (p *Panel) buildFishBasket(_ context.Context, data any) (*ui.Embed, error) 
 			return nil
 		}, btn{emoji: "🧺", row: 4, style: style, disabled: d.Gold < d.NextPrice})
 	} else {
-		p.button("魚簍已是最大", func(context.Context, ui.Interaction) error { return nil }, btn{emoji: "🧺", row: 4, disabled: true})
+		p.button(p.s("魚簍已是最大"), func(context.Context, ui.Interaction) error { return nil }, btn{emoji: "🧺", row: 4, disabled: true})
 	}
 	return e, nil
 }
@@ -670,31 +670,31 @@ func (p *Panel) buildFishDetail(_ context.Context, data any) (*ui.Embed, error) 
 	f := data.(services.BasketFish)
 	record := ""
 	if f.Record {
-		record = "🏆 這是你釣過最重的" + f.Name + "！\n"
+		record = p.s("🏆 這是你釣過最重的") + p.s(f.Name) + p.s("！\n")
 	}
-	e := &ui.Embed{Title: f.Emoji + " " + f.Name, Color: rarityColor[f.Rarity], Description: fmt.Sprintf(
+	e := &ui.Embed{Title: f.Emoji + " " + p.s(f.Name), Color: rarityColor[f.Rarity], Description: p.f(
 		"%s\n%s 稀有度：**%s**\n⚖️ 重量：**%s**\n💰 價值：**%s** 金幣\n🕒 釣到時間：%s\n%s%s",
-		Line, f.RarityEmoji, f.RarityName, f.WeightText, money(f.Price), tsv(f.CaughtAt, "f"), record, Line)}
+		Line, f.RarityEmoji, p.s(f.RarityName), f.WeightText, money(f.Price), tsv(f.CaughtAt, "f"), record, Line)}
 	id := f.ID
 	confirming := p.confirm == "fish_sell_one"
-	p.button("分享到頻道", func(ctx context.Context, it ui.Interaction) error {
+	p.button(p.s("分享到頻道"), func(ctx context.Context, it ui.Interaction) error {
 		p.shareFish(ctx, it, id, false)
 		return nil
 	}, btn{emoji: "📢", row: 0, style: ui.Primary, disabled: p.groupID == nil})
-	label, style := fmt.Sprintf("出售（%s 金）", money(f.Price)), ui.Success
+	label, style := p.f("出售（%s 金）", money(f.Price)), ui.Success
 	if confirming {
-		label, style = "確認出售", ui.Danger
+		label, style = p.s("確認出售"), ui.Danger
 	}
 	p.button(label, func(ctx context.Context, it ui.Interaction) error {
 		if p.confirm != "fish_sell_one" {
 			p.confirm = "fish_sell_one"
-			p.refresh(ctx, it, fmt.Sprintf("⚠️ 確定要賣掉這隻%s（%s 金幣）嗎？再按一次「確認出售」。", f.Name, money(f.Price)), nil, "重繪", time.Time{})
+			p.refresh(ctx, it, p.f("⚠️ 確定要賣掉這隻%s（%s 金幣）嗎？再按一次「確認出售」。", p.s(f.Name), money(f.Price)), nil, p.s("重繪"), time.Time{})
 			return nil
 		}
 		p.act(ctx, it, p.sellFish([]int64{id}), actOpts{page: "fish_basket"})
 		return nil
 	}, btn{emoji: "💰", row: 0, style: style})
-	p.nav("回魚簍", "fish_basket", btn{emoji: "↩️", row: 0})
+	p.nav(p.s("回魚簍"), "fish_basket", btn{emoji: "↩️", row: 0})
 	return e, nil
 }
 
@@ -715,27 +715,27 @@ func (p *Panel) shareFish(ctx context.Context, it ui.Interaction, fishID int64, 
 	if err != nil {
 		p.lastShareAt = time.Time{}
 		logUnexpected(err, "分享魚類失敗", "player", p.playerID)
-		p.showError(ctx, it, PlayerMessage(err))
+		p.showError(ctx, it, p.msg(err))
 		return
 	}
-	title := fmt.Sprintf("🎣 %s 釣到了一隻%s魚！", card.PlayerName, card.RarityName)
+	title := p.f("🎣 %s 釣到了一隻%s魚！", card.PlayerName, p.s(card.RarityName))
 	if showcase {
-		title = fmt.Sprintf("🏆 %s 展示最珍貴的收藏！", card.PlayerName)
+		title = p.f("🏆 %s 展示最珍貴的收藏！", card.PlayerName)
 	}
 	record := ""
 	if card.Record.Species {
-		record = "🏆 個人紀錄：目前最大捕獲重量\n"
+		record = p.s("🏆 個人紀錄：目前最大捕獲重量\n")
 	}
-	e := &ui.Embed{Title: title, Color: rarityColor[card.Rarity], Description: fmt.Sprintf(
+	e := &ui.Embed{Title: title, Color: rarityColor[card.Rarity], Description: p.f(
 		"%s\n%s 魚類：**%s**\n%s 稀有度：**%s**\n⚖️ 重量：**%s**\n💰 價值：**%s** 金幣\n%s%s\n%s", // 玩家名稱已在標題，內文不再重複
-		Line, card.Emoji, card.Name, card.RarityEmoji, card.RarityName, card.WeightText, money(card.Price), record, Line, celebrate[card.Rarity])}
-	notice := "📢 已分享到這個頻道！（分享不會消耗魚）"
+		Line, card.Emoji, p.s(card.Name), card.RarityEmoji, p.s(card.RarityName), card.WeightText, money(card.Price), record, Line, celebrate[card.Rarity])}
+	notice := p.s("📢 已分享到這個頻道！（分享不會消耗魚）")
 	if _, err := it.Followup(ctx, ui.Message{Embed: e}); err != nil {
 		slog.Warn("分享魚類失敗", "type", fmt.Sprintf("%T", err))
 		p.lastShareAt = time.Time{}
-		notice = "⚠️ 訊息沒有送出（Bot 可能沒有這個頻道的發言權限）。"
+		notice = p.s("⚠️ 訊息沒有送出（Bot 可能沒有這個頻道的發言權限）。")
 	}
-	p.refresh(ctx, it, notice, nil, "重繪", time.Time{})
+	p.refresh(ctx, it, notice, nil, p.s("重繪"), time.Time{})
 }
 
 // ======================================================================
@@ -763,30 +763,30 @@ func (p *Panel) buildFishCodex(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		lines := make([]string, len(rows))
 		for i, x := range rows {
-			line := fmt.Sprintf("❓ ？？？　💰 %d–%d", x.MinPrice, x.MaxPrice)
+			line := p.f("❓ ？？？　💰 %d–%d", x.MinPrice, x.MaxPrice)
 			if x.Caught {
 				best := 0
 				if x.BestWeight != nil {
 					best = *x.BestWeight
 				}
-				line = fmt.Sprintf("%s **%s** ×%d　最重 %s　💰 %d–%d", x.Emoji, x.Name, x.Count, fishing.WeightText(best), x.MinPrice, x.MaxPrice)
+				line = p.f("%s **%s** ×%d　最重 %s　💰 %d–%d", x.Emoji, p.s(x.Name), x.Count, fishing.WeightText(best), x.MinPrice, x.MaxPrice)
 			}
 			if len(x.BaitNames) > 0 {
-				line += "　🔒 需要" + strings.Join(x.BaitNames, "或")
+				line += p.s("　🔒 需要") + strings.Join(x.BaitNames, p.s("或"))
 			}
 			if x.LimitText != "" {
-				line += "　" + x.LimitText
+				line += p.s("　") + x.LimitText
 			}
 			lines[i] = line
 		}
 		lo, hi, _ := fishing.PriceSpan(prices, r)
-		blocks = append(blocks, fmt.Sprintf("**%s**（%s–%s 金）\n%s", rarityTag(r), money(lo), money(hi), strings.Join(lines, "\n")))
+		blocks = append(blocks, p.f("**%s**（%s–%s 金）\n%s", rarityTag(r), money(lo), money(hi), strings.Join(lines, "\n")))
 	}
-	e := &ui.Embed{Title: "📖 魚類圖鑑", Color: Sea, Description: runes(fmt.Sprintf("已發現 **%d / %d** 種\n%s\n%s", d.Discovered, d.Total, Line,
+	e := &ui.Embed{Title: p.s("📖 魚類圖鑑"), Color: Sea, Description: runes(p.f("已發現 **%d / %d** 種\n%s\n%s", d.Discovered, d.Total, Line,
 		strings.Join(blocks, "\n\n")), 4000),
-		Footer: "釣到一次就會登記；賣掉的魚也算。❓ 是還沒釣過的魚。🔒 要裝備指定的魚餌才釣得到；季節每 14 天輪替（冬→春→夏→秋），時段是台灣時間。"}
-	p.nav("回釣魚中心", "fishing", btn{emoji: "🎣", row: 0})
-	p.nav("回總覽", "main", btn{emoji: "🏠", row: 0})
+		Footer: p.s("釣到一次就會登記；賣掉的魚也算。❓ 是還沒釣過的魚。🔒 要裝備指定的魚餌才釣得到；季節每 14 天輪替（冬→春→夏→秋），時段是台灣時間。")}
+	p.nav(p.s("回釣魚中心"), "fishing", btn{emoji: "🎣", row: 0})
+	p.nav(p.s("回總覽"), "main", btn{emoji: "🏠", row: 0})
 	return e, nil
 }
 
@@ -809,38 +809,38 @@ func (p *Panel) buildFishRank(_ context.Context, data any) (*ui.Embed, error) {
 	medal := func(i int) string { return medalOr(i, fmt.Sprintf("`%2d`", i)) }
 	catches := make([]string, len(d.board.Catches))
 	for i, x := range d.board.Catches {
-		catches[i] = fmt.Sprintf("%s **%s**　🐟 %d 隻　🟡 %d", medal(i+1), x.PlayerName, x.Count, x.Legendary)
+		catches[i] = p.f("%s **%s**　🐟 %d 隻　🟡 %d", medal(i+1), x.PlayerName, x.Count, x.Legendary)
 	}
 	best := make([]string, len(d.board.Best))
 	for i, x := range d.board.Best {
-		best[i] = fmt.Sprintf("%s **%s**　%s%s %s %s　💰 %d", medal(i+1), x.PlayerName, fishing.RarityEmoji[x.Rarity], x.Emoji, x.FishName,
+		best[i] = p.f("%s **%s**　%s%s %s %s　💰 %d", medal(i+1), x.PlayerName, fishing.RarityEmoji[x.Rarity], x.Emoji, x.FishName,
 			fishing.WeightText(x.WeightG), x.Price)
 	}
 	orNone := func(lines []string) string {
 		if len(lines) == 0 {
-			return "還沒有人釣到魚"
+			return p.s("還沒有人釣到魚")
 		}
 		return strings.Join(lines, "\n")
 	}
-	scope := "本伺服器"
+	scope := p.s("本伺服器")
 	if d.global {
-		scope = "全部玩家"
+		scope = p.s("全部玩家")
 	}
-	e := &ui.Embed{Title: fmt.Sprintf("🏆 釣魚排行榜（%s）", scope), Color: Gold, Description: runes(
-		"**🐟 捕獲數**\n"+orNone(catches)+fmt.Sprintf("\n\n%s\n**💎 最有價值的一隻魚**\n", Line)+orNone(best), 4000)}
+	e := &ui.Embed{Title: p.f("🏆 釣魚排行榜（%s）", scope), Color: Gold, Description: runes(
+		p.s("**🐟 捕獲數**\n")+orNone(catches)+p.f("\n\n%s\n**💎 最有價值的一隻魚**\n", Line)+orNone(best), 4000)}
 	if p.groupID != nil {
-		label := "看全部玩家"
+		label := p.s("看全部玩家")
 		if d.global {
-			label = "看本伺服器"
+			label = p.s("看本伺服器")
 		}
 		p.button(label, func(ctx context.Context, it ui.Interaction) error {
 			p.fishRankGlobal = !p.fishRankGlobal
-			p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+			p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
 			return nil
 		}, btn{emoji: "🔁", row: 0})
 	}
-	p.nav("回釣魚中心", "fishing", btn{emoji: "🎣", row: 0})
-	p.nav("回總覽", "main", btn{emoji: "🏠", row: 0})
+	p.nav(p.s("回釣魚中心"), "fishing", btn{emoji: "🎣", row: 0})
+	p.nav(p.s("回總覽"), "main", btn{emoji: "🏠", row: 0})
 	return e, nil
 }
 
@@ -866,39 +866,39 @@ func (p *Panel) buildFishShop(_ context.Context, data any) (*ui.Embed, error) {
 		var state string
 		equipped := ""
 		if i.Equipped {
-			equipped = "　🟢 裝備中"
+			equipped = p.s("　🟢 裝備中")
 		}
 		switch {
 		case !i.Unlocked:
-			state = fmt.Sprintf("🔒 農場 Lv.%d 解鎖", i.RequiredLevel)
+			state = p.f("🔒 農場 Lv.%d 解鎖", i.RequiredLevel)
 		case i.Kind == "bait":
-			state = fmt.Sprintf("🎒 持有 **%d**", i.Quantity) + equipped
+			state = p.f("🎒 持有 **%d**", i.Quantity) + equipped
 		case i.Owned:
-			state = "✅ 已擁有" + equipped
+			state = p.s("✅ 已擁有") + equipped
 		default:
-			state = "🛒 可購買"
+			state = p.s("🛒 可購買")
 		}
 		stock := ""
 		if i.Stock != nil {
-			stock = fmt.Sprintf("　📦 庫存 %d", *i.Stock)
+			stock = p.f("　📦 庫存 %d", *i.Stock)
 		}
 		mark, unit := "", ""
 		if "fish:"+i.Code == selected {
 			mark = "▶ "
 		}
 		if i.Kind == "bait" {
-			unit = " ／個"
+			unit = p.s(" ／個")
 		}
-		blocks[i.Kind] = append(blocks[i.Kind], fmt.Sprintf("%s%s **%s**　💰 **%s** 金%s　%s%s\n　📝 %s\n　✨ %s", mark, i.Emoji, i.Name,
-			money(i.Price), unit, state, stock, i.Description, i.EffectsText))
+		blocks[i.Kind] = append(blocks[i.Kind], p.f("%s%s **%s**　💰 **%s** 金%s　%s%s\n　📝 %s\n　✨ %s", mark, i.Emoji, p.s(i.Name),
+			money(i.Price), unit, state, stock, p.s(i.Description), p.s(i.EffectsText)))
 	}
-	parts := []string{fmt.Sprintf("💰 你的金幣：**%s**　⭐ 農場 Lv **%d**", money(d.Gold), d.Level)}
+	parts := []string{p.f("💰 你的金幣：**%s**　⭐ 農場 Lv **%d**", money(d.Gold), d.Level)}
 	for _, kind := range fishing.GearKinds {
 		if len(blocks[kind]) > 0 {
 			parts = append(parts, fmt.Sprintf("**%s %s**\n", fishing.GearKindEmoji[kind], fishing.GearKindNames[kind])+strings.Join(blocks[kind], "\n\n"))
 		}
 	}
-	e := &ui.Embed{Title: "🎣 ✦ 釣具商店 ✦", Color: Sea, Description: runes(strings.Join(parts, "\n\n"), 4000)}
+	e := &ui.Embed{Title: p.s("🎣 ✦ 釣具商店 ✦"), Color: Sea, Description: runes(strings.Join(parts, "\n\n"), 4000)}
 	// makePicker 依目前資料建立選取的商品（2026-11-16：保留選取的商品每次重繪都重建，金幣不足、可買數量才會跟著購買後的金幣更新）
 	makePicker := func(key string) (*Picker, error) {
 		var pk *Picker
@@ -915,14 +915,14 @@ func (p *Panel) buildFishShop(_ context.Context, data any) (*ui.Embed, error) {
 			if err != nil {
 				return "", err
 			}
-			return fmt.Sprintf("%s\n💰 剩餘金幣 **%s**", r.Message, money(r.Gold)), nil
+			return p.f("%s\n💰 剩餘金幣 **%s**", r.Message, money(r.Gold)), nil
 		}
-		label := i.Emoji + " " + i.Name
+		label := i.Emoji + " " + p.s(i.Name)
 		if i.Kind == "bait" {
-			pk = &Picker{Key: key, Label: label, PriceText: fmt.Sprintf("每個 %s 金", money(i.Price)), Verb: "買",
+			pk = &Picker{Key: key, Label: label, PriceText: p.f("每個 %s 金", money(i.Price)), Verb: p.s("買"),
 				Max: max(1, min(fishing.BaitMaxBuy, d.Gold/max(1, i.Price))), Short: shortOf(d.Gold, i.Price), Presets: []int{1, 10, 50}, Keep: true, Run: buy}
 		} else {
-			pk = &Picker{Key: key, Label: label, PriceText: money(i.Price) + " 金", Confirm: true, Max: 1, Short: shortOf(d.Gold, i.Price), Run: buy}
+			pk = &Picker{Key: key, Label: label, PriceText: money(i.Price) + p.s(" 金"), Confirm: true, Max: 1, Short: shortOf(d.Gold, i.Price), Run: buy}
 		}
 		return pk, nil
 	}
@@ -932,32 +932,32 @@ func (p *Panel) buildFishShop(_ context.Context, data any) (*ui.Embed, error) {
 			return err
 		}
 		p.picker = pk
-		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+		p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
 		return nil
 	}
 	if p.picker != nil && p.picker.Keep {
 		p.picker, _ = makePicker(p.picker.Key) // 商品已經下架時取消選取
 	}
 	if p.picker != nil {
-		hint := "👇 按下方的數量按鈕購買"
+		hint := p.s("👇 按下方的數量按鈕購買")
 		if p.picker.Confirm {
-			hint = "👇 按「確認購買」完成購買"
+			hint = p.s("👇 按「確認購買」完成購買")
 		}
-		e.AddField("🛒 已選擇", fmt.Sprintf("**%s**（%s）\n%s", p.picker.Label, p.picker.PriceText, hint), false)
+		e.AddField(p.s("🛒 已選擇"), p.f("**%s**（%s）\n%s", p.picker.Label, p.picker.PriceText, hint), false)
 	} else {
-		e.Footer = "魚竿、魚線、魚餌可以分別裝備；買第一件時會自動裝備。使用農場金幣購買。"
+		e.Footer = p.s("魚竿、魚線、魚餌可以分別裝備；買第一件時會自動裝備。使用農場金幣購買。")
 	}
 	var options []option
 	for _, i := range d.Items {
 		if i.Active && i.Unlocked && (i.Kind == "bait" || !i.Owned) && (i.Stock == nil || *i.Stock > 0) {
-			options = append(options, option{i.Name, "fish:" + i.Code, fmt.Sprintf("%s｜💰 %s 金｜%s", i.KindName, money(i.Price), i.EffectsText), i.Emoji})
+			options = append(options, option{p.s(i.Name), "fish:" + i.Code, p.f("%s｜💰 %s 金｜%s", p.s(i.KindName), money(i.Price), p.s(i.EffectsText)), i.Emoji})
 		}
 	}
-	p.selectMenu("🛒 選擇要買的釣具…", options, pick, 0, selected)
+	p.selectMenu(p.s("🛒 選擇要買的釣具…"), options, pick, 0, selected)
 	p.quantityButtons(1)
 	p.equipSelect(d.Items, 2)
 	p.shopTabs(3, shopTabFish)
-	p.nav("回釣魚中心", "fishing", btn{emoji: "🎣", row: 4})
-	p.nav("回總覽", "main", btn{emoji: "🏠", row: 4})
+	p.nav(p.s("回釣魚中心"), "fishing", btn{emoji: "🎣", row: 4})
+	p.nav(p.s("回總覽"), "main", btn{emoji: "🏠", row: 4})
 	return e, nil
 }

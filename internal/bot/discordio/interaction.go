@@ -106,6 +106,9 @@ func (it *Interaction) AvatarURL() string {
 	return ""
 }
 
+// Locale 玩家 Discord 用戶端的語言（例如 zh-TW、en-US；取不到時為 ""）。
+func (it *Interaction) Locale() string { return string(it.i.Locale) }
+
 // GuildID 伺服器 ID（私訊為 ""）。
 func (it *Interaction) GuildID() string { return it.i.GuildID }
 

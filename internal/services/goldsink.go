@@ -124,7 +124,7 @@ func (s *GameService) BuyBadge(ctx context.Context, playerID int64, code string)
 			rec{ItemCode: "badge_" + code, Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("📛 買下名牌 %s %s，花費 %s 金幣，已經裝備（排行榜、日報與世界 Boss 排行的名字前面會顯示）。",
+		return result(txf(ctx, "📛 買下名牌 %s %s，花費 %s 金幣，已經裝備（排行榜、日報與世界 Boss 排行的名字前面會顯示）。",
 			b.Emoji, b.Name, numfmt.Comma(price)), farm.Gold, -price, "", 0), nil
 	})
 }
@@ -141,7 +141,7 @@ func (s *GameService) EquipBadge(ctx context.Context, playerID int64, code strin
 			if err := s.saveFarm(ctx, t, farm, db.C("badge", nil)); err != nil {
 				return ActionResult{}, err
 			}
-			return result("📛 已取消顯示名牌。", farm.Gold, 0, "", 0), nil
+			return result(txt(ctx, "📛 已取消顯示名牌。"), farm.Gold, 0, "", 0), nil
 		}
 		b, ok := cosmetics.FindBadge(code)
 		if !ok {
@@ -158,7 +158,7 @@ func (s *GameService) EquipBadge(ctx context.Context, playerID int64, code strin
 		if err := s.saveFarm(ctx, t, farm, db.C("badge", b.Code)); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("📛 改為顯示名牌 %s %s。", b.Emoji, b.Name), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "📛 改為顯示名牌 %s %s。", b.Emoji, b.Name), farm.Gold, 0, "", 0), nil
 	})
 }
 
@@ -319,9 +319,9 @@ func (s *GameService) DonateReputation(ctx context.Context, playerID int64, amou
 		if err := s.record(ctx, t, farm, rules.EvReputationDonate, desc, rec{Quantity: amount, GoldDelta: -amount}); err != nil {
 			return ActionResult{}, err
 		}
-		msg := fmt.Sprintf("🏛️ 捐給農會 %s 金幣，聲望 +%s（共 %s）。", numfmt.Comma(amount), numfmt.Comma(amount), numfmt.Comma(farm.Reputation))
+		msg := txf(ctx, "🏛️ 捐給農會 %s 金幣，聲望 +%s（共 %s）。", numfmt.Comma(amount), numfmt.Comma(amount), numfmt.Comma(farm.Reputation))
 		if after > before {
-			msg += fmt.Sprintf("\n🎉 聲望升到 **Lv.%d**！", after)
+			msg += txf(ctx, "\n🎉 聲望升到 **Lv.%d**！", after)
 			var got []string
 			for _, r := range reputation.RewardsBetween(before, after) {
 				if err := s.grantReputationReward(ctx, t, farm, r); err != nil {
@@ -330,10 +330,10 @@ func (s *GameService) DonateReputation(ctx context.Context, playerID int64, amou
 				got = append(got, RewardText(r))
 			}
 			if len(got) > 0 {
-				msg += "\n🎁 獲得 " + strings.Join(got, "、") + "（稱號到「🎖️ 稱號」選用，名牌到「📛 名牌」裝備）"
+				msg += txt(ctx, "\n🎁 獲得 ") + strings.Join(got, txt(ctx, "、")) + txt(ctx, "（稱號到「🎖️ 稱號」選用，名牌到「📛 名牌」裝備）")
 			}
 		}
-		msg += fmt.Sprintf("\n下一級 Lv.%d 還差 %s 聲望。", after+1, numfmt.Comma(reputation.Need(after+1)-farm.Reputation))
+		msg += txf(ctx, "\n下一級 Lv.%d 還差 %s 聲望。", after+1, numfmt.Comma(reputation.Need(after+1)-farm.Reputation))
 		return result(msg, farm.Gold, -amount, "", 0), nil
 	})
 }
@@ -457,11 +457,11 @@ func (s *GameService) BuyCosmetic(ctx context.Context, playerID int64, kind, cod
 		}
 		farm.Gold -= price
 		cols := []db.Col{db.C("gold", farm.Gold)}
-		tail := "到寵物頁選一隻寵物換上。"
+		tail := txt(ctx, "到寵物頁選一隻寵物換上。")
 		if kind == cosmetics.KindTheme {
 			farm.Theme = &it.Code
 			cols = append(cols, db.C("theme", it.Code))
-			tail = "已經套用，回「🌱 農田」就能看到。"
+			tail = txt(ctx, "已經套用，回「🌱 農田」就能看到。")
 		}
 		if err := s.saveFarm(ctx, t, farm, cols...); err != nil {
 			return ActionResult{}, err
@@ -473,7 +473,7 @@ func (s *GameService) BuyCosmetic(ctx context.Context, playerID int64, kind, cod
 			rec{ItemCode: kind + "_" + code, Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🎨 買下%s %s %s，花費 %s 金幣，%s", what, it.Emoji, it.Name, numfmt.Comma(price), tail),
+		return result(txf(ctx, "🎨 買下%s %s %s，花費 %s 金幣，%s", what, it.Emoji, it.Name, numfmt.Comma(price), tail),
 			farm.Gold, -price, "", 0), nil
 	})
 }
@@ -490,7 +490,7 @@ func (s *GameService) SetTheme(ctx context.Context, playerID int64, code string)
 			if err := s.saveFarm(ctx, t, farm, db.C("theme", nil)); err != nil {
 				return ActionResult{}, err
 			}
-			return result("🖼️ 換回預設外觀。", farm.Gold, 0, "", 0), nil
+			return result(txt(ctx, "🖼️ 換回預設外觀。"), farm.Gold, 0, "", 0), nil
 		}
 		it, ok := findCosmetic(cosmetics.KindTheme, code)
 		if !ok {
@@ -507,7 +507,7 @@ func (s *GameService) SetTheme(ctx context.Context, playerID int64, code string)
 		if err := s.saveFarm(ctx, t, farm, db.C("theme", it.Code)); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🖼️ 套用主題 %s %s。", it.Emoji, it.Name), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "🖼️ 套用主題 %s %s。", it.Emoji, it.Name), farm.Gold, 0, "", 0), nil
 	})
 }
 
@@ -533,7 +533,7 @@ func (s *GameService) SetPetLook(ctx context.Context, playerID int64, petCode, k
 			return ActionResult{}, gameerr.Validationf("你還沒有%s。", pet.Name)
 		}
 		var value any // nil = 拿掉
-		msg := fmt.Sprintf("%s %s 拿掉了%s。", pet.Emoji, pet.Name, cosmeticKindName(kind))
+		msg := txf(ctx, "%s %s 拿掉了%s。", pet.Emoji, pet.Name, cosmeticKindName(kind))
 		if code != "" {
 			it, ok := findCosmetic(kind, code)
 			if !ok {
@@ -547,7 +547,7 @@ func (s *GameService) SetPetLook(ctx context.Context, playerID int64, petCode, k
 				return ActionResult{}, gameerr.Validationf("你還沒有%s %s %s。", cosmeticKindName(kind), it.Emoji, it.Name)
 			}
 			value = code
-			msg = fmt.Sprintf("%s %s 換上了%s %s %s。", pet.Emoji, pet.Name, cosmeticKindName(kind), it.Emoji, it.Name)
+			msg = txf(ctx, "%s %s 換上了%s %s %s。", pet.Emoji, pet.Name, cosmeticKindName(kind), it.Emoji, it.Name)
 		}
 		col := "hat"
 		if kind == cosmetics.KindColor {
@@ -556,6 +556,6 @@ func (s *GameService) SetPetLook(ctx context.Context, playerID int64, petCode, k
 		if _, err := t.Exec(ctx, "UPDATE farm_pets SET "+col+" = $3 WHERE farm_id = $1 AND pet_code = $2", farm.ID, petCode, value); err != nil {
 			return ActionResult{}, err
 		}
-		return result(msg+"回「🌱 農田」就能看到。", farm.Gold, 0, "", 0), nil
+		return result(msg+txt(ctx, "回「🌱 農田」就能看到。"), farm.Gold, 0, "", 0), nil
 	})
 }

@@ -113,7 +113,7 @@ func (p *Panel) bossGoto(page string, reset bool) ui.Handler {
 
 func (p *Panel) bossClaimButton(v *services.BossView, row int) {
 	eventID := v.EventID
-	p.button("領取獎勵", func(ctx context.Context, it ui.Interaction) error {
+	p.button(p.s("領取獎勵"), func(ctx context.Context, it ui.Interaction) error {
 		p.act(ctx, it, p.call("boss_claim", func(ctx context.Context) (services.ActionResult, error) {
 			return p.svc().BossClaim(ctx, p.groupID, p.playerID, eventID)
 		}), actOpts{})
@@ -198,43 +198,43 @@ func (p *Panel) setBossEvent(v *services.BossView) {
 func (p *Panel) buildBoss(_ context.Context, data any) (*ui.Embed, error) {
 	v := data.(bossData).v
 	if v == nil {
-		e := &ui.Embed{Title: "🐉 世界 Boss", Color: BossGrey, Description: "目前沒有世界 Boss 活動，敬請期待！\n活動開始後，這裡會顯示 Boss 與補給進度。"}
+		e := &ui.Embed{Title: p.s("🐉 世界 Boss"), Color: BossGrey, Description: p.s("目前沒有世界 Boss 活動，敬請期待！\n活動開始後，這裡會顯示 Boss 與補給進度。")}
 		p.attachImage(e, p.bossImage())
-		p.button("活動說明", p.bossGoto("boss_help", false), btn{emoji: "📖", row: 0})
-		p.button("更新狀態", p.bossGoto("boss", true), btn{emoji: "🔄", row: 0})
+		p.button(p.s("活動說明"), p.bossGoto("boss_help", false), btn{emoji: "📖", row: 0})
+		p.button(p.s("更新狀態"), p.bossGoto("boss", true), btn{emoji: "🔄", row: 0})
 		p.navBack(0)
 		return e, nil
 	}
 	me := bossMe(v)
-	e := &ui.Embed{Title: "🐉 世界 Boss｜" + v.Name, Color: bossColor(v.State), Description: bossHeader(v)}
+	e := &ui.Embed{Title: p.s("🐉 世界 Boss｜") + p.s(v.Name), Color: bossColor(v.State), Description: bossHeader(v)}
 	p.attachImage(e, p.bossImage())
-	enter := fmt.Sprintf("按「⚔️ 進入%s」查看補給、戰況與個人貢獻。", v.Name)
+	enter := p.f("按「⚔️ 進入%s」查看補給、戰況與個人貢獻。", p.s(v.Name))
 	if v.State == "active" {
-		enter = fmt.Sprintf("按「⚔️ 進入%s」前往戰鬥區：查看補給與戰況，捐獻物資支援前線。", v.Name)
+		enter = p.f("按「⚔️ 進入%s」前往戰鬥區：查看補給與戰況，捐獻物資支援前線。", p.s(v.Name))
 	}
-	e.AddField("🗺️ 前往戰場", enter, false)
-	mine := fmt.Sprintf("🏅 貢獻積分 **%s**　📊 %s\n🎁 獎勵：%s", money(me.Points), bossRank(me), claimLabels[me.ClaimState])
-	e.AddField("🙋 我的參與", mine+bossMineExtra(v), false)
-	e.Footer = "你是農場後勤：捐獻農作物、漁獲與素材支援前線，Boss 戰鬥由系統自動進行。"
+	e.AddField(p.s("🗺️ 前往戰場"), enter, false)
+	mine := p.f("🏅 貢獻積分 **%s**　📊 %s\n🎁 獎勵：%s", money(me.Points), bossRank(me), claimLabels[me.ClaimState])
+	e.AddField(p.s("🙋 我的參與"), mine+bossMineExtra(v), false)
+	e.Footer = p.s("你是農場後勤：捐獻農作物、漁獲與素材支援前線，Boss 戰鬥由系統自動進行。")
 
-	p.button("進入"+v.Name, p.bossGoto("boss_battle", true), btn{emoji: "⚔️", style: ui.Success, row: 0})
+	p.button(p.s("進入")+p.s(v.Name), p.bossGoto("boss_battle", true), btn{emoji: "⚔️", style: ui.Success, row: 0})
 	if v.State == "active" { // 最常做的捐獻直接放在介紹區，不用先進戰鬥區
-		p.button("捐獻物資", p.bossOpenDonate, btn{emoji: "📦", style: ui.Success, row: 0})
+		p.button(p.s("捐獻物資"), p.bossOpenDonate, btn{emoji: "📦", style: ui.Success, row: 0})
 	}
-	p.button("上一場排行榜", p.bossGoto("boss_board", false), btn{emoji: "🏆", row: 0})
-	p.button("活動說明", p.bossGoto("boss_help", false), btn{emoji: "📖", row: 0})
+	p.button(p.s("上一場排行榜"), p.bossGoto("boss_board", false), btn{emoji: "🏆", row: 0})
+	p.button(p.s("活動說明"), p.bossGoto("boss_help", false), btn{emoji: "📖", row: 0})
 	p.bossClaimButton(v, 0)
-	p.button("更新狀態", p.bossGoto("boss", true), btn{emoji: "🔄", row: 4})
+	p.button(p.s("更新狀態"), p.bossGoto("boss", true), btn{emoji: "🔄", row: 4})
 
 	var claimable []option
 	for _, c := range v.Claimable {
-		state := "已結束"
+		state := p.s("已結束")
 		if c.Defeated {
-			state = "已擊敗"
+			state = p.s("已擊敗")
 		}
-		claimable = append(claimable, option{c.Name, fmt.Sprint(c.EventID), state, "🎁"})
+		claimable = append(claimable, option{p.s(c.Name), fmt.Sprint(c.EventID), state, "🎁"})
 	}
-	p.selectMenu("🎁 領取之前活動的獎勵…", claimable, func(ctx context.Context, it ui.Interaction, value string) error {
+	p.selectMenu(p.s("🎁 領取之前活動的獎勵…"), claimable, func(ctx context.Context, it ui.Interaction, value string) error {
 		eventID, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
 			return gameerr.Validationf("找不到這個項目。")
@@ -255,9 +255,9 @@ func (p *Panel) buildBoss(_ context.Context, data any) (*ui.Embed, error) {
 	if len(choices) > 1 || others {
 		var options []option
 		for _, c := range choices {
-			options = append(options, option{c.Name, fmt.Sprint(c.EventID), c.ScopeLabel + "｜" + c.StateLabel, "🐉"})
+			options = append(options, option{p.s(c.Name), fmt.Sprint(c.EventID), c.ScopeLabel + p.s("｜") + c.StateLabel, "🐉"})
 		}
-		p.selectMenu("🔀 切換世界 Boss…", options, func(ctx context.Context, it ui.Interaction, value string) error {
+		p.selectMenu(p.s("🔀 切換世界 Boss…"), options, func(ctx context.Context, it ui.Interaction, value string) error {
 			id, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
 				return gameerr.Validationf("找不到這個項目。")
@@ -291,24 +291,24 @@ func (p *Panel) loadBossBattle(ctx context.Context) (any, error) { return p.load
 func (p *Panel) buildBossBattle(_ context.Context, data any) (*ui.Embed, error) {
 	v := data.(*services.BossView)
 	me := bossMe(v)
-	e := &ui.Embed{Title: "⚔️ 戰鬥區｜" + v.Name, Color: bossColor(v.State), Description: bossHeader(v)}
-	scope := "群組"
+	e := &ui.Embed{Title: p.s("⚔️ 戰鬥區｜") + p.s(v.Name), Color: bossColor(v.State), Description: bossHeader(v)}
+	scope := p.s("群組")
 	if v.GroupID == nil {
-		scope = "全服"
+		scope = p.s("全服")
 	}
-	e.AddField(fmt.Sprintf("🚚 %s後勤補給進度", scope), supplyLines(v), false)
-	e.AddField("⚔️ 前線戰況", fmt.Sprintf("攻擊倍率 ×%s\n出勤率 %s%%\n每小時傷害 %s", pyFloat(v.AttackMult), pyFloat(v.UptimePct), money(v.DamagePerHour)), true)
-	e.AddField(fmt.Sprintf("👥 %s參與", scope), fmt.Sprintf("參與人數 %d\n捐獻總數 %s\n總積分 %s", v.Participants, money(v.TotalQuantity), money(v.TotalPoints)), true)
-	mine := fmt.Sprintf("👤 **%s**\n🏅 貢獻積分 **%s**\n📦 捐獻總數 %s\n📊 個人排名 %s\n🎁 獎勵：%s", me.PlayerName, money(me.Points),
+	e.AddField(p.f("🚚 %s後勤補給進度", scope), supplyLines(v), false)
+	e.AddField(p.s("⚔️ 前線戰況"), p.f("攻擊倍率 ×%s\n出勤率 %s%%\n每小時傷害 %s", pyFloat(v.AttackMult), pyFloat(v.UptimePct), money(v.DamagePerHour)), true)
+	e.AddField(p.f("👥 %s參與", scope), p.f("參與人數 %d\n捐獻總數 %s\n總積分 %s", v.Participants, money(v.TotalQuantity), money(v.TotalPoints)), true)
+	mine := p.f("👤 **%s**\n🏅 貢獻積分 **%s**\n📦 捐獻總數 %s\n📊 個人排名 %s\n🎁 獎勵：%s", me.PlayerName, money(me.Points),
 		money(me.Quantity), bossRank(me), claimLabels[me.ClaimState])
-	e.AddField("🙋 個人貢獻", mine+bossMineExtra(v), false)
-	e.Footer = "捐獻會立即造成傷害並推進補給；前線依補給自動作戰。"
+	e.AddField(p.s("🙋 個人貢獻"), mine+bossMineExtra(v), false)
+	e.Footer = p.s("捐獻會立即造成傷害並推進補給；前線依補給自動作戰。")
 
-	p.button("捐獻物資", p.bossOpenDonate, btn{emoji: "📦", style: ui.Success, row: 0, disabled: v.State != "active"})
+	p.button(p.s("捐獻物資"), p.bossOpenDonate, btn{emoji: "📦", style: ui.Success, row: 0, disabled: v.State != "active"})
 	p.bossClaimButton(v, 0)
-	p.button("更新狀態", p.bossGoto("boss_battle", true), btn{emoji: "🔄", row: 0})
-	p.button("回介紹區", p.bossGoto("boss", true), btn{emoji: "🐉", row: 0, back: true})
-	p.button("目前排行", p.bossGoto("boss_live_board", false), btn{emoji: "🏆", row: 1, style: ui.Primary})
+	p.button(p.s("更新狀態"), p.bossGoto("boss_battle", true), btn{emoji: "🔄", row: 0})
+	p.button(p.s("回介紹區"), p.bossGoto("boss", true), btn{emoji: "🐉", row: 0, back: true})
+	p.button(p.s("目前排行"), p.bossGoto("boss_live_board", false), btn{emoji: "🏆", row: 1, style: ui.Primary})
 	p.navBack(1)
 	return e, nil
 }
@@ -342,27 +342,27 @@ func (p *Panel) buildBossDonate(_ context.Context, data any) (*ui.Embed, error) 
 	p.bossOptions = options
 	supplyNames := map[string]string{}
 	for _, s := range v.Supplies {
-		supplyNames[s.Code] = s.Emoji + " " + s.Name
+		supplyNames[s.Code] = s.Emoji + " " + p.s(s.Name)
 	}
 	limits := v.Settings.Limits
-	lines := []string{fmt.Sprintf("❤️ HP %s / %s　`%s`", money(v.HP), money(v.MaxHP), wb.Bar(float64(v.HP), float64(v.MaxHP), 12)), supplyLines(v), ""}
+	lines := []string{p.f("❤️ HP %s / %s　`%s`", money(v.HP), money(v.MaxHP), wb.Bar(float64(v.HP), float64(v.MaxHP), 12)), supplyLines(v), ""}
 	switch {
 	case v.State != "active":
-		lines = append(lines, fmt.Sprintf("⚠️ 活動%s，現在不能捐獻。", v.StateLabel))
+		lines = append(lines, p.f("⚠️ 活動%s，現在不能捐獻。", v.StateLabel))
 	case p.bossCategory == "":
-		lines = append(lines, "① 先選擇要捐獻的類別。")
+		lines = append(lines, p.s("① 先選擇要捐獻的類別。"))
 	case len(options) == 0:
-		lines = append(lines, "背包裡沒有這個類別可以捐獻的物品。")
+		lines = append(lines, p.s("背包裡沒有這個類別可以捐獻的物品。"))
 	case p.bossCategory == "fish" && p.bossPending == nil:
-		lines = append(lines, fmt.Sprintf("② 勾選要捐的魚種，可以一次勾選多種：勾選的魚種會**全部捐出**（每種單次最多 %d 隻，每種每場最多 %d 隻）。",
+		lines = append(lines, p.f("② 勾選要捐的魚種，可以一次勾選多種：勾選的魚種會**全部捐出**（每種單次最多 %d 隻，每種每場最多 %d 隻）。",
 			limits.PerActionMax, limits.PerItemMax))
 	case p.bossItem == nil && p.bossPending == nil:
-		lines = append(lines, "② 選擇要捐獻的物品（顯示持有數量、每個積分與對應的補給）。")
+		lines = append(lines, p.s("② 選擇要捐獻的物品（顯示持有數量、每個積分與對應的補給）。"))
 	case p.bossPending == nil:
-		lines = append(lines, fmt.Sprintf("③ 選擇要捐獻的數量（單次最多 %d 個，每種物品每場最多 %d 個）。", limits.PerActionMax, limits.PerItemMax))
+		lines = append(lines, p.f("③ 選擇要捐獻的數量（單次最多 %d 個，每種物品每場最多 %d 個）。", limits.PerActionMax, limits.PerItemMax))
 	}
 	if o := p.bossItem; o != nil {
-		lines = append(lines, fmt.Sprintf("\n已選：**%s**　持有 %d　每個 %s　→ %s　本場還可捐 %d", o.Name, o.Held, pointsText(*o), supplyNames[o.Supply], o.Remaining))
+		lines = append(lines, p.f("\n已選：**%s**　持有 %d　每個 %s　→ %s　本場還可捐 %d", p.s(o.Name), o.Held, pointsText(*o), supplyNames[o.Supply], o.Remaining))
 	}
 	if pd := p.bossPending; pd != nil && pd.single == nil {
 		low, high, total := 0, 0, 0
@@ -371,32 +371,32 @@ func (p *Panel) buildBossDonate(_ context.Context, data any) (*ui.Embed, error) 
 			low += x.item.PointsMin * x.quantity
 			high += x.item.PointsMax * x.quantity
 			total += x.quantity
-			items[i] = fmt.Sprintf("・%s ×%d", x.item.Name, x.quantity)
+			items[i] = fmt.Sprintf("・%s ×%d", p.s(x.item.Name), x.quantity)
 		}
 		est := money(low)
 		if low != high {
-			est = fmt.Sprintf("約 %s–%s", money(low), money(high))
+			est = p.f("約 %s–%s", money(low), money(high))
 		}
-		lines = append(lines, fmt.Sprintf("\n### 確認捐獻以下 %d 種漁獲（共 %s 隻）？\n%s\n預計獲得 %s 積分。確認後才會扣除；按「取消」不會扣除任何物品。",
+		lines = append(lines, p.f("\n### 確認捐獻以下 %d 種漁獲（共 %s 隻）？\n%s\n預計獲得 %s 積分。確認後才會扣除；按「取消」不會扣除任何物品。",
 			len(pd.batch), money(total), strings.Join(items, "\n"), est))
 	} else if pd != nil {
 		o, q := pd.single.item, pd.single.quantity
 		est := money(o.PointsMin * q)
 		if o.PointsMin != o.PointsMax {
-			est = fmt.Sprintf("約 %s–%s", money(o.PointsMin*q), money(o.PointsMax*q))
+			est = p.f("約 %s–%s", money(o.PointsMin*q), money(o.PointsMax*q))
 		}
-		lines = append(lines, fmt.Sprintf("\n### 確認捐獻 %s ×%d？\n預計獲得 %s 積分。確認後才會扣除物品；按「取消」不會扣除任何物品。", o.Name, q, est))
+		lines = append(lines, p.f("\n### 確認捐獻 %s ×%d？\n預計獲得 %s 積分。確認後才會扣除物品；按「取消」不會扣除任何物品。", p.s(o.Name), q, est))
 	}
-	e := &ui.Embed{Title: "📦 捐獻物資｜" + v.Name, Color: BossPurple, Description: runes(strings.Join(lines, "\n"), 4096),
-		Footer: "作物與魚依售價換算積分；同一種物品捐越多不會無限加成，補給超過目標的部分效果有上限。"}
+	e := &ui.Embed{Title: p.s("📦 捐獻物資｜") + p.s(v.Name), Color: BossPurple, Description: runes(strings.Join(lines, "\n"), 4096),
+		Footer: p.s("作物與魚依售價換算積分；同一種物品捐越多不會無限加成，補給超過目標的部分效果有上限。")}
 
 	if v.State == "active" {
 		cats := make([]option, len(wb.Categories))
 		for i, code := range wb.Categories {
 			info := wb.CategoryInfos[code]
-			cats[i] = option{info.Name, code, "", info.Emoji}
+			cats[i] = option{p.s(info.Name), code, "", info.Emoji}
 		}
-		p.selectMenu("① 捐獻類別…", cats, func(ctx context.Context, it ui.Interaction, value string) error {
+		p.selectMenu(p.s("① 捐獻類別…"), cats, func(ctx context.Context, it ui.Interaction, value string) error {
 			p.bossReset()
 			p.bossCategory, p.bossLastCategory = value, value
 			p.goTo(ctx, it, "boss_donate", "")
@@ -411,10 +411,10 @@ func (p *Panel) buildBossDonate(_ context.Context, data any) (*ui.Embed, error) 
 				if p.bossItem != nil && selected == "" && o.Code == p.bossItem.Code && o.Quality == p.bossItem.Quality && o.Mutation == p.bossItem.Mutation {
 					selected = fmt.Sprint(i)
 				}
-				items = append(items, option{o.Name, fmt.Sprint(i), fmt.Sprintf("持有 %d｜每個 %s｜→ %s｜還可捐 %d", o.Held, pointsText(o),
+				items = append(items, option{p.s(o.Name), fmt.Sprint(i), p.f("持有 %d｜每個 %s｜→ %s｜還可捐 %d", o.Held, pointsText(o),
 					supplyNames[o.Supply], o.Remaining), ""})
 			}
-			p.selectMenu("② 選擇物品…", items, func(ctx context.Context, it ui.Interaction, value string) error {
+			p.selectMenu(p.s("② 選擇物品…"), items, func(ctx context.Context, it ui.Interaction, value string) error {
 				idx, err := strconv.Atoi(value)
 				if err == nil && idx >= 0 && idx < len(p.bossOptions) {
 					item := p.bossOptions[idx]
@@ -428,15 +428,15 @@ func (p *Panel) buildBossDonate(_ context.Context, data any) (*ui.Embed, error) 
 			p.bossQuantityButtons(*p.bossItem, limits.PerActionMax)
 		}
 		if p.bossPending != nil {
-			p.button("確認捐獻", p.bossConfirm, btn{emoji: "✅", style: ui.Success, row: 3})
-			p.button("取消", func(ctx context.Context, it ui.Interaction) error {
+			p.button(p.s("確認捐獻"), p.bossConfirm, btn{emoji: "✅", style: ui.Success, row: 3})
+			p.button(p.s("取消"), func(ctx context.Context, it ui.Interaction) error {
 				p.bossPending = nil
-				p.refresh(ctx, it, "已取消，沒有扣除任何物品。", nil, "重繪", time.Time{})
+				p.refresh(ctx, it, p.s("已取消，沒有扣除任何物品。"), nil, p.s("重繪"), time.Time{})
 				return nil
 			}, btn{emoji: "❌", style: ui.Danger, row: 3})
 		}
 	}
-	p.button("回戰鬥區", p.bossGoto("boss_battle", true), btn{emoji: "⚔️", row: 4, back: true})
+	p.button(p.s("回戰鬥區"), p.bossGoto("boss_battle", true), btn{emoji: "⚔️", row: 4, back: true})
 	p.navBack(4)
 	return e, nil
 }
@@ -462,7 +462,7 @@ func (p *Panel) bossFishMulti(options []services.BossDonationOption, perAction i
 			chosen[x.item.Code] = true
 		}
 	}
-	multi := &ui.Select{Placeholder: "② 勾選要全部捐出的魚種（可複選）…", Row: 1, MinValues: 1, MaxValues: len(shown),
+	multi := &ui.Select{Placeholder: p.s("② 勾選要全部捐出的魚種（可複選）…"), Row: 1, MinValues: 1, MaxValues: len(shown),
 		OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
 			var batch []bossDonation
 			for _, value := range values {
@@ -484,8 +484,8 @@ func (p *Panel) bossFishMulti(options []services.BossDonationOption, perAction i
 		}}
 	for _, s := range shown {
 		o := s.o
-		multi.Options = append(multi.Options, ui.SelectOption{Label: runes(o.Name, 100), Value: fmt.Sprint(s.i), Default: chosen[o.Code],
-			Description: runes(fmt.Sprintf("持有 %d｜捐 %d 隻｜每隻 %s｜→ %s", o.Held, min(o.Held, o.Remaining, perAction), pointsText(o), supplyNames[o.Supply]), 100)})
+		multi.Options = append(multi.Options, ui.SelectOption{Label: runes(p.s(o.Name), 100), Value: fmt.Sprint(s.i), Default: chosen[o.Code],
+			Description: runes(p.f("持有 %d｜捐 %d 隻｜每隻 %s｜→ %s", o.Held, min(o.Held, o.Remaining, perAction), pointsText(o), supplyNames[o.Supply]), 100)})
 	}
 	p.add(multi)
 }
@@ -504,10 +504,10 @@ func (p *Panel) bossQuantityButtons(item services.BossDonationOption, perAction 
 	for _, q := range bossQuantityPresets {
 		if q < maximum {
 			x := bossDonation{item, q, newRequestID()}
-			p.button(fmt.Sprintf("× %d（%s 分）", q, bossEstimate(item, q)), func(ctx context.Context, it ui.Interaction) error {
+			p.button(p.f("× %d（%s 分）", q, bossEstimate(item, q)), func(ctx context.Context, it ui.Interaction) error {
 				eventID := p.bossEventID
 				if eventID == nil {
-					p.refresh(ctx, it, "⚠️ 找不到這場活動，請重新整理。", nil, "重繪", time.Time{})
+					p.refresh(ctx, it, p.s("⚠️ 找不到這場活動，請重新整理。"), nil, p.s("重繪"), time.Time{})
 					return nil
 				}
 				id := *eventID
@@ -523,12 +523,12 @@ func (p *Panel) bossQuantityButtons(item services.BossDonationOption, perAction 
 			}, btn{style: ui.Primary, row: 2})
 		}
 	}
-	p.button(fmt.Sprintf("最多 × %d", maximum), func(ctx context.Context, it ui.Interaction) error {
+	p.button(p.f("最多 × %d", maximum), func(ctx context.Context, it ui.Interaction) error {
 		choose(ctx, it, maximum)
 		return nil
 	}, btn{style: ui.Primary, row: 2})
-	p.button("自訂數量…", func(ctx context.Context, it ui.Interaction) error {
-		return it.SendModal(ctx, quantityModal("捐獻數量", "數量", maximum, choose))
+	p.button(p.s("自訂數量…"), func(ctx context.Context, it ui.Interaction) error {
+		return it.SendModal(ctx, quantityModal(p.s("捐獻數量"), p.s("數量"), maximum, choose))
 	}, btn{emoji: "✏️", row: 2})
 }
 
@@ -561,7 +561,7 @@ func (p *Panel) bossConfirm(ctx context.Context, it ui.Interaction) error {
 	// 先清除待確認狀態：同一面板重複點擊時第二下不會再送出（服務層另以 request_id 防重複）
 	p.bossPending = nil
 	if pending == nil || eventID == nil {
-		p.refresh(ctx, it, "⚠️ 這筆捐獻已經送出或已取消，請依最新畫面操作。", nil, "重繪", time.Time{})
+		p.refresh(ctx, it, p.s("⚠️ 這筆捐獻已經送出或已取消，請依最新畫面操作。"), nil, p.s("重繪"), time.Time{})
 		return nil
 	}
 	id := *eventID
@@ -578,7 +578,7 @@ func (p *Panel) bossConfirm(ctx context.Context, it ui.Interaction) error {
 					if !ok {
 						return "", err
 					}
-					msg = fmt.Sprintf("❌ %s：%s", x.item.Name, ge.Error())
+					msg = p.f("❌ %s：%s", p.s(x.item.Name), ge.Error())
 				}
 				lines = append(lines, msg)
 			}
@@ -620,24 +620,24 @@ func (p *Panel) loadBossBoard(ctx context.Context) (any, error) {
 		return nil, err
 	}
 	titles, err := p.withTitles(ctx, b)
-	return bossBoardData{b, titles, v.Name}, err
+	return bossBoardData{b, titles, p.s(v.Name)}, err
 }
 
 func (p *Panel) buildBossBoard(_ context.Context, data any) (*ui.Embed, error) {
 	d := data.(bossBoardData)
 	var e *ui.Embed
 	if d.board == nil {
-		e = &ui.Embed{Title: "🏆 上一場貢獻排行", Color: BossGold, Description: fmt.Sprintf(
+		e = &ui.Embed{Title: p.s("🏆 上一場貢獻排行"), Color: BossGold, Description: p.f(
 			"還沒有已結束的%s活動。\n這一場的即時排行請到「⚔️ 戰鬥區」→「🏆 目前排行」。", d.currentName)}
 		p.attachImage(e, p.bossImage())
 	} else {
-		result := "🏁 時間到未擊敗"
+		result := p.s("🏁 時間到未擊敗")
 		if d.board.Defeated {
-			result = "💀 已擊敗"
+			result = p.s("💀 已擊敗")
 		}
-		e = p.boardEmbed(d.board, d.titles, "🏆 上一場貢獻排行｜"+d.board.Name, fmt.Sprintf("%s　結束於 %s", result, ts(d.board.EndedAt, "f")), true)
+		e = p.boardEmbed(d.board, d.titles, p.s("🏆 上一場貢獻排行｜")+p.s(d.board.Name), p.f("%s　結束於 %s", result, ts(d.board.EndedAt, "f")), true)
 	}
-	p.button("回介紹區", p.bossGoto("boss", true), btn{emoji: "🐉", row: 0, back: true})
+	p.button(p.s("回介紹區"), p.bossGoto("boss", true), btn{emoji: "🐉", row: 0, back: true})
 	p.navBack(0)
 	return e, nil
 }
@@ -657,9 +657,9 @@ func (p *Panel) loadBossLiveBoard(ctx context.Context) (any, error) {
 
 func (p *Panel) buildBossLiveBoard(_ context.Context, data any) (*ui.Embed, error) {
 	d := data.(bossBoardData)
-	e := p.boardEmbed(d.board, d.titles, "🏆 目前貢獻排行｜"+d.board.Name, "這一場的即時排行（每次開啟或重新整理時更新）", false)
-	p.button("重新整理", p.bossGoto("boss_live_board", false), btn{emoji: "🔄", row: 0})
-	p.button("回戰鬥區", p.bossGoto("boss_battle", true), btn{emoji: "⚔️", row: 0, back: true})
+	e := p.boardEmbed(d.board, d.titles, p.s("🏆 目前貢獻排行｜")+p.s(d.board.Name), p.s("這一場的即時排行（每次開啟或重新整理時更新）"), false)
+	p.button(p.s("重新整理"), p.bossGoto("boss_live_board", false), btn{emoji: "🔄", row: 0})
+	p.button(p.s("回戰鬥區"), p.bossGoto("boss_battle", true), btn{emoji: "⚔️", row: 0, back: true})
 	p.navBack(0)
 	return e, nil
 }
@@ -669,26 +669,26 @@ func (p *Panel) boardEmbed(b *services.BossLeaderboard, tags nameTags, title, he
 	for _, r := range b.Rows {
 		name := r.FarmName
 		if t := tags.titles[r.PlayerID]; t != "" {
-			name = fmt.Sprintf("%s〔%s〕", name, t)
+			name = p.f("%s〔%s〕", name, t)
 		}
 		if badge := tags.badges[r.PlayerID]; badge != "" {
 			name = badge + " " + name
 		}
-		lines = append(lines, fmt.Sprintf("%s **%s**　🏅 %s 分　📦 %s 個", medalOr(r.Rank, fmt.Sprintf("`%2d.`", r.Rank)), name, money(r.Points), money(r.Quantity)))
+		lines = append(lines, p.f("%s **%s**　🏅 %s 分　📦 %s 個", medalOr(r.Rank, fmt.Sprintf("`%2d.`", r.Rank)), name, money(r.Points), money(r.Quantity)))
 	}
-	body := "還沒有人捐獻，成為第一個支援前線的人吧！"
+	body := p.s("還沒有人捐獻，成為第一個支援前線的人吧！")
 	if len(lines) > 0 {
 		body = strings.Join(lines, "\n")
 	}
-	e := &ui.Embed{Title: title, Color: BossGold, Description: head + "\n\n" + body, Footer: "依貢獻積分排序；同分時先捐獻的玩家在前。"}
+	e := &ui.Embed{Title: title, Color: BossGold, Description: head + "\n\n" + body, Footer: p.s("依貢獻積分排序；同分時先捐獻的玩家在前。")}
 	if image {
 		p.attachImage(e, p.bossImage())
 	}
-	mine := "沒有捐獻"
+	mine := p.s("沒有捐獻")
 	if me := b.Me; me != nil {
-		mine = fmt.Sprintf("第 %d 名 / %d 人　🏅 %s 分　📦 %s 個", me.Rank, b.Participants, money(me.Points), money(me.Quantity))
+		mine = p.f("第 %d 名 / %d 人　🏅 %s 分　📦 %s 個", me.Rank, b.Participants, money(me.Points), money(me.Quantity))
 	}
-	e.AddField("🙋 我的名次", mine, false)
+	e.AddField(p.s("🙋 我的名次"), mine, false)
 	return e
 }
 
@@ -707,41 +707,41 @@ func (p *Panel) buildBossHelp(_ context.Context, data any) (*ui.Embed, error) {
 	supply := make([]string, len(wb.Supplies))
 	for i, code := range wb.Supplies {
 		x := wb.SupplyInfos[code]
-		supply[i] = fmt.Sprintf("%s **%s** → %s：%s", x.Emoji, x.Name, x.Effect, x.Desc)
+		supply[i] = p.f("%s **%s** → %s：%s", x.Emoji, p.s(x.Name), p.s(x.Effect), p.s(x.Desc))
 	}
-	how := "1️⃣ 世界 Boss 分成🌏 **全服**（所有伺服器的玩家一起打，例如固定出現的深淵魔龍）與🏠 **伺服器**活動，大家一起當**農場後勤**。\n" +
-		"2️⃣ 在介紹區按「⚔️ 進入（Boss 名稱）」到戰鬥區，再按「📦 捐獻物資」，從背包選農作物、漁獲、素材或加工品捐給前線（確認後才扣除）。\n" +
-		"3️⃣ 前線依四種補給的達成率**自動作戰**，每小時扣 Boss HP；每次捐獻也會立即造成一次傷害。\n" +
-		"4️⃣ 活動結束（擊敗 Boss 或時間到）後，按「🎁 領取獎勵」。每人每場只能領一次。"
-	rules := fmt.Sprintf("🌾 作物與 🐟 魚：每 %s 金幣售價換 1 積分（無條件進位）\n"+
+	how := p.s("1️⃣ 世界 Boss 分成🌏 **全服**（所有伺服器的玩家一起打，例如固定出現的深淵魔龍）與🏠 **伺服器**活動，大家一起當**農場後勤**。\n") +
+		p.s("2️⃣ 在介紹區按「⚔️ 進入（Boss 名稱）」到戰鬥區，再按「📦 捐獻物資」，從背包選農作物、漁獲、素材或加工品捐給前線（確認後才扣除）。\n") +
+		p.s("3️⃣ 前線依四種補給的達成率**自動作戰**，每小時扣 Boss HP；每次捐獻也會立即造成一次傷害。\n") +
+		p.s("4️⃣ 活動結束（擊敗 Boss 或時間到）後，按「🎁 領取獎勵」。每人每場只能領一次。")
+	rules := p.f("🌾 作物與 🐟 魚：每 %s 金幣售價換 1 積分（無條件進位）\n"+
 		"⚙️ 素材、🍲 加工品與 🧪 特殊材料：依活動指定的固定積分\n"+
 		"📦 單次最多 %d 個；每種物品每場最多 %d 個\n"+
 		"📈 補給最多算到目標的 %d%%；沒有糧食時出勤率只有 %d%%\n"+
 		"⚔️ 戰鬥補給滿額傷害 +%d%%、🛡️ 裝備補給滿額 +%d%%、🩹 醫療補給滿額救回 %d%% 缺勤時間",
 		money(s.GoldPerPoint), lim.PerActionMax, lim.PerItemMax, eff.RatioCapPct, eff.BaseUptimePct, eff.CombatAttackPct, eff.EquipmentAttackPct, eff.MedicalRecoveryPct)
-	e := &ui.Embed{Title: "📖 世界 Boss 活動說明", Color: BossPurple, Description: how,
-		Footer: "只有捐獻過的玩家可以領獎；所有紀錄存在資料庫，Bot 重啟也不會遺失。"}
+	e := &ui.Embed{Title: p.s("📖 世界 Boss 活動說明"), Color: BossPurple, Description: how,
+		Footer: p.s("只有捐獻過的玩家可以領獎；所有紀錄存在資料庫，Bot 重啟也不會遺失。")}
 	p.attachImage(e, p.bossImage())
-	e.AddField("🚚 補給類型與效果", strings.Join(supply, "\n"), false)
-	e.AddField("🧮 積分與限制", rules, false)
+	e.AddField(p.s("🚚 補給類型與效果"), strings.Join(supply, "\n"), false)
+	e.AddField(p.s("🧮 積分與限制"), rules, false)
 	if v != nil && v.RewardsText != nil {
 		r := v.RewardsText
 		ranks := make([]string, len(r.Rank))
 		for i, t := range r.Rank {
-			ranks[i] = fmt.Sprintf("%s %s", medalOr(i+1, fmt.Sprintf("第 %d 名", i+1)), t)
+			ranks[i] = fmt.Sprintf("%s %s", medalOr(i+1, p.f("第 %d 名", i+1)), t)
 		}
 		reward := ""
 		if r.MinPoints != 0 {
-			reward = fmt.Sprintf("🎯 參與門檻：個人積分達 %s 才有以下任何獎勵\n", money(r.MinPoints))
+			reward = p.f("🎯 參與門檻：個人積分達 %s 才有以下任何獎勵\n", money(r.MinPoints))
 		}
-		reward += fmt.Sprintf("🏆 擊敗 Boss：%s\n🤝 未擊敗（參與獎）：%s\n⭐ 個人積分達 %s：%s\n%s", r.Victory, r.Participation,
+		reward += p.f("🏆 擊敗 Boss：%s\n🤝 未擊敗（參與獎）：%s\n⭐ 個人積分達 %s：%s\n%s", r.Victory, r.Participation,
 			money(r.BonusPoints), r.Bonus, strings.Join(ranks, "\n"))
 		if r.Title != "" {
-			reward += fmt.Sprintf("\n🎖️ 擊敗時前 %d 名獲得稱號「%s」", r.TitleTop, r.Title)
+			reward += p.f("\n🎖️ 擊敗時前 %d 名獲得稱號「%s」", r.TitleTop, r.Title)
 		}
-		e.AddField("🎁 獎勵制度", runes(reward, 1024), false)
+		e.AddField(p.s("🎁 獎勵制度"), runes(reward, 1024), false)
 	}
-	p.button("回介紹區", p.bossGoto("boss", true), btn{emoji: "🐉", row: 0, back: true})
+	p.button(p.s("回介紹區"), p.bossGoto("boss", true), btn{emoji: "🐉", row: 0, back: true})
 	p.navBack(0)
 	return e, nil
 }

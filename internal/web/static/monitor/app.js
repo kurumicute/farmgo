@@ -5036,7 +5036,7 @@ if (typeof document !== "undefined") {
         miniTable(["商品", "價格（金幣，0 = 不在商店販售）", "其他取得方式"], k.items.map((it, i) => el("tr", {}, [
           td(`${it.emoji} ${it.name}（${it.code}）`), el("td", {}, [inputs[i]]), td(it.how || "—"),
         ])), "沒有商品")]).flat(),
-      el("p", { className: "muted small", text: "只改外觀、沒有加成。名牌顯示在排行榜、日報與世界 Boss 排行的名字前面；主題換掉農田外圍；帽子與顏色所有寵物共用。價格設為 0 表示不在商店販售（名牌可以從農會聲望或每週拍賣取得）；已經擁有的玩家不受影響。" }),
+      el("p", { className: "muted small", text: "只改外觀、沒有加成。名牌顯示在排行榜、日報與世界 Boss 排行的名字前面；主題換掉整座農場的地面與外圍點綴；帽子與顏色所有寵物共用。價格設為 0 表示不在商店販售（名牌可以從農會聲望或每週拍賣取得）；已經擁有的玩家不受影響。" }),
     ]);
     return featureCard("cosmetics", "🎨 外觀收藏：名牌、農場主題、寵物帽子與顏色的價格", body, () => {
       const value = {};

@@ -758,9 +758,9 @@ func (f *FishingService) BuyFishingGear(ctx context.Context, playerID int64, cod
 		}
 		note := ""
 		if autoEquip {
-			note = "，已自動裝備"
+			note = txt(ctx, "，已自動裝備")
 		}
-		return result(fmt.Sprintf("%s 買了 %s ×%d，花費 %d 金幣%s。", gear.Emoji, gear.Name, quantity, cost, note),
+		return result(txf(ctx, "%s 買了 %s ×%d，花費 %d 金幣%s。", gear.Emoji, gear.Name, quantity, cost, note),
 			farm.Gold, -cost, gear.Code, quantity), nil
 	})
 }
@@ -789,7 +789,7 @@ func (f *FishingService) EquipFishingGear(ctx context.Context, playerID int64, c
 			return ActionResult{}, gameerr.New(gameerr.InsufficientItems, "%s已經用完了，請先購買。", gear.Name)
 		}
 		if owned.Equipped {
-			return result(fmt.Sprintf("%s已經裝備中。", gear.Name), farm.Gold, 0, "", 0), nil
+			return result(txf(ctx, "%s已經裝備中。", gear.Name), farm.Gold, 0, "", 0), nil
 		}
 		if err := fishrepo.UnequipKind(ctx, t, farm.ID, gear.Kind); err != nil {
 			return ActionResult{}, err
@@ -797,7 +797,7 @@ func (f *FishingService) EquipFishingGear(ctx context.Context, playerID int64, c
 		if _, err := db.UpdateByID(ctx, t, "farm_fishing_gear", owned.ID, db.C("equipped", true)); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("%s 已裝備%s：%s。", gear.Emoji, fishing.GearKindNames[gear.Kind], gear.Name), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "%s 已裝備%s：%s。", gear.Emoji, fishing.GearKindNames[gear.Kind], gear.Name), farm.Gold, 0, "", 0), nil
 	})
 }
 
@@ -1453,7 +1453,7 @@ func (f *FishingService) SellFish(ctx context.Context, playerID int64, fishIDs [
 			truncRunes(fmt.Sprintf("販售 %d 隻魚（%s），獲得 %d 金幣", len(rows), strings.Join(detail, "、"), total), 200), r); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("💰 賣出 %d 隻魚，獲得 %d 金幣。", len(rows), total), farm.Gold, total, "", len(rows)), nil
+		return result(txf(ctx, "💰 賣出 %d 隻魚，獲得 %d 金幣。", len(rows), total), farm.Gold, total, "", len(rows)), nil
 	})
 }
 

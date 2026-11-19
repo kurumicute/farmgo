@@ -2,7 +2,7 @@ package farmimage
 
 // 農場外觀主題與寵物造型（Go 版新增，2026-11-19，金幣回收第二波；規則與商品在 game/cosmetics）。
 //
-//   - 主題：農田本身不變，只換外圍（上方寵物草地帶、左右庭院）的地面磚，庭院的花叢位置換成主題點綴；
+//   - 主題：換外圍（上方寵物草地帶、左右庭院）的地面磚，庭院的花叢位置換成主題點綴；柵欄裡的草地也換（field_theme.go）；
 //     夜景另外對整張圖套偏藍、變暗的濾鏡。有主題時一律加上外圍（即使沒有擺裝飾）。
 //   - 寵物造型：先依顏色旋轉寵物圖的色相（描邊與黑白像素不變），再疊上帽子（位置在 manifest pets.sprites[*].hat）。
 //   - 有任何造型時不使用預先產生的圖與快取，每次重拼（約 20～30 毫秒）。
@@ -175,12 +175,26 @@ func nightFilter(canvas *image.NRGBA, pct [3]int) {
 
 // FarmPNGStyled 農田圖片＋庭院擺設＋主題與寵物造型；沒有主題與造型時等同 FarmPNGWithDecor（可以用快取）。
 func FarmPNGStyled(plots []Plot, pets map[string]int, codes []string, look Look) ([]byte, error) {
+	if _, ok := cosmetics.FindTheme(look.Theme); !ok {
+		look.Theme = "" // 已經下架的主題（例如櫻花，2026-11-19）當成預設外觀
+	}
 	if look.Empty() {
 		return FarmPNGWithDecor(plots, pets, codes)
 	}
 	m, err := getManifest()
 	if err != nil {
 		return nil, err
+	}
+	if theme, ok := cosmetics.FindTheme(look.Theme); ok { // 農田本身也換地面（field_theme.go）
+		field, err := themedFieldCanvas(m, plots, theme)
+		if err != nil {
+			return nil, err
+		}
+		canvas, err := withDecorLook(m, field, pets, codes, look)
+		if err != nil {
+			return nil, err
+		}
+		return encodePaletteDynamic(canvas, PanelColors)
 	}
 	field, cached, err := fieldCanvas(plots, nil)
 	if err != nil {

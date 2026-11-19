@@ -523,7 +523,7 @@ func (r *RankingService) settlePeriod(ctx context.Context, ruleID int64, p perio
 			rule.ID, string(snapJSON), p.start, p.end, string(rankingJSON), actor, now).Scan(&settlementID); err != nil {
 			return nil, err
 		}
-		label := fmt.Sprintf("%s（%s）", rule.Name, rankrules.PeriodLabel(rule.Period, p.start))
+		label := txf(ctx, "%s（%s）", rule.Name, rankrules.PeriodLabel(rule.Period, p.start))
 		paid := 0
 		// 分數由高到低排序，只有分數 > 0 的前幾名得獎
 		for _, row := range entries[:min(len(entries), len(rule.Rewards))] {

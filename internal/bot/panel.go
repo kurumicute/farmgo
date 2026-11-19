@@ -15,6 +15,7 @@ package bot
 import (
 	"context"
 	"crypto/sha256"
+	"farmgm/i18n"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -150,6 +151,7 @@ type Panel struct {
 	welcomed      bool
 	lastActiveAt  time.Time // 最後一次操作面板的時間：逾時時寫回「最後看到面板」（2026-11-18 離線摘要）
 	marks         *services.ProgressMarks
+	lang          string // 介面語言（i18n：玩家選的，或跟著 Discord 用戶端）
 
 	// 圖片：本次畫面要附上的檔案與內容雜湊；面板訊息上目前掛著的圖的雜湊（相同時沿用，不重新上傳）
 	files       []ui.File
@@ -165,6 +167,7 @@ func NewPanel(c *Commands, w Who, ctx services.ExternalContext) *Panel {
 	if ctx.PlayerID != nil {
 		p.playerID = *ctx.PlayerID
 	}
+	p.lang = i18n.Resolve(ctx.Language, w.Locale)
 	if ctx.HasFarm {
 		p.Page = "main"
 	}
@@ -184,7 +187,7 @@ func (p *Panel) svc() *services.AdminService { return p.cmds.Service.InGroupCont
 
 func (p *Panel) interactionCheck(ctx context.Context, it ui.Interaction) bool {
 	if it.UserID() != p.ownerID {
-		_ = it.SendMessage(ctx, ui.Message{Content: ptr("這是別人的農場面板，請用 /farm 開啟自己的面板。"), Ephemeral: true})
+		_ = it.SendMessage(ctx, ui.Message{Content: ptr(p.s("這是別人的農場面板，請用 /farm 開啟自己的面板。")), Ephemeral: true})
 		return false
 	}
 	p.lastActiveAt = p.cmds.now()
@@ -200,11 +203,11 @@ func (p *Panel) onTimeout(ctx context.Context) {
 		}
 	}
 	if p.message != nil {
-		msg := ui.Message{Content: ptr("面板已逾時，請重新輸入 /farm。"), View: p.View}
+		msg := ui.Message{Content: ptr(p.s("面板已逾時，請重新輸入 /farm。")), View: p.View}
 		// 2026-11-16 按鈕停用後，按鈕正上方的 footer 也寫逾時說明（Content 在畫面最上方，玩家看按鈕時看不到）；附件不變
 		if p.lastEmbed != nil {
 			e := *p.lastEmbed
-			e.Footer = "⏰ 面板已逾時，請重新輸入 /farm"
+			e.Footer = p.s("⏰ 面板已逾時，請重新輸入 /farm")
 			msg.Embed = &e
 		}
 		_ = p.message.Edit(ctx, msg)
@@ -213,7 +216,7 @@ func (p *Panel) onTimeout(ctx context.Context) {
 
 func (p *Panel) onError(ctx context.Context, it ui.Interaction, err error) {
 	slog.Error("面板操作失敗", "user", it.UserID(), "error", err.Error())
-	_, _ = it.Followup(ctx, ui.Message{Content: ptr("❌ " + PlayerMessage(err)), Ephemeral: true})
+	_, _ = it.Followup(ctx, ui.Message{Content: ptr("❌ " + p.msg(err)), Ephemeral: true})
 }
 
 func ptr[T any](v T) *T { return &v }
@@ -270,11 +273,11 @@ func (p *Panel) render(ctx context.Context, notice string, pre *prepared) *ui.Em
 		logUnexpected(err, "面板讀取失敗", "page", p.Page)
 		p.View.Clear()
 		p.files, p.imageDigest = nil, nil
-		embed = &ui.Embed{Title: "⚠️ 無法顯示", Color: Red, Description: "### " + cleanMessage(PlayerMessage(err))}
+		embed = &ui.Embed{Title: p.s("⚠️ 無法顯示"), Color: Red, Description: "### " + cleanMessage(p.msg(err))}
 		p.navBack(0)
 	}
 	if notice != "" {
-		placeNotice(embed, notice)
+		placeNotice(p.lang, embed, notice)
 		for _, mark := range HighlightMarks {
 			if strings.Contains(notice, mark) {
 				embed.Color = Gold // 稀有收穫、新紀錄、成就達成等：整個面板換成金色
@@ -282,10 +285,11 @@ func (p *Panel) render(ctx context.Context, notice string, pre *prepared) *ui.Em
 			}
 		}
 	}
+	p.localize(embed)
 	// Discord 限制單一 Embed 總長度 6000 字：超過時縮短主要內容（例如農田非常多時）
 	// 2026-11-16：說明最後一段是「貼近按鈕」的關鍵資訊（狀態、金幣、菇床…），保留最後一段、從前面的內容截短
 	if overflow := embed.Len() - 5900; overflow > 0 && embed.Description != "" {
-		head, tail := embed.Description, ""
+		head, tail := p.s(embed.Description), ""
 		if i := strings.LastIndex(head, "\n\n"); i > 0 && utf8.RuneCountInString(head[i:]) < 1000 {
 			head, tail = head[:i], head[i:]
 		}
@@ -335,7 +339,7 @@ func (p *Panel) prepareWith(ctx context.Context, page string, before func(ctx co
 			if farmPage {
 				machines = p.machinesNote(ctx)
 			}
-			data, err := def.load(ctx)
+			data, err := def.load(i18n.WithLang(ctx, p.lang))
 			res.data = data
 			return err
 		})
@@ -384,7 +388,7 @@ func (p *Panel) applyProgress(m *services.ProgressMarks) string {
 	if old == nil {
 		return ""
 	}
-	return progressDiff(*old, *m)
+	return progressDiff(p.lang, *old, *m)
 }
 
 // machinesNote 自動收割機／自動加工機在開啟或切換頁面時運作；失敗不影響面板顯示。
@@ -417,9 +421,9 @@ func (p *Panel) checkinNote(ctx context.Context) string {
 		return ""
 	}
 	// 2026-11-16 縮短成一行：每次換頁都可能出現在畫面上，原本附帶的說明（簽到紀錄在哪裡）移到說明頁
-	note := fmt.Sprintf("📅 每日簽到成功！連續第 **%d** 天 +%s", r.Streak, r.RewardText)
+	note := p.f("📅 每日簽到成功！連續第 **%d** 天 +%s", r.Streak, r.RewardText)
 	if r.Converted {
-		note += "（倉庫滿，改發金幣）"
+		note += p.s("（倉庫滿，改發金幣）")
 	}
 	return note
 }
@@ -464,7 +468,7 @@ func (p *Panel) attachments(it ui.Interaction) *ui.Attachments {
 func (p *Panel) goTo(ctx context.Context, it ui.Interaction, page, notice string) {
 	p.Page, p.picker, p.confirm = page, nil, ""
 	p.resetPageState()
-	p.refresh(ctx, it, notice, nil, "換頁", time.Time{})
+	p.refresh(ctx, it, notice, nil, p.s("換頁"), time.Time{})
 }
 
 // resetPageState 換頁時清除的其他頁面狀態（Python goto 中的 fish_sell_ids、sell_keys）。
@@ -524,8 +528,8 @@ func (p *Panel) act(ctx context.Context, it ui.Interaction, work func(ctx contex
 	if werr != nil {
 		logUnexpected(werr, "面板操作失敗", "player", p.playerID)
 		deferred := it.Responded()
-		p.showError(ctx, it, cleanMessage(PlayerMessage(werr)))
-		p.cmds.Latency.Record("操作失敗 "+target, msSince(started), deferred)
+		p.showError(ctx, it, cleanMessage(p.msg(werr)))
+		p.cmds.Latency.Record(p.s("操作失敗 ")+target, msSince(started), deferred)
 		return
 	}
 	if !o.keep { // 購買後保留已選商品與數量按鈕，方便確認與加購
@@ -534,7 +538,7 @@ func (p *Panel) act(ctx context.Context, it ui.Interaction, work func(ctx contex
 	if o.page != "" {
 		p.Page = o.page
 	}
-	p.refresh(ctx, it, cut(prefix+cleanMessage(text), 1500), &pre, "操作", started)
+	p.refresh(ctx, it, cut(prefix+cleanMessage(text), 1500), &pre, p.s("操作"), started)
 }
 
 // actMsg 只需要 ActionResult.Message 的操作。
@@ -548,7 +552,7 @@ func actMsg(fn func(ctx context.Context) (services.ActionResult, error)) func(ct
 // call 包一個服務呼叫（死結重試）。
 func (p *Panel) call(name string, fn func(ctx context.Context) (services.ActionResult, error)) func(ctx context.Context) (string, error) {
 	return func(ctx context.Context) (string, error) {
-		r, err := Call(ctx, p.cmds.Runner, name, fn)
+		r, err := Call(i18n.WithLang(ctx, p.lang), p.cmds.Runner, name, fn)
 		return r.Message, err
 	}
 }
@@ -556,7 +560,7 @@ func (p *Panel) call(name string, fn func(ctx context.Context) (services.ActionR
 // callQty 依數量執行的服務呼叫（數量選擇用）。
 func (p *Panel) callQty(name string, fn func(ctx context.Context, q int) (services.ActionResult, error)) func(ctx context.Context, q int) (string, error) {
 	return func(ctx context.Context, q int) (string, error) {
-		r, err := Call(ctx, p.cmds.Runner, name, func(ctx context.Context) (services.ActionResult, error) { return fn(ctx, q) })
+		r, err := Call(i18n.WithLang(ctx, p.lang), p.cmds.Runner, name, func(ctx context.Context) (services.ActionResult, error) { return fn(ctx, q) })
 		return r.Message, err
 	}
 }
@@ -564,11 +568,12 @@ func (p *Panel) callQty(name string, fn func(ctx context.Context, q int) (servic
 // showError 錯誤畫面：只有錯誤原因與「返回」按鈕。
 func (p *Panel) showError(ctx context.Context, it ui.Interaction, message string) {
 	p.View.Clear()
-	embed := &ui.Embed{Title: "⚠️ 無法完成", Color: Red, Description: "### " + cut(message, 1500), Footer: "按「返回」回到剛才的畫面"}
-	p.button("返回", func(ctx context.Context, it ui.Interaction) error {
-		p.refresh(ctx, it, "", nil, "重繪", time.Time{})
+	embed := &ui.Embed{Title: p.t("ui.error.title"), Color: Red, Description: "### " + cut(message, 1500), Footer: p.t("ui.error.footer")}
+	p.button(p.t("ui.error.back"), func(ctx context.Context, it ui.Interaction) error {
+		p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
 		return nil
 	}, btn{emoji: "↩️", style: ui.Primary})
+	p.localize(embed)
 	if err := it.Show(ctx, ui.Message{Embed: embed, View: p.View, Attachments: &ui.Attachments{}}); err != nil {
 		slog.Warn("更新面板失敗", "type", fmt.Sprintf("%T", err))
 	} else {
@@ -608,11 +613,11 @@ func (p *Panel) image(what string, make func() ([]byte, error)) []byte {
 }
 
 func (p *Panel) farmImage(st services.FarmStatus) []byte {
-	return p.image("農田", func() ([]byte, error) { return farmimage.FarmPNGFromStatus(st) })
+	return p.image(p.s("農田"), func() ([]byte, error) { return farmimage.FarmPNGFromStatus(st) })
 }
 
 func (p *Panel) yardImage(ws services.WorkshopStatus, animals []services.AnimalView) []byte {
-	return p.image("建築畫面", func() ([]byte, error) { return farmimage.YardPNG(ws, animals) })
+	return p.image(p.s("建築畫面"), func() ([]byte, error) { return farmimage.YardPNG(ws, animals) })
 }
 
 // ---------- 元件工具 ----------
@@ -696,11 +701,69 @@ func (p *Panel) nav(label, page string, o btn) *ui.Button {
 	}, o)
 }
 
-func (p *Panel) navBack(row int) { p.nav("回總覽", "main", btn{emoji: "🏠", row: row}) }
+func (p *Panel) navBack(row int) { p.nav(p.t("ui.nav.home"), "main", btn{emoji: "🏠", row: row}) }
+
+// localize 送出前的保險翻譯（非繁中時）：畫面與按鈕、選單裡還留著的中文詞句查 i18n 文字表換掉（i18n.Fallback）。
+func (p *Panel) localize(e *ui.Embed) {
+	if p.lang == i18n.Default {
+		return
+	}
+	// 伺服器名稱、玩家名稱是玩家自己取的，先換成記號，翻完再放回去（不會被當成詞句翻掉）
+	var keep []string
+	for _, name := range []string{p.groupName, p.who.UserName} {
+		if strings.TrimSpace(name) != "" {
+			keep = append(keep, name)
+		}
+	}
+	f := func(s string) string {
+		for i, name := range keep {
+			s = strings.ReplaceAll(s, name, fmt.Sprintf("\x00%d\x00", i))
+		}
+		s = i18n.Fallback(p.lang, s)
+		for i, name := range keep {
+			s = strings.ReplaceAll(s, fmt.Sprintf("\x00%d\x00", i), name)
+		}
+		return s
+	}
+	if e != nil {
+		e.Title, e.Description, e.Footer, e.AuthorName = f(e.Title), f(e.Description), f(e.Footer), f(e.AuthorName)
+		for i := range e.Fields {
+			e.Fields[i].Name, e.Fields[i].Value = f(e.Fields[i].Name), f(e.Fields[i].Value)
+		}
+	}
+	for _, b := range p.View.Buttons() {
+		b.Label = cut(f(b.Label), 80)
+	}
+	for _, sel := range p.View.Selects() {
+		sel.Placeholder = cut(f(sel.Placeholder), 150)
+		for i := range sel.Options {
+			sel.Options[i].Label = cut(f(sel.Options[i].Label), 100)
+			sel.Options[i].Description = cut(f(sel.Options[i].Description), 100)
+		}
+	}
+}
+
+// dur 時間長度（long = 較長時間的格式，例如「1 天 3 小時」）。
+func (p *Panel) dur(long bool, seconds int) string {
+	return services.DurationLang(p.lang, seconds, long)
+}
+
+// msg 錯誤在面板語言的說明。
+func (p *Panel) msg(err error) string { return PlayerMessageLang(p.lang, err) }
+
+// s 中文原文在面板語言的翻譯（i18n/<語言>.text.json；繁中或沒有翻譯時回傳原文）。
+func (p *Panel) s(zh string) string { return i18n.Text(p.lang, zh) }
+
+// f 翻譯格式字串後代入參數（fmt.Sprintf 的多語版本）。
+func (p *Panel) f(format string, args ...any) string { return i18n.Sprintf(p.lang, format, args...) }
+
+// t 依面板的語言取文字（i18n/<語言>.json）。
+func (p *Panel) t(key string, args ...any) string { return i18n.T(p.lang, key, args...) }
 
 // isBackLabel 換頁按鈕的標籤以「回」或「返回」開頭時視為返回類按鈕（2026-11-16 只套用在 nav 建立的換頁按鈕）。
 func isBackLabel(label string) bool {
-	return strings.HasPrefix(label, "回") || strings.HasPrefix(label, "返回")
+	return strings.HasPrefix(label, "回") || strings.HasPrefix(label, "返回") ||
+		strings.HasPrefix(label, "Back") || label == i18n.T(i18n.English, "ui.nav.home")
 }
 
 // placeBackButtons 2026-11-16 統一返回按鈕的位置：各頁建好元件後，把返回類按鈕移到最後一列的最右邊
@@ -796,7 +859,7 @@ func (p *Panel) quantityButtons(row int) {
 		return
 	}
 	if pk.Confirm { // 高價物品：只有一個確認按鈕
-		p.button(fmt.Sprintf("確認購買（%s）", pk.PriceText), func(ctx context.Context, it ui.Interaction) error {
+		p.button(p.f("確認購買（%s）", pk.PriceText), func(ctx context.Context, it ui.Interaction) error {
 			p.act(ctx, it, func(ctx context.Context) (string, error) { return pk.Run(ctx, 1) }, actOpts{})
 			return nil
 		}, btn{emoji: "✅", row: row, style: ui.Success})
@@ -819,8 +882,8 @@ func (p *Panel) quantityButtons(row int) {
 			return nil
 		}, btn{row: row, style: ui.Primary})
 	}
-	p.button("自訂數量…", func(ctx context.Context, it ui.Interaction) error {
-		return it.SendModal(ctx, quantityModal(pk.Label, "數量", pk.Max, func(ctx context.Context, mit ui.Interaction, q int) {
+	p.button(p.s("自訂數量…"), func(ctx context.Context, it ui.Interaction) error {
+		return it.SendModal(ctx, quantityModal(pk.Label, p.s("數量"), pk.Max, func(ctx context.Context, mit ui.Interaction, q int) {
 			p.act(ctx, mit, func(ctx context.Context) (string, error) { return pk.Run(ctx, q) }, actOpts{keep: pk.Keep, noProgress: pk.NoProgress, after: pk.After})
 		}))
 	}, btn{emoji: "✏️", row: row})

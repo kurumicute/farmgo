@@ -787,7 +787,7 @@ func awayLines(ctx context.Context, t *db.Tx, farm *models.Farm, since, now time
 	}
 	var lines []string
 	if s.StolenTimes != 0 {
-		lines = append(lines, fmt.Sprintf("🥷 被偷了 %d 次，共 %d 個作物（%s）", s.StolenTimes, s.StolenQuantity, strings.Join(s.Thieves, "、")))
+		lines = append(lines, txf(ctx, "🥷 被偷了 %d 次，共 %d 個作物（%s）", s.StolenTimes, s.StolenQuantity, strings.Join(s.Thieves, "、")))
 	}
 	blocked := 0
 	for code, n := range s.Blocked {
@@ -796,10 +796,10 @@ func awayLines(ctx context.Context, t *db.Tx, farm *models.Farm, since, now time
 		}
 	}
 	if dog := s.Blocked[pets.DogBlocker]; dog != 0 {
-		lines = append(lines, fmt.Sprintf("🐶 狗狗擋下了 %d 次偷菜", dog))
+		lines = append(lines, txf(ctx, "🐶 狗狗擋下了 %d 次偷菜", dog))
 	}
 	if blocked != 0 {
-		lines = append(lines, fmt.Sprintf("🛡️ 防守設施擋下了 %d 次偷菜", blocked))
+		lines = append(lines, txf(ctx, "🛡️ 防守設施擋下了 %d 次偷菜", blocked))
 	}
 	plots, err := farms.ListPlots(ctx, t, farm.ID, false)
 	if err != nil {
@@ -815,10 +815,10 @@ func awayLines(ctx context.Context, t *db.Tx, farm *models.Farm, since, now time
 		}
 	}
 	if ready != 0 {
-		lines = append(lines, fmt.Sprintf("🌾 %d 格作物成熟了，可以收成", ready))
+		lines = append(lines, txf(ctx, "🌾 %d 格作物成熟了，可以收成", ready))
 	}
 	if withered != 0 {
-		lines = append(lines, fmt.Sprintf("🥀 %d 格作物乾枯了，記得清除", withered))
+		lines = append(lines, txf(ctx, "🥀 %d 格作物乾枯了，記得清除", withered))
 	}
 	var back int
 	if err := t.QueryRow(ctx, "SELECT count(*) FROM exploration_logs WHERE farm_id = $1 AND claimed_at IS NULL "+
@@ -826,7 +826,7 @@ func awayLines(ctx context.Context, t *db.Tx, farm *models.Farm, since, now time
 		return nil, err
 	}
 	if back != 0 {
-		lines = append(lines, "⛰️ 探險隊回來了，到「山洞」領取戰利品")
+		lines = append(lines, txt(ctx, "⛰️ 探險隊回來了，到「山洞」領取戰利品"))
 	}
 	more, err := awayActivity(ctx, t, farm, since, now)
 	if err != nil {
@@ -834,12 +834,12 @@ func awayLines(ctx context.Context, t *db.Tx, farm *models.Farm, since, now time
 	}
 	lines = append(lines, more...)
 	if len(marks.Ready) != 0 {
-		lines = append(lines, fmt.Sprintf("🏅 有 %d 個成就可以領取", len(marks.Ready)))
+		lines = append(lines, txf(ctx, "🏅 有 %d 個成就可以領取", len(marks.Ready)))
 	}
 	if len(lines) == 0 {
 		return []string{}, nil
 	}
-	out := []string{fmt.Sprintf("🌙 歡迎回來！你離開了 %s，這段時間：", LongDuration(int(now.Sub(since).Seconds())))}
+	out := []string{txf(ctx, "🌙 歡迎回來！你離開了 %s，這段時間：", LongDuration(int(now.Sub(since).Seconds())))}
 	for _, l := range lines {
 		out = append(out, "・"+l)
 	}
@@ -871,13 +871,13 @@ func awayActivity(ctx context.Context, t *db.Tx, farm *models.Farm, since, now t
 	}
 	var lines []string
 	if h := by[rules.EvHarvest]; h.qty > 0 {
-		lines = append(lines, fmt.Sprintf("🧺 自動收割了 %d 個作物", h.qty))
+		lines = append(lines, txf(ctx, "🧺 自動收割了 %d 個作物", h.qty))
 	}
 	if income := max(0, by[rules.EvSell].gold) + max(0, by[rules.EvFishSell].gold); income > 0 {
-		lines = append(lines, fmt.Sprintf("💰 自動販售、自動釣魚賺了 %d 金", income))
+		lines = append(lines, txf(ctx, "💰 自動販售、自動釣魚賺了 %d 金", income))
 	}
 	if n := by[rules.EvAidGift].n + by[rules.EvAidWater].n; n > 0 {
-		lines = append(lines, fmt.Sprintf("🤝 收到 %d 次朋友的送禮或幫忙拔草", n))
+		lines = append(lines, txf(ctx, "🤝 收到 %d 次朋友的送禮或幫忙拔草", n))
 	}
 	rewards, gold := 0, 0
 	for _, ev := range []rules.EventType{rules.EvQuestReward, rules.EvCompetitionReward, rules.EvRankingReward, rules.EvBossReward} {
@@ -885,9 +885,9 @@ func awayActivity(ctx context.Context, t *db.Tx, farm *models.Farm, since, now t
 		gold += max(0, by[ev].gold)
 	}
 	if rewards > 0 {
-		text := fmt.Sprintf("🎁 獲得 %d 筆任務、競賽、排行或 Boss 獎勵", rewards)
+		text := txf(ctx, "🎁 獲得 %d 筆任務、競賽、排行或 Boss 獎勵", rewards)
 		if gold > 0 {
-			text += fmt.Sprintf("（金幣 +%d）", gold)
+			text += txf(ctx, "（金幣 +%d）", gold)
 		}
 		lines = append(lines, text)
 	}
@@ -897,7 +897,7 @@ func awayActivity(ctx context.Context, t *db.Tx, farm *models.Farm, since, now t
 		return nil, err
 	}
 	if crafted > 0 {
-		lines = append(lines, fmt.Sprintf("🏭 %d 張加工訂單完成了，可以領取", crafted))
+		lines = append(lines, txf(ctx, "🏭 %d 張加工訂單完成了，可以領取", crafted))
 	}
 	return lines, nil
 }
@@ -957,15 +957,15 @@ func (p *ProgressService) ClaimAchievements(ctx context.Context, playerID int64)
 				parts = append(parts, text)
 			}
 			if a.Title != "" {
-				parts = append(parts, fmt.Sprintf("稱號「%s」", a.Title))
+				parts = append(parts, txf(ctx, "稱號「%s」", a.Title))
 			}
-			text := strings.Join(parts, "、")
+			text := strings.Join(parts, txt(ctx, "、"))
 			if text == "" {
 				text = "—"
 			}
-			lines = append(lines, fmt.Sprintf("%s %s：%s", a.Emoji, a.Name, text))
+			lines = append(lines, txf(ctx, "%s %s：%s", a.Emoji, a.Name, text))
 		}
-		message := fmt.Sprintf("🏅 領取 %d 個成就獎勵：\n%s", len(ready), strings.Join(lines, "\n"))
+		message := txf(ctx, "🏅 領取 %d 個成就獎勵：\n%s", len(ready), strings.Join(lines, "\n"))
 		if convertedAny {
 			message += "\n（倉庫已滿，部分道具改發等值金幣）"
 		}
@@ -1039,9 +1039,9 @@ func (p *ProgressService) SetTitle(ctx context.Context, playerID int64, title st
 			}
 		}
 		if title == "" {
-			return result("已取消顯示稱號。", farm.Gold, 0, "", 0), nil
+			return result(txt(ctx, "已取消顯示稱號。"), farm.Gold, 0, "", 0), nil
 		}
-		return result(fmt.Sprintf("已設定稱號「%s」。", title), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "已設定稱號「%s」。", title), farm.Gold, 0, "", 0), nil
 	})
 }
 
@@ -1118,7 +1118,7 @@ func (p *ProgressService) SpecialShop(ctx context.Context, playerID int64) (Spec
 			Weekly: WeeklyView{WeekStart: start, EndsAt: specialshop.WeekEndsAt(start), Offers: []WeeklyOfferView{}}}
 		for _, o := range offers {
 			v.Weekly.Offers = append(v.Weekly.Offers, WeeklyOfferView{
-				CropCode: o.CropCode, Name: o.CropName + "種子", Price: o.Price, OriginalPrice: o.OriginalPrice,
+				CropCode: o.CropCode, Name: o.CropName + txt(ctx, "種子"), Price: o.Price, OriginalPrice: o.OriginalPrice,
 				Limit: o.Limit, Rare: o.Rare, Bought: bought[rules.SeedItemCode(o.CropCode)],
 			})
 		}
@@ -1190,7 +1190,7 @@ func (p *ProgressService) BuyWeeklyDeal(ctx context.Context, playerID int64, cro
 			return ActionResult{}, err
 		}
 		left := offer.Limit - bought - quantity
-		return result(fmt.Sprintf("🎁 買到 %d 顆%s種子，花費 %s 金幣（本週還能買 %d 顆）。", quantity, offer.CropName,
+		return result(txf(ctx, "🎁 買到 %d 顆%s種子，花費 %s 金幣（本週還能買 %d 顆）。", quantity, offer.CropName,
 			numfmt.Comma(cost), left), farm.Gold, -cost, item, quantity), nil
 	})
 }
@@ -1232,7 +1232,7 @@ func (p *ProgressService) BuyTitle(ctx context.Context, playerID int64, title st
 			rec{ItemCode: specialshop.TitleShopCode, Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🎖️ 買到稱號「%s」！到「🏅 成就圖鑑 → 🎖️ 稱號」選用。", title), farm.Gold, -price, "", 0), nil
+		return result(txf(ctx, "🎖️ 買到稱號「%s」！到「🏅 成就圖鑑 → 🎖️ 稱號」選用。", title), farm.Gold, -price, "", 0), nil
 	})
 }
 

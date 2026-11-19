@@ -402,6 +402,11 @@ func drawAttrBadges(m *manifest, canvas *image.NRGBA, r rect, p Plot) error {
 }
 
 func drawPlot(m *manifest, canvas *image.NRGBA, r rect, p Plot) error {
+	return drawPlotRim(m, canvas, r, p, nil)
+}
+
+// drawPlotRim drawPlot，rim 不為 nil 時在濕土之後、植物之前疊上泥土格邊框（主題用，見 field_theme.go）。
+func drawPlotRim(m *manifest, canvas *image.NRGBA, r rect, p Plot, rim *image.NRGBA) error {
 	x0, y0, x1, y1 := r[0], r[1], r[2], r[3]
 	w, h := x1-x0, y1-y0
 	stage, err := StageOf(p)
@@ -414,6 +419,9 @@ func drawPlot(m *manifest, canvas *image.NRGBA, r rect, p Plot) error {
 			return err
 		}
 		alphaComposite(canvas, resize(wet, w, h, bicubic), x0, y0)
+	}
+	if rim != nil {
+		alphaComposite(canvas, rim, x0-(rim.Rect.Dx()-w)/2, y0-(rim.Rect.Dy()-h)/2)
 	}
 	layer, err := PlantLayer(p, stage) // 2 植物
 	if err != nil {
@@ -554,18 +562,18 @@ const fieldGap = 16
 
 // stackFields 第二塊農田（第 17 格以上，2026-11-19）畫在第一塊下方，置中，中間與兩側鋪草地。
 func stackFields(m *manifest, first, second *image.NRGBA) (*image.NRGBA, error) {
+	return stackFieldsTile(first, second, m.Pets.BandTile)
+}
+
+// stackFieldsTile stackFields，中間與兩側鋪指定的地面磚（主題用）。
+func stackFieldsTile(first, second *image.NRGBA, tileFile string) (*image.NRGBA, error) {
 	w := max(first.Rect.Dx(), second.Rect.Dx())
 	h := first.Rect.Dy() + fieldGap + second.Rect.Dy()
-	canvas := newCanvas(w, h)
-	tile, err := img(m.Pets.BandTile)
+	tile, err := img(tileFile)
 	if err != nil {
 		return nil, err
 	}
-	for x := 0; x < w; x += tile.Rect.Dx() {
-		for y := 0; y < h; y += tile.Rect.Dy() {
-			alphaComposite(canvas, tile, x, y)
-		}
-	}
+	canvas := tiled(tile, w, h)
 	alphaComposite(canvas, first, (w-first.Rect.Dx())/2, 0)
 	alphaComposite(canvas, second, (w-second.Rect.Dx())/2, first.Rect.Dy()+fieldGap)
 	return canvas, nil

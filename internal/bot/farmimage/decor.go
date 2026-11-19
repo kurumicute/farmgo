@@ -39,51 +39,12 @@ func withDecorLook(m *manifest, field *image.NRGBA, pets map[string]int, codes [
 	top := m.Pets.BandHeight
 	fw, fh := field.Rect.Dx(), field.Rect.Dy()
 	w, h := fw+2*d.Width, fh+top
-	canvas := newCanvas(w, h)
-	tileFile := d.Tile
 	theme, themed := cosmetics.FindTheme(look.Theme)
-	if themed {
-		tileFile = theme.Tile
-	}
-	tile, err := img(tileFile)
+	bg, err := yardBackground(m, w, h, theme, themed)
 	if err != nil {
 		return nil, err
 	}
-	for x := 0; x < w; x += tile.Rect.Dx() {
-		for y := 0; y < h; y += tile.Rect.Dy() {
-			alphaComposite(canvas, tile, x, y)
-		}
-	}
-	flower, err := img(d.Flower)
-	if err != nil {
-		return nil, err
-	}
-	for i, pos := range d.Flowers {
-		x := pos[0]
-		if x < 0 {
-			x += w
-		}
-		sprite := flower
-		if themed { // 主題點綴輪流放在花叢的位置
-			if sprite, err = img(theme.Props[i%len(theme.Props)]); err != nil {
-				return nil, err
-			}
-		}
-		alphaComposite(canvas, sprite, x, top+pos[1])
-	}
-	if themed { // 上方草地帶的兩端（左右庭院正上方）也放點綴，寵物站在中間的農田上方
-		for i := range 2 {
-			sprite, err := img(theme.Props[i%len(theme.Props)])
-			if err != nil {
-				return nil, err
-			}
-			x := (d.Width - sprite.Rect.Dx()) / 2
-			if i == 1 {
-				x = w - d.Width + x
-			}
-			alphaComposite(canvas, sprite, x, top-sprite.Rect.Dy()-8)
-		}
-	}
+	canvas := clone(bg)
 	alphaComposite(canvas, field, d.Width, top)
 	per := len(d.Rows)
 	for i, code := range codes[:min(len(codes), 2*per)] {
@@ -174,4 +135,66 @@ func FarmPNGWithDecor(plots []Plot, pets map[string]int, codes []string) ([]byte
 		return nil, err
 	}
 	return encodePaletteDynamic(canvas, PanelColors)
+}
+
+// yardBackground 庭院背景：地面磚、花叢（或主題點綴）、上方草地帶兩端的大型點綴。只跟主題與圖片大小有關，
+// 依「主題、寬、高」快取在 images（2026-11-19 壓測：每張圖重鋪約佔主題農田圖 4 成的 CPU）；呼叫端要畫的話先 clone。
+func yardBackground(m *manifest, w, h int, theme cosmetics.Theme, themed bool) (*image.NRGBA, error) {
+	key := fmt.Sprintf("yard:%s:%dx%d", theme.Code, w, h)
+	mu.Lock()
+	cached, ok := images[key]
+	mu.Unlock()
+	if ok {
+		return cached, nil
+	}
+	d := m.DecorSides
+	top := m.Pets.BandHeight
+	canvas := newCanvas(w, h)
+	tileFile := d.Tile
+	if themed {
+		tileFile = theme.Tile
+	}
+	tile, err := img(tileFile)
+	if err != nil {
+		return nil, err
+	}
+	for x := 0; x < w; x += tile.Rect.Dx() {
+		for y := 0; y < h; y += tile.Rect.Dy() {
+			alphaComposite(canvas, tile, x, y)
+		}
+	}
+	flower, err := img(d.Flower)
+	if err != nil {
+		return nil, err
+	}
+	for i, pos := range d.Flowers {
+		x := pos[0]
+		if x < 0 {
+			x += w
+		}
+		sprite := flower
+		if themed { // 主題點綴輪流放在花叢的位置
+			if sprite, err = img(theme.Props[i%len(theme.Props)]); err != nil {
+				return nil, err
+			}
+		}
+		alphaComposite(canvas, sprite, x, top+pos[1])
+	}
+	if themed { // 上方草地帶的兩端（左右庭院正上方）放大型點綴（樹、棕櫚…），寵物站在中間的農田上方
+		for i := range 2 {
+			sprite, err := img(theme.Props[1])
+			if err != nil {
+				return nil, err
+			}
+			x := (d.Width - sprite.Rect.Dx()) / 2
+			if i == 1 {
+				x = w - d.Width + x
+			}
+			alphaComposite(canvas, sprite, x, top-sprite.Rect.Dy()-8)
+		}
+	}
+	mu.Lock()
+	images[key] = canvas
+	mu.Unlock()
+	return canvas, nil
 }

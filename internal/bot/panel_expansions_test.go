@@ -143,3 +143,25 @@ func TestAuctionPanel(t *testing.T) {
 	contains(t, p.Text, "目前最高價", "你是目前的最高出價者")
 	e.checkLedger()
 }
+
+// 中英文切換（2026-11-19）：從「更多功能」切換成英文，總覽、農田頁與種植／澆水的回應都變成英文；
+// 選擇記在玩家設定，重新開面板仍是英文；再切一次回到繁體中文。
+func TestLanguageToggle(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	p.choose("更多功能", langToggle)
+	contains(t, p.Text, "Plots (4)", "Home Server", "To-do")
+	contains(t, strings.Join(p.labels(), " "), "Water All", "Harvest All", "Inventory")
+	p.goPage("plots")
+	contains(t, p.Text, "Plots (4)", "Empty")
+	p.choose("Choose a crop", "wheat")
+	contains(t, p.Text, "Planted Wheat in 4 plots")
+	if strings.Contains(p.Text, "種下") {
+		t.Fatal("英文模式不應出現中文回應：" + p.Text)
+	}
+	// 重新開面板：沿用玩家設定
+	again := e.open(alice, guildA, "阿明")
+	contains(t, again.Text, "Plots (4)")
+	again.choose("More", langToggle)
+	contains(t, again.Text, "農田（4 格）", "介面語言已切換為繁體中文")
+}

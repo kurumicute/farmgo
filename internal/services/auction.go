@@ -251,13 +251,13 @@ func (s *GameService) PlaceBid(ctx context.Context, playerID int64, amount int) 
 		extended := ""
 		if ends.Sub(now) < extend {
 			ends = ends.Add(extend)
-			extended = fmt.Sprintf("\n⏰ 結標前 %d 分鐘內有人出價，結標時間延後到 %s。", auction.Current().ExtendMinutes, taipeiFmt(ends, "01-02 15:04"))
+			extended = txf(ctx, "\n⏰ 結標前 %d 分鐘內有人出價，結標時間延後到 %s。", auction.Current().ExtendMinutes, taipeiFmt(ends, "01-02 15:04"))
 		}
 		if _, err := t.Exec(ctx, "UPDATE auctions SET top_bid = $2, top_farm_id = $3, ends_at = $4 WHERE id = $1",
 			a.ID, amount, farm.ID, ends); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🔨 出價 %s 金幣（%s），目前最高價！這次凍結 %s 金幣；被超過時會全數退回。%s",
+		return result(txf(ctx, "🔨 出價 %s 金幣（%s），目前最高價！這次凍結 %s 金幣；被超過時會全數退回。%s",
 			numfmt.Comma(amount), name, numfmt.Comma(need), extended), farm.Gold, -need, "", 0), nil
 	})
 }

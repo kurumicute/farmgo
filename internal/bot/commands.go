@@ -9,6 +9,7 @@ package bot
 
 import (
 	"context"
+	"farmgm/i18n"
 	"fmt"
 	"log/slog"
 	"runtime"
@@ -32,10 +33,11 @@ const (
 // Who 從互動取出的身分資料（Python Who）。GuildID 為 "" 表示私訊。
 type Who struct {
 	UserID, UserName, GuildID, GuildName string
+	Locale                               string // Discord 用戶端語言（2026-11-19 中英文切換）
 }
 
 func whoOf(it ui.Interaction) Who {
-	return Who{it.UserID(), it.UserName(), it.GuildID(), it.GuildName()}
+	return Who{it.UserID(), it.UserName(), it.GuildID(), it.GuildName(), ui.LocaleOf(it)}
 }
 
 func (w Who) guildPtr() *string {
@@ -139,7 +141,7 @@ func (c *Commands) OpenPanel(ctx context.Context, it ui.Interaction) {
 	})
 	if err != nil {
 		logUnexpected(err, "開啟面板失敗", "user", w.UserID)
-		msg := "❌ " + PlayerMessage(err)
+		msg := "❌ " + PlayerMessageLang(i18n.FromDiscord(w.Locale), err)
 		_, _ = it.Followup(ctx, ui.Message{Content: &msg, Ephemeral: true})
 		return
 	}
@@ -174,7 +176,7 @@ func (c *Commands) ReopenPanel(ctx context.Context, it ui.Interaction) {
 	})
 	if err != nil {
 		logUnexpected(err, "重開面板失敗", "user", w.UserID)
-		msg := "❌ " + PlayerMessage(err)
+		msg := "❌ " + PlayerMessageLang(i18n.FromDiscord(w.Locale), err)
 		_, _ = it.Followup(ctx, ui.Message{Content: &msg, Ephemeral: true})
 		return
 	}

@@ -72,7 +72,7 @@ func (s *GameService) hourglassTargets(ctx context.Context, t *db.Tx, farmID int
 	for _, j := range jobs {
 		if left := j.ReadyAt.Sub(now); hourglass.Usable(left) {
 			out = append(out, HourglassTarget{Key: fmt.Sprintf("lab:%d", j.Slot),
-				Label: fmt.Sprintf("研究槽 #%d %s", j.Slot, labJobName(ctx, t, s, j)), Remaining: left})
+				Label: txf(ctx, "研究槽 #%d %s", j.Slot, labJobName(ctx, t, s, j)), Remaining: left})
 		}
 	}
 	tool, err := cellarTool(ctx, t, farmID, lock)
@@ -88,7 +88,7 @@ func (s *GameService) hourglassTargets(ctx context.Context, t *db.Tx, farmID int
 			}
 		}
 		if longest > 0 {
-			out = append(out, HourglassTarget{Key: "cellar", Label: "🍄 地下菇房（所有生長中的菇床）", Remaining: longest})
+			out = append(out, HourglassTarget{Key: "cellar", Label: txt(ctx, "🍄 地下菇房（所有生長中的菇床）"), Remaining: longest})
 		}
 	}
 	return out, nil
@@ -131,7 +131,7 @@ func (s *GameService) UseHourglass(ctx context.Context, playerID int64, key stri
 			if _, err := t.Exec(ctx, "UPDATE lab_jobs SET ready_at = $2 WHERE id = $1", job.ID, now.Add(after)); err != nil {
 				return ActionResult{}, err
 			}
-			line = fmt.Sprintf("研究槽 #%d %s：剩餘 %s → %s", slot, labJobName(ctx, t, s, *job),
+			line = txf(ctx, "研究槽 #%d %s：剩餘 %s → %s", slot, labJobName(ctx, t, s, *job),
 				rules.FormatDuration(int(left.Seconds())), rules.FormatDuration(int(after.Seconds())))
 		case key == "cellar":
 			tool, err := cellarTool(ctx, t, farm.ID, true)
@@ -161,7 +161,7 @@ func (s *GameService) UseHourglass(ctx context.Context, playerID int64, key stri
 			if err := saveBeds(ctx, t, tool, beds); err != nil {
 				return ActionResult{}, err
 			}
-			line = fmt.Sprintf("地下菇房 %d 個菇床：最久的剩餘 %s → %s", n,
+			line = txf(ctx, "地下菇房 %d 個菇床：最久的剩餘 %s → %s", n,
 				rules.FormatDuration(int(longest.Seconds())), rules.FormatDuration(int(longestAfter.Seconds())))
 		default:
 			return ActionResult{}, gameerr.Validationf("沒有這個工作。")
@@ -177,6 +177,6 @@ func (s *GameService) UseHourglass(ctx context.Context, playerID int64, key stri
 			rec{ItemCode: balance.ItemHourglass, Quantity: 1}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("⏳ 使用%s，%s。", name, line), farm.Gold, 0, balance.ItemHourglass, 1), nil
+		return result(txf(ctx, "⏳ 使用%s，%s。", name, line), farm.Gold, 0, balance.ItemHourglass, 1), nil
 	})
 }

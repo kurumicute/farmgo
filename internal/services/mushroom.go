@@ -253,24 +253,24 @@ func (r *RanchService) AddSawdust(ctx context.Context, playerID int64, bedNo, qu
 				continue
 			}
 			beds[i].Sawdust += add[i]
-			parts = append(parts, fmt.Sprintf("#%d +%d（%d/%d）", i+1, add[i], beds[i].Sawdust, mushroom.MaxSawdust))
+			parts = append(parts, txf(ctx, "#%d +%d（%d/%d）", i+1, add[i], beds[i].Sawdust, mushroom.MaxSawdust))
 		}
 		if err := saveBeds(ctx, t, tool, beds); err != nil {
 			return ActionResult{}, err
 		}
-		text := "地下菇房投入木屑：" + strings.Join(parts, "、")
+		text := txt(ctx, "地下菇房投入木屑：") + strings.Join(parts, txt(ctx, "、"))
 		if err := r.record(ctx, t, farm, rules.EvCraftStart, truncRunes(text, 200),
 			rec{ItemCode: exploration.Sawdust, Quantity: total}); err != nil {
 			return ActionResult{}, err
 		}
-		msg := fmt.Sprintf("%s，共 %d 個木屑。", text, total)
+		msg := txf(ctx, "%s，共 %d 個木屑。", text, total)
 		if bedNo == 0 {
 			short := 0
 			for _, b := range beds {
 				short += mushroom.MaxSawdust - b.Sawdust
 			}
 			if short > 0 { // 「全部補滿」時木屑不夠：依序補，先把前面的菇床補滿（投滿才有保底稀有菇）
-				msg += fmt.Sprintf("木屑用完了，其餘菇床還差 %d 個（全部補滿共需 %d 個）。", short, short+total)
+				msg += txf(ctx, "木屑用完了，其餘菇床還差 %d 個（全部補滿共需 %d 個）。", short, short+total)
 			}
 		}
 		return result(msg, farm.Gold, 0, exploration.Sawdust, total), nil
@@ -374,13 +374,13 @@ func (r *RanchService) HarvestMushrooms(ctx context.Context, playerID int64) (Ac
 			parts = append(parts, fmt.Sprintf("%s ×%d", mushroom.SpeciesName(code), n))
 			total += n
 		}
-		msg := fmt.Sprintf("🍄 收成 %d 個菇床：%s", fit, strings.Join(parts, "、"))
+		msg := txf(ctx, "🍄 收成 %d 個菇床：%s", fit, strings.Join(parts, txt(ctx, "、")))
 		if rare > 0 {
-			msg += fmt.Sprintf("（✨ 稀有菇 %d 朵）", rare)
+			msg += txf(ctx, "（✨ 稀有菇 %d 朵）", rare)
 		}
-		msg += "。菇床已開始長下一批。"
+		msg += txt(ctx, "。菇床已開始長下一批。")
 		if fit < len(ready) {
-			msg += fmt.Sprintf("倉庫空間不足，還有 %d 個菇床沒收成。", len(ready)-fit)
+			msg += txf(ctx, "倉庫空間不足，還有 %d 個菇床沒收成。", len(ready)-fit)
 		}
 		return result(msg, farm.Gold, 0, "", total), nil
 	})

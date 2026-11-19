@@ -9,6 +9,7 @@
 package seasons
 
 import (
+	"farmgm/i18n"
 	"fmt"
 	"strings"
 	"time"
@@ -159,11 +160,14 @@ func Describe(seasons []string, start, end *int) string {
 	return strings.Join(parts, "　")
 }
 
-func NowText(now time.Time) string {
+func NowText(now time.Time) string { return NowTextLang(i18n.Default, now) }
+
+// NowTextLang NowText 的多語版本（格式與季節名稱查 i18n 文字表）。
+func NowTextLang(lang string, now time.Time) string {
 	s, next := SeasonOf(now), NextChange(now)
 	ns := SeasonOf(next)
-	return fmt.Sprintf("%s 現在是%s季（%s 換成%s%s季）　🕒 台灣時間 %s", SeasonEmoji[s], SeasonNames[s],
-		next.In(clock.TaipeiTZ).Format("1/2"), SeasonEmoji[ns], SeasonNames[ns], now.In(clock.TaipeiTZ).Format("15:04"))
+	return i18n.Sprintf(lang, "%s 現在是%s季（%s 換成%s%s季）　🕒 台灣時間 %s", SeasonEmoji[s], i18n.Text(lang, SeasonNames[s]),
+		next.In(clock.TaipeiTZ).Format("1/2"), SeasonEmoji[ns], i18n.Text(lang, SeasonNames[ns]), now.In(clock.TaipeiTZ).Format("15:04"))
 }
 
 // Validate 管理網站送來的設定：季節清單（空 = 不限）、開始與結束整點（0–23，兩個都填或都不填）。

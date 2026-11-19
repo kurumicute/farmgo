@@ -213,7 +213,7 @@ func (s *GameService) SellPrize(ctx context.Context, playerID, prizeID int64, qu
 				UnitPrice: &price, Applied: applied}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("已出售 %d 個%s（賭場 ×%d，單價 %d），獲得 %d 金幣。", quantity, name, prize.Multiplier, price, income),
+		return result(txf(ctx, "已出售 %d 個%s（賭場 ×%d，單價 %d），獲得 %d 金幣。", quantity, name, prize.Multiplier, price, income),
 			farm.Gold, income, prize.ItemCode, quantity), nil
 	})
 }

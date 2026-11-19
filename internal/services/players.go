@@ -268,7 +268,7 @@ func (s *GameService) SetHomeGroup(ctx context.Context, playerID, groupID int64)
 			fmt.Sprintf("農場設定主要所屬群組為「%s」（一次性設定）", group.Name), ctxGroup(groupID)); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("農場已設定為屬於群組 #%d「%s」；之後只能透過群組轉移變更（每 %s 一次）。",
+		return result(txf(ctx, "農場已設定為屬於群組 #%d「%s」；之後只能透過群組轉移變更（每 %s 一次）。",
 			group.ID, group.Name, cooldownText()), farm.Gold, 0, "", 0), nil
 	})
 }
@@ -404,7 +404,7 @@ func (s *GameService) TransferHomeGroup(ctx context.Context, playerID, groupID i
 			return ActionResult{}, err
 		}
 		next := taipeiFmt(now.Add(time.Duration(balance.GroupTransferCooldownSeconds)*time.Second), "2006-01-02 15:04")
-		return result(fmt.Sprintf("農場已從「%s」轉移到「%s」。之後的群組排行與任務、競賽計分都以新群組計算；"+
+		return result(txf(ctx, "農場已從「%s」轉移到「%s」。之後的群組排行與任務、競賽計分都以新群組計算；"+
 			"下次可轉移時間 %s（台灣時間）。", pyStr(oldName), group.Name, next), farm.Gold, 0, "", 0), nil
 	})
 }
@@ -466,11 +466,11 @@ func (s *GameService) RenameFarm(ctx context.Context, playerID int64, newName st
 		if err != nil {
 			return ActionResult{}, err
 		}
-		paid := "免費"
+		paid := txt(ctx, "免費")
 		if cost > 0 {
-			paid = fmt.Sprintf("花費 %d 金幣", cost)
+			paid = txf(ctx, "花費 %d 金幣", cost)
 		}
-		return result(fmt.Sprintf("農場名稱已從「%s」改為「%s」，%s。下次改名需要 %d 金幣（%d 天沒改名會降價）。",
+		return result(txf(ctx, "農場名稱已從「%s」改為「%s」，%s。下次改名需要 %d 金幣（%d 天沒改名會降價）。",
 			oldName, name, paid, next, expansion.Current().RenameDecayDays), farm.Gold, -cost, "", 0), nil
 	})
 }

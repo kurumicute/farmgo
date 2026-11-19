@@ -75,23 +75,26 @@ type Item struct {
 	DefaultPrice      int
 }
 
-// Theme 農場外觀主題（Go 版新增，2026-11-19）：換掉農田外圍的地面磚與點綴，夜景另外整張套濾鏡。
+// Theme 農場外觀主題（Go 版新增，2026-11-19）：換掉地面磚（柵欄裡的草地也換，見 farmimage/field_theme.go）與外圍點綴，夜景另外整張套濾鏡。
 type Theme struct {
 	Item
 	Tile   string    // 地面磚（無縫）
-	Props  [2]string // 欄杆外圍的點綴
+	Props  [2]string // 欄杆外圍的點綴：[0] 樹叢、[1] 大型點綴（上方草地帶兩端）
 	Night  bool      // 整張圖變暗、偏藍
 	Filter [3]int    // 夜景濾鏡：RGB 各乘以幾 %（Night 時使用）
 }
 
 // Themes 所有主題（顯示順序）。
 var Themes = []Theme{
-	{Item{"snow", "❄️", "雪地", 100_000}, "themes/theme_snow_tile.png",
-		[2]string{"themes/theme_snow_pile.png", "themes/theme_snow_bush.png"}, false, [3]int{}},
-	{Item{"sakura", "🌸", "櫻花", 80_000}, "themes/theme_sakura_tile.png",
-		[2]string{"themes/theme_sakura_shrub.png", "themes/theme_sakura_petals.png"}, false, [3]int{}},
-	{Item{"night", "🌙", "夜景", 150_000}, "themes/theme_night_tile.png",
-		[2]string{"themes/theme_night_lantern.png", "themes/theme_night_fireflies.png"}, true, [3]int{62, 70, 95}},
+	{Item{"snow", "❄️", "雪地", 100_000}, "themes/theme_snow_tile.png", themeProps("snow"), false, [3]int{}},
+	{Item{"night", "🌙", "夜景", 150_000}, "themes/theme_night_tile.png", themeProps("night"), true, [3]int{82, 86, 100}},
+	{Item{"beach", "🏖️", "海灘", 100_000}, "themes/theme_beach_tile.png", themeProps("beach"), false, [3]int{}},
+	{Item{"castle", "🏰", "城堡", 200_000}, "themes/theme_castle_tile.png", themeProps("castle"), false, [3]int{}},
+}
+
+// themeProps 主題的兩個點綴：樹叢（庭院花叢的位置輪流放）與大型點綴（上方草地帶兩端）。
+func themeProps(code string) [2]string {
+	return [2]string{"themes/theme_" + code + "_bush.png", "themes/theme_" + code + "_prop.png"}
 }
 
 // Hats 寵物帽子（圖片 pets/hats/<code>.png，32×32；每隻寵物戴的位置在 manifest.json 的 pets.sprites[*].hat）。

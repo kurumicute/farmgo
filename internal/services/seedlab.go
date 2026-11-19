@@ -91,11 +91,11 @@ func (s *GameService) ExpandSeedLibrary(ctx context.Context, playerID int64) (Ac
 			rec{ItemCode: "seed_library", Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		tail := "已經擴充到最大了。"
+		tail := txt(ctx, "已經擴充到最大了。")
 		if p, ok := seedlab.NextLibrary(lab.LibraryLevel); ok {
-			tail = fmt.Sprintf("下一次擴充需要 %s 金幣。", numfmt.Comma(p))
+			tail = txf(ctx, "下一次擴充需要 %s 金幣。", numfmt.Comma(p))
 		}
-		return result(fmt.Sprintf("🌰 種子庫擴充：%d → **%d** 格，花費 %s 金幣。%s", before, after, numfmt.Comma(price), tail),
+		return result(txf(ctx, "🌰 種子庫擴充：%d → **%d** 格，花費 %s 金幣。%s", before, after, numfmt.Comma(price), tail),
 			farm.Gold, -price, "", 0), nil
 	})
 }
@@ -135,7 +135,7 @@ func (s *GameService) BuyLabSlot(ctx context.Context, playerID int64) (ActionRes
 			rec{ItemCode: "lab_slot", Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🔬 研究槽擴充：%d → **%d** 個，花費 %s 金幣。", before, after, numfmt.Comma(price)),
+		return result(txf(ctx, "🔬 研究槽擴充：%d → **%d** 個，花費 %s 金幣。", before, after, numfmt.Comma(price)),
 			farm.Gold, -price, "", 0), nil
 	})
 }
@@ -342,7 +342,7 @@ func (s *GameService) SeedLab(ctx context.Context, playerID int64) (SeedLabView,
 			byID[seeds[i].ID] = &seeds[i]
 			sv := seedView(&seeds[i], cropsByCode)
 			if c := cropsByCode[seeds[i].CropCode]; c != nil && !seasons.Available(c.Seasons, c.HourStart, c.HourEnd, now) {
-				sv.OffSeason = fmt.Sprintf("%s是%s的作物，現在不能種植（%s）", c.Name,
+				sv.OffSeason = txf(ctx, "%s是%s的作物，現在不能種植（%s）", c.Name,
 					seasons.Describe(c.Seasons, c.HourStart, c.HourEnd), seasons.NowText(now))
 			}
 			v.Seeds = append(v.Seeds, sv)
@@ -524,7 +524,7 @@ func (s *GameService) removeMaterials(ctx context.Context, t *db.Tx, farm *model
 			return err
 		}
 		if have < n {
-			lacking = append(lacking, fmt.Sprintf("%s %d／%d", names[code], have, n))
+			lacking = append(lacking, txf(ctx, "%s %d／%d", names[code], have, n))
 		}
 	}
 	if len(lacking) > 0 {
@@ -576,7 +576,7 @@ func (s *GameService) BuildSeedLab(ctx context.Context, playerID int64) (ActionR
 			rec{GoldDelta: -cost}); err != nil {
 			return ActionResult{}, err
 		}
-		return result("🧪 種子實驗室建造完成！先把背包裡的一般種子拿去鑑定，就能開始培育。", farm.Gold, -cost, "", 0), nil
+		return result(txt(ctx, "🧪 種子實驗室建造完成！先把背包裡的一般種子拿去鑑定，就能開始培育。"), farm.Gold, -cost, "", 0), nil
 	})
 }
 
@@ -612,7 +612,7 @@ func (s *GameService) addLabExp(ctx context.Context, t *db.Tx, lab *models.SeedL
 		return "", err
 	}
 	if level > before {
-		return fmt.Sprintf(" 🎉 研究等級提升到 Lv.%d，研究槽增加為 %d 個！", level, seedlab.SlotsFor(level, lab.ExtraSlots)), nil
+		return txf(ctx, " 🎉 研究等級提升到 Lv.%d，研究槽增加為 %d 個！", level, seedlab.SlotsFor(level, lab.ExtraSlots)), nil
 	}
 	return "", nil
 }
@@ -694,17 +694,17 @@ func (s *GameService) IdentifySeeds(ctx context.Context, playerID int64, cropKey
 			return ActionResult{}, err
 		}
 		if quantity == 1 {
-			return result(fmt.Sprintf("🔬 鑑定完成：%s種子（%s），花費 %d 金幣。%s", crop.Name, texts[0], fee, lvNote),
+			return result(txf(ctx, "🔬 鑑定完成：%s種子（%s），花費 %d 金幣。%s", crop.Name, texts[0], fee, lvNote),
 				farm.Gold, -fee, item, 1), nil
 		}
 		lines := make([]string, len(texts))
 		for i, x := range texts {
-			lines[i] = fmt.Sprintf("　%d. %s", i+1, x)
+			lines[i] = txf(ctx, "　%d. %s", i+1, x)
 		}
 		if len(lines) > 20 { // 訊息太長時只列前 20 顆，其餘到種子庫看
-			lines = append(lines[:20], fmt.Sprintf("　…另外 %d 顆到「🌰 種子庫」查看", len(texts)-20))
+			lines = append(lines[:20], txf(ctx, "　…另外 %d 顆到「🌰 種子庫」查看", len(texts)-20))
 		}
-		return result(fmt.Sprintf("🔬 鑑定完成：%d 顆%s種子，花費 %d 金幣。\n%s%s", quantity, crop.Name, total, strings.Join(lines, "\n"), lvNote),
+		return result(txf(ctx, "🔬 鑑定完成：%d 顆%s種子，花費 %d 金幣。\n%s%s", quantity, crop.Name, total, strings.Join(lines, "\n"), lvNote),
 			farm.Gold, -total, item, quantity), nil
 	})
 }
@@ -817,14 +817,14 @@ func (s *GameService) StartCross(ctx context.Context, playerID, motherID, father
 			return ActionResult{}, err
 		}
 		parents := fmt.Sprintf("%s × %s", s.cropName(ctx, t, mother.CropCode), s.cropName(ctx, t, father.CropCode))
-		desc := fmt.Sprintf("研究槽 #%d 開始試驗雜交：%s → ❔ 結果未知", slot, parents)
+		desc := txf(ctx, "研究槽 #%d 開始試驗雜交：%s → ❔ 結果未知", slot, parents)
 		if CrossKnown(mother.CropCode, father.CropCode, known) {
-			desc = fmt.Sprintf("研究槽 #%d 開始雜交：%s → %s（成功率 %s%%）", slot, parents, s.cropName(ctx, t, code), pctText(bp))
+			desc = txf(ctx, "研究槽 #%d 開始雜交：%s → %s（成功率 %s%%）", slot, parents, s.cropName(ctx, t, code), pctText(bp))
 		}
 		if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(desc, 200), rec{}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🧬 %s，%s後完成。", desc, rules.FormatDuration(int(plan.Duration().Seconds()))),
+		return result(txf(ctx, "🧬 %s，%s後完成。", desc, rules.FormatDuration(int(plan.Duration().Seconds()))),
 			farm.Gold, 0, "", 0), nil
 	})
 }
@@ -880,11 +880,11 @@ func (s *GameService) StartMutation(ctx context.Context, playerID, seedID int64,
 			return ActionResult{}, err
 		}
 		chance := seedlab.MutateChanceBP(seed.GeneMutation, ancientCore)
-		desc := fmt.Sprintf("研究槽 #%d 開始突變研究：%s種子（成功率 %s%%）", slot, s.cropName(ctx, t, seed.CropCode), pctText(chance))
+		desc := txf(ctx, "研究槽 #%d 開始突變研究：%s種子（成功率 %s%%）", slot, s.cropName(ctx, t, seed.CropCode), pctText(chance))
 		if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(desc, 200), rec{}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("☢️ %s，%s後完成。", desc, rules.FormatDuration(int(seedlab.MutateDuration().Seconds()))),
+		return result(txf(ctx, "☢️ %s，%s後完成。", desc, rules.FormatDuration(int(seedlab.MutateDuration().Seconds()))),
 			farm.Gold, 0, "", 0), nil
 	})
 }
@@ -965,17 +965,17 @@ func (s *GameService) StartClone(ctx context.Context, playerID, seedID int64, ba
 		}
 		times := ""
 		if batches > 1 {
-			times = fmt.Sprintf(" ×%d 次", batches)
+			times = txf(ctx, " ×%d 次", batches)
 		}
-		desc := fmt.Sprintf("研究槽 #%d 開始育苗%s：%s種子 第 %d 代（%s）", slot, times, s.cropName(ctx, t, seed.CropCode), seed.Generation, genes.Text())
+		desc := txf(ctx, "研究槽 #%d 開始育苗%s：%s種子 第 %d 代（%s）", slot, times, s.cropName(ctx, t, seed.CropCode), seed.Generation, genes.Text())
 		if herbs > 0 {
-			desc += fmt.Sprintf("，加藥草 ×%d", herbs)
+			desc += txf(ctx, "，加藥草 ×%d", herbs)
 		}
 		if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(fmt.Sprintf("%s，金幣 -%d", desc, fee), 200),
 			rec{GoldDelta: -fee}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🌱 %s，花費 %s 金幣，%s後完成。", desc, numfmt.Comma(fee),
+		return result(txf(ctx, "🌱 %s，花費 %s 金幣，%s後完成。", desc, numfmt.Comma(fee),
 			rules.FormatDuration(int(seedlab.CloneDuration(batches).Seconds()))), farm.Gold, -fee, "", 0), nil
 	})
 }
@@ -1031,16 +1031,16 @@ func (s *GameService) collectClone(ctx context.Context, t *db.Tx, farm *models.F
 	}
 	times := ""
 	if batches > 1 {
-		times = fmt.Sprintf("（%d 次：%s）", batches, strings.Join(rolls, "、"))
+		times = txf(ctx, "（%d 次：%s）", batches, strings.Join(rolls, "、"))
 	}
-	line := fmt.Sprintf("🌱 #%d 育苗完成%s：%s種子 第 %d 代（%s）**+%d**，原本的種子也放回種子庫。", j.Slot, times,
+	line := txf(ctx, "🌱 #%d 育苗完成%s：%s種子 第 %d 代（%s）**+%d**，原本的種子也放回種子庫。", j.Slot, times,
 		s.cropName(ctx, t, seed.CropCode), seed.Generation, genes.Text(), total)
 	capacity, err := s.libraryCap(ctx, t, farm.ID)
 	if err != nil {
 		return "", 0, err
 	}
 	if n, err := labrepo.CountLibrary(ctx, t, farm.ID); err == nil && n > capacity {
-		line += fmt.Sprintf("\n⚠️ 種子庫 %d／%d 顆已超過上限，先種下或分享一些種子才能再鑑定、育苗。", n, capacity)
+		line += txf(ctx, "\n⚠️ 種子庫 %d／%d 顆已超過上限，先種下或分享一些種子才能再鑑定、育苗。", n, capacity)
 	} else if err != nil {
 		return "", 0, err
 	}
@@ -1110,7 +1110,7 @@ func (s *GameService) CollectLab(ctx context.Context, playerID int64) (ActionRes
 		if err != nil {
 			return ActionResult{}, err
 		}
-		return result(strings.Join(lines, "\n")+fmt.Sprintf("\n研究經驗 +%d。%s", exp, lvNote), farm.Gold, 0, "", len(lines)), nil
+		return result(strings.Join(lines, "\n")+txf(ctx, "\n研究經驗 +%d。%s", exp, lvNote), farm.Gold, 0, "", len(lines)), nil
 	})
 }
 
@@ -1239,9 +1239,9 @@ func (s *GameService) collectMutation(ctx context.Context, t *db.Tx, farm *model
 		return "", 0, err
 	}
 	name := s.cropName(ctx, t, seed.CropCode)
-	line := fmt.Sprintf("☢️ #%d 突變研究沒有成功，%s種子已放回種子庫。", j.Slot, name)
+	line := txf(ctx, "☢️ #%d 突變研究沒有成功，%s種子已放回種子庫。", j.Slot, name)
 	if success {
-		line = fmt.Sprintf("✨ #%d 突變成功：%s種子變成 **%s**！", j.Slot, name, balance.Mutations[mutation])
+		line = txf(ctx, "✨ #%d 突變成功：%s種子變成 **%s**！", j.Slot, name, balance.Mutations[mutation])
 	}
 	if err := s.record(ctx, t, farm, rules.EvSeedLab, truncRunes(stripMarks(line), 200), rec{}); err != nil {
 		return "", 0, err
@@ -1312,11 +1312,11 @@ func (s *GameService) plantLabSeed(ctx context.Context, t *db.Tx, farm *models.F
 	if err != nil {
 		return "", nil, err
 	}
-	tail := "請記得澆水，澆水後開始生長。"
+	tail := txt(ctx, "請記得澆水，澆水後開始生長。")
 	if seconds != nil {
-		tail = fmt.Sprintf("已自動澆水，%s後成熟。", rules.FormatDuration(*seconds))
+		tail = txf(ctx, "已自動澆水，%s後成熟。", rules.FormatDuration(*seconds))
 	}
-	return fmt.Sprintf("🧪 已在第 %d 格種下特殊%s種子（%s）%s，%s", plotNumber, crop.Name,
+	return txf(ctx, "🧪 已在第 %d 格種下特殊%s種子（%s）%s，%s", plotNumber, crop.Name,
 		labrepo.GenesOf(seed).Text(), label, tail), crop, nil
 }
 
@@ -1397,7 +1397,7 @@ func (s *GameService) PlantLabSeeds(ctx context.Context, playerID int64, seedIDs
 		if len(ids) == 1 {
 			return result(lines[0], farm.Gold, 0, rules.SeedItemCode(last.Code), 1), nil
 		}
-		return result(fmt.Sprintf("🧪 種下 %d 顆特殊種子：\n%s", len(ids), strings.Join(lines, "\n")), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "🧪 種下 %d 顆特殊種子：\n%s", len(ids), strings.Join(lines, "\n")), farm.Gold, 0, "", 0), nil
 	})
 }
 
@@ -1423,9 +1423,9 @@ func (s *GameService) labHarvest(ctx context.Context, t *db.Tx, farm *models.Far
 			if err := inventory.Add(ctx, t, farm.ID, seedlab.MatCrystal, n, "normal", "none"); err != nil {
 				return "", err
 			}
-			note += fmt.Sprintf("（💎 水晶 +%d）", n)
+			note += txf(ctx, "（💎 水晶 +%d）", n)
 		} else if gameerr.Is(err, gameerr.WarehouseFull) {
-			note += "（素材背包已滿，沒有拿到水晶）"
+			note += txt(ctx, "（素材背包已滿，沒有拿到水晶）")
 		} else {
 			return "", err
 		}
@@ -1495,7 +1495,7 @@ func (s *GameService) LabRecords(ctx context.Context, playerID int64, limit int)
 			v := LabRecordView{Kind: r.Kind, CreatedAt: r.CreatedAt, Success: r.Success, Generation: r.Generation}
 			switch r.Kind {
 			case "identify":
-				v.Text = fmt.Sprintf("🔬 鑑定 %s 第 1 代（%s）", name(r.CropCode), genes.Text())
+				v.Text = txf(ctx, "🔬 鑑定 %s 第 1 代（%s）", name(r.CropCode), genes.Text())
 			case "cross":
 				var m, f labrepo.Snapshot
 				_ = jsonUnmarshal(r.Mother, &m)
@@ -1504,17 +1504,17 @@ func (s *GameService) LabRecords(ctx context.Context, playerID int64, limit int)
 				if !r.Success {
 					mark = "💥"
 				}
-				v.Text = fmt.Sprintf("%s %s × %s → %s 第 %d 代（%s）%s", mark, snapView(m, cropsByCode).Label(),
+				v.Text = txf(ctx, "%s %s × %s → %s 第 %d 代（%s）%s", mark, snapView(m, cropsByCode).Label(),
 					snapView(f, cropsByCode).Label(), name(r.CropCode), r.Generation, genes.Text(), mut)
 			case "clone":
 				var m labrepo.Snapshot
 				_ = jsonUnmarshal(r.Mother, &m)
-				v.Text = fmt.Sprintf("🌱 育苗：%s 第 %d 代（%s）×%d", name(r.CropCode), r.Generation, genes.Text(), max(1, m.Copies))
+				v.Text = txf(ctx, "🌱 育苗：%s 第 %d 代（%s）×%d", name(r.CropCode), r.Generation, genes.Text(), max(1, m.Copies))
 			case "mutate":
 				if r.Success {
-					v.Text = fmt.Sprintf("✨ 突變研究：%s 第 %d 代 →%s", name(r.CropCode), r.Generation, mut)
+					v.Text = txf(ctx, "✨ 突變研究：%s 第 %d 代 →%s", name(r.CropCode), r.Generation, mut)
 				} else {
-					v.Text = fmt.Sprintf("☢️ 突變研究沒有成功：%s 第 %d 代", name(r.CropCode), r.Generation)
+					v.Text = txf(ctx, "☢️ 突變研究沒有成功：%s 第 %d 代", name(r.CropCode), r.Generation)
 				}
 			}
 			out = append(out, v)
@@ -1615,7 +1615,7 @@ func (s *GameService) ShareLabSeed(ctx context.Context, groupID, playerID, seedI
 			return ActionResult{}, err
 		}
 		name := s.cropName(ctx, t, seed.CropCode)
-		label := fmt.Sprintf("%s種子 第 %d 代（%s）", name, seed.Generation, labrepo.GenesOf(seed).Text())
+		label := txf(ctx, "%s種子 第 %d 代（%s）", name, seed.Generation, labrepo.GenesOf(seed).Text())
 		if seed.Mutation != "none" {
 			label += " ✨" + balance.Mutations[seed.Mutation]
 		}
@@ -1630,7 +1630,7 @@ func (s *GameService) ShareLabSeed(ctx context.Context, groupID, playerID, seedI
 		if err := s.registerLabCodex(ctx, t, receiver.ID, seed.CropCode, now); err != nil {
 			return ActionResult{}, err
 		}
-		return result(fmt.Sprintf("🎁 已把%s分享給 %s（今天已分享 %d／%d 顆）。", label, receiver.Name, sent+1, cfg.ShareSendPerDay),
+		return result(txf(ctx, "🎁 已把%s分享給 %s（今天已分享 %d／%d 顆）。", label, receiver.Name, sent+1, cfg.ShareSendPerDay),
 			sender.Gold, 0, "", 1), nil
 	})
 }

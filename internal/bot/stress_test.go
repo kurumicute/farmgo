@@ -34,6 +34,8 @@ import (
 	"farmgm/internal/cachebus"
 	"farmgm/internal/db"
 	"farmgm/internal/dbtest"
+	"farmgm/internal/game/cosmetics"
+	"farmgm/internal/game/gameerr"
 	"farmgm/internal/repositories/farmstats"
 	"farmgm/internal/services"
 )
@@ -159,6 +161,28 @@ type stressStats struct {
 	first                                 []float64
 	errors                                []string
 	messages, embedBytes, images, imgByte int
+	rejected                              map[string]int // 今日功能情境：遊戲規則拒絕（金幣不足、出價太低…）的次數，不算錯誤
+}
+
+// call 計時一個直接呼叫 service 的操作（今日功能情境）。遊戲規則拒絕（gameerr）只計數，其他錯誤算錯誤。
+func (s *stressStats) call(step string, f func() error) {
+	start := time.Now()
+	err := f()
+	ms := float64(time.Since(start).Microseconds()) / 1000
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.lat[step]; !ok {
+		s.order = append(s.order, step)
+	}
+	s.lat[step] = append(s.lat[step], ms)
+	if err == nil {
+		return
+	}
+	if _, ok := gameerr.As(err); ok {
+		s.rejected[step]++
+		return
+	}
+	s.errors = append(s.errors, step+"："+err.Error())
 }
 
 func (s *stressStats) upload(m ui.Message) {
@@ -289,31 +313,49 @@ func TestStressBotPanel(t *testing.T) {
 	}
 	fmt.Printf("建立 %d 位玩家：%.1f 秒\n", users, time.Since(t0).Seconds())
 	lab := os.Getenv("FARMGM_STRESS_LAB") != ""
-	if lab {
+	// 今日功能情境（2026-11-19）：金幣回收第二波、批量鑑定、英文玩家、農田主題。單數玩家改成英文。
+	today := os.Getenv("FARMGM_STRESS_TODAY") != ""
+	pids := make([]int64, users)
+	for i, w := range list {
+		ec, err := svc.ExternalContext(ctx, Platform, w.uid, &w.gid, "")
+		if err != nil || ec.PlayerID == nil {
+			t.Fatal("找不到壓測玩家", err)
+		}
+		pids[i] = *ec.PlayerID
+	}
+	if lab || today {
 		t1 := time.Now()
 		level, gold := 5, 100_000
-		for _, w := range list {
-			ec, err := svc.ExternalContext(ctx, Platform, w.uid, &w.gid, "")
-			if err != nil || ec.PlayerID == nil {
-				t.Fatal("找不到壓測玩家", err)
-			}
-			if _, err := svc.SetFarmValues(ctx, "stress", *ec.PlayerID, &gold, &level); err != nil {
+		if today {
+			level, gold = 30, 5_000_000
+		}
+		for i, pid := range pids {
+			if _, err := svc.SetFarmValues(ctx, "stress", pid, &gold, &level); err != nil {
 				t.Fatal(err)
 			}
+			if today && i%2 == 1 {
+				if _, err := svc.SetLanguage(ctx, pid, "en"); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
-		fmt.Printf("種子實驗室情境：設定 Lv.5 與金幣 %.1f 秒\n", time.Since(t1).Seconds())
+		note := ""
+		if today {
+			note = "、單數玩家改英文"
+		}
+		fmt.Printf("情境準備：設定 Lv.%d、金幣 %d%s %.1f 秒\n", level, gold, note, time.Since(t1).Seconds())
 	}
 
 	reg := ui.NewRegistry() // DirectReply 1.5 秒，與正式環境相同
 	cmds := NewCommands(svc, NewRunner(workers), reg)
 	var panels sync.Map
 	cmds.onPanel = func(p *Panel) { panels.Store(p.who.UserID, p) }
-	st := &stressStats{lat: map[string][]float64{}}
+	st := &stressStats{lat: map[string][]float64{}, rejected: map[string]int{}}
 
 	newIt := func(w who, attached []string) *stressInteraction {
 		return &stressInteraction{s: st, reg: reg, user: w.uid, guild: w.gid, attached: attached, start: time.Now()}
 	}
-	player := func(w who) {
+	player := func(idx int, w who) {
 		it := newIt(w, nil)
 		cmds.OpenPanel(ctx, it)
 		st.record("開啟面板", it)
@@ -362,6 +404,9 @@ func TestStressBotPanel(t *testing.T) {
 		click("買 5", "購買")
 		goPage("board", "排行榜")
 		goPage("casino", "切換頁面")
+		if today {
+			playToday(ctx, st, svc, pids[idx], idx, goPage)
+		}
 		if !lab {
 			return
 		}
@@ -415,9 +460,9 @@ func TestStressBotPanel(t *testing.T) {
 	cpu0 := processCPU()
 	t0 = time.Now()
 	var wg sync.WaitGroup
-	for _, w := range list {
+	for i, w := range list {
 		wg.Add(1)
-		go func() { defer wg.Done(); player(w) }()
+		go func() { defer wg.Done(); player(i, w) }()
 	}
 	wg.Wait()
 	elapsed := time.Since(t0)
@@ -442,6 +487,14 @@ func TestStressBotPanel(t *testing.T) {
 		}
 		fmt.Printf("  %-16s n=%-5d 平均 %7.0f  P50 %7.0f  P95 %7.0f  P99 %7.0f  最大 %7.0f  超過 3 秒 %d\n",
 			step, len(xs), mean(xs), pctile(xs, .5), pctile(xs, .95), pctile(xs, .99), slices.Max(xs), over)
+	}
+	if len(st.rejected) > 0 {
+		fmt.Println("遊戲規則拒絕（不算錯誤）：")
+		for _, step := range st.order {
+			if n := st.rejected[step]; n > 0 {
+				fmt.Printf("  %-16s %d 次\n", step, n)
+			}
+		}
 	}
 	if len(st.errors) > 0 {
 		fmt.Printf("錯誤畫面：%d（例如：%s）\n", len(st.errors), st.errors[0])
@@ -478,4 +531,36 @@ func TestStressBotPanel(t *testing.T) {
 	if gold != ledger || check.FarmStatsMismatches != 0 || check.FarmDailyStatsMismatches != 0 {
 		t.Error("資料不一致")
 	}
+}
+
+// playToday 今日功能情境（2026-11-19）：每位玩家依序操作外觀、名牌、農會聲望、每週拍賣、改名、擴建與擴充、庭院擺設、
+// 種子實驗室批量鑑定，並開啟對應頁面（主題農田圖、英文面板都會實際產生）。所有人搶同一場拍賣。
+func playToday(ctx context.Context, st *stressStats, svc *services.AdminService, pid int64, idx int, goPage func(page, step string)) {
+	ok := func(_ services.ActionResult, err error) error { return err }
+	themes := []string{"snow", "night", "beach", "castle"}
+	theme := themes[idx%len(themes)]
+	goPage("looks", "今日：外觀頁")
+	st.call("今日：買主題", func() error { return ok(svc.BuyCosmetic(ctx, pid, cosmetics.KindTheme, theme)) })
+	st.call("今日：套用主題", func() error { return ok(svc.SetTheme(ctx, pid, theme)) })
+	goPage("main", "今日：主題農田圖")
+	st.call("今日：買帽子", func() error { return ok(svc.BuyCosmetic(ctx, pid, cosmetics.KindHat, "crown")) })
+	goPage("badges", "今日：名牌頁")
+	st.call("今日：買名牌", func() error { return ok(svc.BuyBadge(ctx, pid, "clover")) })
+	st.call("今日：戴名牌", func() error { return ok(svc.EquipBadge(ctx, pid, "clover")) })
+	goPage("reputation", "今日：農會頁")
+	st.call("今日：捐給農會", func() error { return ok(svc.DonateReputation(ctx, pid, 10_000)) })
+	goPage("auction", "今日：拍賣頁")
+	st.call("今日：拍賣出價", func() error { return ok(svc.PlaceBid(ctx, pid, 50_000+idx*1_000)) })
+	st.call("今日：改名", func() error { return ok(svc.RenameFarm(ctx, pid, fmt.Sprintf("壓測農場%d", idx))) })
+	st.call("今日：擴建土地", func() error { return ok(svc.UpgradeFarm(ctx, pid)) })
+	st.call("今日：擴充素材背包", func() error { return ok(svc.ExpandMaterialBag(ctx, pid)) })
+	st.call("今日：擴充倉庫", func() error { return ok(svc.ExpandWarehouse(ctx, pid)) })
+	st.call("今日：買擺設", func() error { return ok(svc.BuyDecor(ctx, pid, "pine")) })
+	st.call("今日：放擺設", func() error { return ok(svc.PlaceDecor(ctx, pid, 1, "pine")) })
+	goPage("decor", "今日：庭院頁")
+	goPage("main", "今日：主題農田圖")
+	goPage("titles", "今日：稱號頁")
+	st.call("今日：建實驗室", func() error { return ok(svc.BuildSeedLab(ctx, pid)) })
+	st.call("今日：批量鑑定", func() error { return ok(svc.IdentifySeeds(ctx, pid, "carrot", 5)) })
+	goPage("lab", "今日：實驗室頁")
 }
