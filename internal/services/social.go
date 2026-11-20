@@ -18,9 +18,11 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/beehive"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/genetics"
 	"farmgm/internal/game/rules"
+	"farmgm/internal/game/treasure"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/crops"
 	"farmgm/internal/repositories/defenses"
@@ -716,6 +718,19 @@ func (s *SocialService) StealCrop(ctx context.Context, groupID, thiefPlayerID, v
 				}
 			}
 		}
+		if blockedBy == "" {
+			// 蜂箱（2026-11-20）：設施與狗狗都沒擋住時，偷蜂箱周圍的格子還有機率被叮跑
+			hive, err := s.hiveOf(ctx, t, victimFarm)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			if hive.Placed() && beehive.IsNeighbor(hive.Plot, plotNumber) {
+				br := s.rng()
+				if c := float64(beehive.StingBP[hive.Level]) / 10_000; br < c {
+					blockedBy, chance, roll = beehive.Blocker, &c, &br
+				}
+			}
+		}
 		if blockedBy != "" {
 			// 被阻止：雙方作物與物品都不變；紀錄同樣受唯一限制保護，同一株作物不會再次判定
 			device := petrules.BlockerName(blockedBy)
@@ -737,6 +752,10 @@ func (s *SocialService) StealCrop(ctx context.Context, groupID, thiefPlayerID, v
 				return ActionResult{}, err
 			}
 			text := txf(ctx, "🛡️ 偷菜失敗！%s 的%s守住了第 %d 格的%s。", victim.DisplayName, device, plotNumber, label)
+			if blockedBy == beehive.Blocker {
+				text = txf(ctx, "🐝 偷菜失敗！%s 的蜂箱裡飛出一群蜜蜂，叮得你抱頭逃跑，第 %d 格的%s一個也沒偷到。",
+					victim.DisplayName, plotNumber, label)
+			}
 			if blockedBy == petrules.DogBlocker {
 				text = txf(ctx, "🐶 偷菜失敗！%s 的狗狗發現了你，汪汪大叫把你趕跑，第 %d 格的%s一個也沒偷到。",
 					victim.DisplayName, plotNumber, label)
@@ -794,6 +813,11 @@ func (s *SocialService) StealCrop(ctx context.Context, groupID, thiefPlayerID, v
 		if err != nil {
 			return ActionResult{}, err
 		}
+		piece, err := s.grantFragment(ctx, t, thiefFarm, treasure.SourceSteal) // 藏寶圖碎片（2026-11-20）
+		if err != nil {
+			return ActionResult{}, err
+		}
+		dig += piece
 		return result(txf(ctx, "%s成功從 %s 的第 %d 格偷走 %d 個%s%s。\n📦 約值 %s 金\n👀 %s 下次打開農場時會知道是你偷的%s",
 			head, victim.DisplayName, plotNumber, quantity, label, tail, numfmt.Comma(value), victim.DisplayName, dig),
 			thiefFarm.Gold, 0, item, quantity), nil

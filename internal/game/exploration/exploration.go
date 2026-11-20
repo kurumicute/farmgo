@@ -544,6 +544,26 @@ func Explore(areaCode string, level int, rng Rng, extraRolls int) *Result {
 	return result
 }
 
+// DryWell 乾涸的古井（天氣奇遇，2026-11-20）：連續放晴時，古代遺跡探索額外觸發的事件。
+// 不放進 Areas 的事件表（不會被一般抽籤抽到，也不受管理網站的區域設定影響），由服務層在乾旱日呼叫 AddDryWell。
+var DryWell = Event{Code: "dry_well", Name: "🏜️ 乾涸的古井", Description: "連日放晴，遺跡裡的古井見底了，井底藏著閃閃發光的東西！",
+	MinLevel: 1, Bonus: []string{"rare", "rare", "seed"}}
+
+// DryWellCrystal 乾涸的古井另外帶回的水晶數量 [low, high]。
+var DryWellCrystal = [2]int{1, 2}
+
+// AddDryWell 把乾涸的古井的獎勵加進 res（依遺跡的掉落池抽 Bonus，另外加水晶）。
+func AddDryWell(res *Result, level int, rng Rng) {
+	area := Current().Areas["ruins"]
+	res.Events = append(res.Events, DryWell.Name)
+	res.Types = append(res.Types, "event")
+	for _, bonus := range DryWell.Bonus {
+		rollItem(area, bonus, level, rng, res)
+	}
+	low, high := DryWellCrystal[0], DryWellCrystal[1]
+	res.Add("crystal", low+min(high-low, int(rng()*float64(high-low+1))))
+}
+
 // MissingMaterials 缺少的素材 → 還差幾個。
 func MissingMaterials(machine Machine, have map[string]int) map[string]int {
 	out := map[string]int{}

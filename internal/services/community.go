@@ -733,7 +733,11 @@ func (c *CommunityService) ClaimQuest(ctx context.Context, groupID, playerID, qu
 		if err := c.record(ctx, t, farm, rules.EvQuestReward, fmt.Sprintf("領取任務「%s」獎勵：%s", q.Name, label), r); err != nil {
 			return ActionResult{}, err
 		}
-		return result(txf(ctx, "已領取任務 #%d「%s」的獎勵：%s。", questID, q.Name, label), farm.Gold, 0, "", 0), nil
+		bonus, err := c.boardBonusPiece(ctx, t, farm, q)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		return result(txf(ctx, "已領取任務 #%d「%s」的獎勵：%s。", questID, q.Name, label)+bonus, farm.Gold, 0, "", 0), nil
 	})
 }
 

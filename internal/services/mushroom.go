@@ -20,6 +20,7 @@ import (
 	"farmgm/internal/game/mushroom"
 	petrules "farmgm/internal/game/pets"
 	"farmgm/internal/game/rules"
+	"farmgm/internal/game/weather"
 	"farmgm/internal/repositories/catalog"
 	"farmgm/internal/repositories/farms"
 	"farmgm/internal/repositories/inventory"
@@ -316,9 +317,17 @@ func (r *RanchService) HarvestMushrooms(ctx context.Context, playerID int64) (Ac
 		if sachet {
 			extraRare = balance.SachetRarePct
 		}
+		// 天氣奇遇・連綿細雨（2026-11-20）：每床多收、稀有機率提高
+		drizzle := weather.HasLuck(now, weather.LuckDrizzle)
+		if drizzle {
+			extraRare += weather.DrizzleRarePct
+		}
 		yields := make([]int, len(ready))
 		for k := range ready {
 			yields[k] = mushroom.Yield() + petrules.BonusQuantity(mushroom.Yield(), rabbit, r.PetRng())
+			if drizzle {
+				yields[k] += weather.DrizzleExtraYield
+			}
 		}
 		// 倉庫空間：能收幾個菇床就收幾個
 		fit, need := 0, 0
@@ -377,6 +386,9 @@ func (r *RanchService) HarvestMushrooms(ctx context.Context, playerID int64) (Ac
 		msg := txf(ctx, "🍄 收成 %d 個菇床：%s", fit, strings.Join(parts, txt(ctx, "、")))
 		if rare > 0 {
 			msg += txf(ctx, "（✨ 稀有菇 %d 朵）", rare)
+		}
+		if drizzle {
+			msg += txf(ctx, "（🌧️ 連綿細雨：每床 +%d 朵、稀有 +%d%%）", weather.DrizzleExtraYield, weather.DrizzleRarePct)
 		}
 		msg += txt(ctx, "。菇床已開始長下一批。")
 		if fit < len(ready) {

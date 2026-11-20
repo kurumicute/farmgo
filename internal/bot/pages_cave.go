@@ -326,6 +326,9 @@ func (p *Panel) buildCaveResult(_ context.Context, data any) (*ui.Embed, error) 
 	if r.Advanced {
 		summary += p.s("\n🌟 高級探索")
 	}
+	if r.Fragment != "" {
+		summary += "\n" + r.Fragment
+	}
 	if r.GuardianNote != "" {
 		summary += "\n" + r.GuardianNote
 	}

@@ -68,6 +68,9 @@ var EventTypes = []string{
 	"auction_bid",
 	"auction_refund",
 	"auction_win",
+	// 0048 品評會（Go 版新增）
+	"fair_entry",
+	"fair_reward",
 }
 
 // QualityCodes 作物品質代碼（inventory_items／farm_plots 等的 quality CHECK）。

@@ -16,6 +16,7 @@ import (
 	"farmgm/internal/bot/ui"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/gameerr"
+	"farmgm/internal/game/questboard"
 	"farmgm/internal/repositories/groups"
 	"farmgm/internal/repositories/leaderboard"
 	"farmgm/internal/services"
@@ -528,7 +529,10 @@ func (p *Panel) buildQuests(_ context.Context, data any) (*ui.Embed, error) {
 	if len(compLines) > 0 {
 		cs = Section{Title: p.s("⚔️ 競賽"), Lines: compLines, Sep: "\n\n"}
 	}
-	e := &ui.Embed{Title: p.s("📜 ✦ 群組任務與競賽 ✦"), Color: Blue, Description: sections(qs, cs),
+	board := p.f("📜 **委託板**：每週一自動出 🟢🟡🔴 三張委託，目標依伺服器活躍人數調整，獎池依貢獻比例分配；"+
+		"Lv.%d 以下的農場貢獻 ×%d。完成後全伺服器 %d 小時增益（🟢 生長加速、🟡 售價提高、🔴 突變率提高），三張全部完成還送 1 片藏寶圖碎片。",
+		questboard.NewbieLevel, questboard.NewbieMult, questboard.BuffHours)
+	e := &ui.Embed{Title: p.s("📜 ✦ 群組任務與競賽 ✦"), Color: Blue, Description: sections(board, qs, cs),
 		Footer: p.s("只有在農場所屬伺服器中的操作才會計入該群組的任務與競賽。")}
 	if len(claimable) > 0 { // 有獎勵可領時寫在最下面，貼近領取選單
 		e.Description = cut(p.s(e.Description)+p.f("\n\n🎁 **有 %d 個任務獎勵可以領**，從下方選單領取", len(claimable)), 4096)

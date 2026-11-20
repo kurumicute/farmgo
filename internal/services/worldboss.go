@@ -1547,6 +1547,8 @@ type WorldBossSettlement struct {
 	WorldBoss        []int64
 	WorldBossSpawned []int64
 	Auctions         int // 這次結算的每週拍賣場數（2026-11-19）
+	QuestBoards      int // 這次新建立的委託板任務數（2026-11-20）
+	Fairs            int // 這次結算的品評會場數（2026-11-20）
 }
 
 // RunBackgroundSettlement 排名獎勵、競賽與世界 Boss 的背景結算；取不到鎖時回傳 nil。
@@ -1562,7 +1564,13 @@ func (w *WorldBossService) RunBackgroundSettlement(ctx context.Context, actor st
 	if out.WorldBossSpawned, err = w.SpawnDueWorldBosses(ctx); err != nil {
 		return nil, err
 	}
-	out.Auctions, err = w.SettleAuctions(ctx) // 每週拍賣：結標發獎、開這一週的拍賣
+	if out.Auctions, err = w.SettleAuctions(ctx); err != nil { // 每週拍賣：結標發獎、開這一週的拍賣
+		return out, err
+	}
+	if out.QuestBoards, err = w.EnsureWeeklyQuestBoards(ctx); err != nil { // 委託板：每週替活躍的群組出 3 張委託（2026-11-20）
+		return out, err
+	}
+	out.Fairs, err = w.SettleDueFairs(ctx) // 品評會：週日 20:00 後結算（2026-11-20）
 	return out, err
 }
 

@@ -234,6 +234,9 @@
     "wool": "products/wool.png"
   },
   "goods": {
+    "honey": "items/honey.png",
+    "honey_cake": "goods/honey_cake.png",
+    "honey_milk": "goods/honey_milk.png",
     "flour": "goods/flour.png",
     "bread": "goods/bread.png",
     "strawberry_jam": "goods/strawberry_jam.png"
@@ -1021,7 +1024,12 @@
     "explore_forest": "scenes/explore_forest.png",
     "explore_mine": "scenes/explore_mine.png",
     "explore_ruins": "scenes/explore_ruins.png",
-    "world_boss": "scenes/world_boss.png"
+    "world_boss": "scenes/world_boss.png",
+    "treasure_shipwreck": "scenes/treasure_shipwreck.png",
+    "treasure_oak": "scenes/treasure_oak.png",
+    "treasure_mine": "scenes/treasure_mine.png",
+    "treasure_altar": "scenes/treasure_altar.png",
+    "quest_board": "scenes/quest_board.png"
   },
   "layering": {
     "field": "依農場土地數選 field.bases[n]（4～16），第 k 塊地（依 plot_number 排序，0 起算）畫在 field.cells[k].rect",

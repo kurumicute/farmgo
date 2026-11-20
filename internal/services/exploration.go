@@ -26,6 +26,8 @@ import (
 	"farmgm/internal/game/genetics"
 	"farmgm/internal/game/ruins"
 	"farmgm/internal/game/rules"
+	"farmgm/internal/game/treasure"
+	"farmgm/internal/game/weather"
 	"farmgm/internal/repositories/catalog"
 	"farmgm/internal/repositories/codex"
 	"farmgm/internal/repositories/farms"
@@ -199,6 +201,7 @@ type ExploreReward struct {
 	StartedAt    time.Time
 	EndsAt       time.Time
 	GuardianNote string
+	Fragment     string // 這次撿到的藏寶圖碎片（"" = 沒有，2026-11-20）
 
 	Instant    bool
 	NextAt     *time.Time
@@ -528,6 +531,9 @@ func (x *ExplorationService) ExploreRuins(ctx context.Context, playerID int64) (
 		low, high := span[0], span[1]
 		extra := low + min(high-low, int(x.exploreRng()*float64(high-low+1)))
 		res := exploration.Explore("ruins", farm.Level, x.exploreRng, extra+bonus)
+		if weather.HasLuck(now, weather.LuckDrought) { // 天氣奇遇・乾涸的古井（2026-11-20）
+			exploration.AddDryWell(res, farm.Level, x.exploreRng)
+		}
 		exploration.RollSawdust(res, x.exploreRng)
 		until := now.Add(time.Duration(area.DurationSeconds) * time.Second)
 		if _, err := explrepo.SetCooldown(ctx, t, row, farm.ID, "ruins", now, until); err != nil {
@@ -646,6 +652,9 @@ func (x *ExplorationService) grantLog(ctx context.Context, t *db.Tx, farm *model
 	out := ExploreReward{LogID: log.ID, Area: log.AreaCode, AreaName: area.Name, Emoji: area.Emoji, Advanced: log.Advanced,
 		Level: log.FarmLevel, Items: []ExploreItem{}, Events: slices.Clone(log.Events), Seeds: map[string]int{},
 		FakeCoins: items[exploration.FakeCoin], StartedAt: log.ExploredAt, EndsAt: log.NextAvailableAt, GuardianNote: note}
+	if out.Fragment, err = x.grantFragment(ctx, t, farm, treasure.SourceExplore); err != nil {
+		return ExploreReward{}, err
+	}
 	for _, c := range order {
 		rarity := "稀有種子"
 		if m, ok := exploration.Materials[c]; ok {

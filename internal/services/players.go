@@ -10,6 +10,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/beehive"
 	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
@@ -512,11 +513,27 @@ func (s *GameService) status(ctx context.Context, t *db.Tx, farm *models.Farm, p
 	if err != nil {
 		return FarmStatus{}, err
 	}
+	lightning, err := s.lightningReady(ctx, t, farm.ID)
+	if err != nil {
+		return FarmStatus{}, err
+	}
+	var hiveInfo *HiveInfo
+	if hive, err := s.hiveOf(ctx, t, farm); err != nil {
+		return FarmStatus{}, err
+	} else if hive.Placed() {
+		hive.Accrue(now, hiveFlowers(plots, hive.Plot))
+		hiveInfo = &HiveInfo{Plot: hive.Plot, Level: hive.Level, Honey: hive.Honey, Capacity: beehive.Capacity[hive.Level]}
+		for i := range infos {
+			if infos[i].PlotNumber == hive.Plot && infos[i].State == rules.PlotEmpty {
+				infos[i].State = rules.PlotBeehive
+			}
+		}
+	}
 	return FarmStatus{
 		FarmID: farm.ID, PlayerID: farm.PlayerID, HomeGroupID: farm.HomeGroupID, PlayerName: playerName,
 		Name: farm.Name, Level: farm.Level, Gold: farm.Gold, WarehouseUsed: used,
 		WarehouseCapacity: farm.WarehouseCapacity, Plots: infos, Now: now, Title: farm.Title, Pets: levels, Decor: placed,
-		Theme: deref(farm.Theme), PetSkins: skins,
+		Theme: deref(farm.Theme), PetSkins: skins, LightningReady: lightning, Beehive: hiveInfo,
 	}, nil
 }
 

@@ -22,6 +22,7 @@ import (
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/pets"
+	"farmgm/internal/game/questboard"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/weather"
 	"farmgm/internal/services"
@@ -34,10 +35,15 @@ func (p *Panel) registerPages() {
 		"main":            {p.loadMain, p.buildMain},
 		"plots":           {p.loadPlots, p.buildPlots},
 		"cellar":          {p.loadCellar, p.buildCellar},
+		"orders":          {p.loadOrders, p.buildOrders},
+		"beehive":         {p.loadBeehive, p.buildBeehive},
+		"fair":            {p.loadFair, p.buildFair},
+		"treasure":        {p.loadTreasure, p.buildTreasure},
 		"lab":             {p.loadLab, p.buildLab},
 		"lab_seeds":       {p.loadLabSeeds, p.buildLabSeeds},
 		"lab_cross":       {p.loadLab, p.buildLabCross},
 		"lab_clone":       {p.loadLab, p.buildLabClone},
+		"lab_discard":     {p.loadLab, p.buildLabDiscard},
 		"decor":           {p.loadDecor, p.buildDecor},
 		"lab_records":     {p.loadLabRecords, p.buildLabRecords},
 		"lab_help":        {func(context.Context) (any, error) { return nil, nil }, p.buildLabHelp},
@@ -351,8 +357,15 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	e.AddField(p.t("ui.main.todo"), todo, false)
 	e.Footer = p.farmNextStep(s.Plots, false) // 大圖排在所有欄位之後，緊貼按鈕的只有 footer：放待辦摘要
 	// 每日天氣（Go 版新增）：放在最底部（footer 第一行），每天台灣時間 0 點換
-	w := weather.Today(time.Now())
-	e.Footer = strings.TrimSuffix(p.t("ui.main.weather", "emoji", w.Emoji, "name", weatherName(p.lang, w), "effect", weatherEffect(p.lang, w))+"\n"+e.Footer, "\n")
+	footer := p.weatherFooter(time.Now())
+	if len(d.todo.BoardBuffs) > 0 { // 委託增益（2026-11-20）：和天氣放在一起
+		var buffs []string
+		for _, tier := range d.todo.BoardBuffs {
+			buffs = append(buffs, questboard.TierEmoji[tier]+" "+p.s(questboard.Buffs[tier].Text))
+		}
+		footer += "\n" + p.f("📜 委託增益（完成後 %d 小時）：%s", questboard.BuffHours, strings.Join(buffs, p.s("、")))
+	}
+	e.Footer = strings.TrimSuffix(footer+"\n"+e.Footer, "\n")
 	if g := guideHint(p.lang, p.marks); g != "" { // 新手引導（2026-11-18）：footer 最後一行，緊貼按鈕
 		e.Footer += "\n" + g
 	}
@@ -539,6 +552,33 @@ func todoHints(lang string, d mainData) (hints []string, goes []todoGo) {
 	} else if td.TripReturnAt != nil {
 		hints = append(hints, t("trip_out", "area", td.TripArea, "time", ts(td.TripReturnAt)))
 	}
+	// 蜂箱、NPC 訂單與藏寶圖（2026-11-20）
+	if h := d.status.Beehive; h != nil && h.Honey >= h.Capacity {
+		hints = append(hints, t("honey_full", "n", h.Honey))
+		add(todoGo{t("go_beehive"), "beehive", "🍯"})
+	}
+	if td.TreasureDone {
+		hints = append(hints, t("treasure_done"))
+		add(todoGo{t("go_treasure"), "treasure", "🗺️"})
+	} else if td.TreasureReturnAt != nil {
+		hints = append(hints, t("treasure_out", "time", ts(td.TreasureReturnAt)))
+	}
+	if td.OrdersOpen > 0 {
+		hints = append(hints, t("orders_open", "n", td.OrdersOpen, "time", ts(td.OrdersNextExpire)))
+		add(todoGo{t("go_orders"), "orders", "🧑‍🌾"})
+	}
+	if td.RainbowClaimable { // 限時：放在最後、貼近按鈕
+		hints = append(hints, t("rainbow"))
+		add(todoGo{t("go_treasure"), "treasure", "🌈"})
+	}
+	if d.status.LightningReady { // 天氣奇遇（2026-11-20）：當天有效，放在待辦最後、貼近按鈕
+		if d.status.EmptyPlots() > 0 {
+			hints = append(hints, t("lightning"))
+			add(todoGo{t("go_lightning"), "plots", "⚡"})
+		} else {
+			hints = append(hints, t("lightning_no_plot"))
+		}
+	}
 	return hints, goes
 }
 
@@ -579,12 +619,16 @@ var moreEntries = []struct{ page, label, desc, emoji string }{
 	{"lab", "種子實驗室", "【生產】鑑定、雜交、改良特殊種子", "🧪"}, // 2026-11-19 使用者要求：總覽也能直接進種子實驗室（農田頁的按鈕保留）
 	{"defense", "防守", "【生產】稻草人、警戒犬、巡查券", "🛡️"},
 	{"prices", "作物價格", "【生產】今天的市場價格", "📈"},
+	{"orders", "NPC 訂單", "【生產】客人的限時訂單，報酬比市價高", "🧑‍🌾"}, // 2026-11-20
+	{"beehive", "蜂箱", "【生產】授粉提高突變、產蜂蜜、叮小偷", "🐝"},      // 2026-11-20
 	{"cave", "山洞", "【冒險】探險收集素材、機器", "⛰️"},
+	{"treasure", "藏寶圖", "【冒險】集碎片，每週到不同地點挖寶", "🗺️"}, // 2026-11-20
 	{"fishing", "釣魚", "【冒險】釣魚中心、魚簍、釣具商店", "🎣"},
 	{"casino", "賭場", "【冒險】用作物比大小", "🎰"},
 	{"boss", "世界Boss", "【冒險】伺服器共同活動、捐獻物資", "🐉"},
 	{"steal", "偷菜", "【社交】偷同伺服器玩家成熟的作物", "🥷"},
 	{"aid", "送禮互助", "【社交】送朋友作物、幫忙拔草，雙方都有獎勵", "🤝"},
+	{"fair", "品評會", "【社交】每週作品比賽：評審評分＋人氣投票", "🎀"}, // 2026-11-20
 	{"quests", "任務競賽", "【社交】群組任務與競賽", "📜"},
 	{"group", "群組", "【社交】所屬群組、轉移農場", "👥"},
 	{"board", "排行榜", "【紀錄】個人、伺服器、群組排行", "🏆"},
@@ -778,6 +822,9 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 	p.attachImage(e, p.farmImage(d.status)) // 圖片在交易外產生
 	if empty := countState(s.Plots, rules.PlotEmpty); empty > 0 {
 		var options []option
+		if s.LightningReady { // 天氣奇遇・雷擊種子（2026-11-20）：放第一項，不會被 25 項上限截掉
+			options = append(options, option{p.t("ui.plots.lightning_option"), lightningValue, p.t("ui.plots.lightning_desc"), "⚡"})
+		}
 		for _, c := range d.crops {
 			if !(c.ShopBuyable || seeds[c.Code] > 0) || !c.InSeason { // 不在季節的不列出
 				continue
@@ -801,6 +848,12 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 				cropEmoji(c.Code)})
 		}
 		p.selectMenu(p.t("ui.plots.plant_placeholder", "n", empty), options, func(ctx context.Context, it ui.Interaction, code string) error {
+			if code == lightningValue {
+				p.act(ctx, it, p.call("pick_lightning", func(ctx context.Context) (services.ActionResult, error) {
+					return p.svc().PickLightningSeed(ctx, p.playerID)
+				}), actOpts{})
+				return nil
+			}
 			p.act(ctx, it, p.call("plant_all", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().PlantAll(ctx, p.playerID, code)
 			}), actOpts{noProgress: true})
@@ -1266,6 +1319,44 @@ func caveHelpText() string {
 		"• 帶回素材、🪵木屑、稀有種子與假幣（「🎒 背包」兌換，1 個 = %s 金）\n"+
 		"• 「⛰️ 山洞」→「🔧 機器」用素材製作種子製造機、自動收割機、自動加工機、稀有作物培育器",
 		strings.Join(names, "、"), strings.Join(hours, "／"), money(exploration.FakeCoinRate()))
+}
+
+// lightningValue 種植選單裡「撿起雷擊種子」的值（作物代碼都是英數字，不會重複）。
+const lightningValue = "!lightning"
+
+// weatherFooter 今日天氣、後兩天的預報與今天的天氣奇遇（2026-11-20）。雷擊種子要玩家動手，放在待辦區，這裡不重複。
+func (p *Panel) weatherFooter(now time.Time) string {
+	days := weather.Forecast(now, 3)
+	w := days[0]
+	lines := []string{p.t("ui.main.weather", "emoji", w.Emoji, "name", weatherName(p.lang, w), "effect", weatherEffect(p.lang, w))}
+	sep, list := "｜", "、"
+	if p.lang != i18n.Default {
+		sep, list = " | ", ", "
+	}
+	parts := make([]string, 0, len(days)-1)
+	for i, k := range days[1:] {
+		parts = append(parts, p.t(fmt.Sprintf("weather.forecast_day%d", i+1))+" "+k.Emoji+" "+weatherName(p.lang, k))
+	}
+	forecast := p.t("weather.forecast", "days", strings.Join(parts, sep))
+	if lucks := weather.LucksOn(now, 1); len(lucks) > 0 {
+		names := make([]string, len(lucks))
+		for i, c := range lucks {
+			names[i] = p.t("weather.luck_name_" + c)
+		}
+		forecast += p.t("weather.forecast_luck", "day", p.t("weather.forecast_day1"), "lucks", strings.Join(names, list))
+	}
+	lines = append(lines, forecast)
+	for _, c := range weather.LucksOn(now, 0) {
+		switch c {
+		case weather.LuckDrought:
+			lines = append(lines, p.t("weather.luck_drought"))
+		case weather.LuckDrizzle:
+			lines = append(lines, p.t("weather.luck_drizzle", "n", weather.DrizzleExtraYield, "pct", weather.DrizzleRarePct))
+		case weather.LuckRainbow:
+			lines = append(lines, p.t("weather.luck_rainbow"))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // weatherName 天氣名稱（繁中用天氣表的名稱）。

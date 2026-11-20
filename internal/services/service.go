@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -74,6 +75,8 @@ type GameService struct {
 	LabRng func() float64
 	// 自動釣魚機的魚種與重量（Go 版新增）；測試可直接指定
 	AutoFishRng func() float64
+	// 藏寶圖碎片掉落與寶箱、NPC 訂單的擲骰（Go 版新增，2026-11-20）；測試可直接指定
+	TreasureRng func() float64
 
 	contextGroupID *int64
 }
@@ -93,6 +96,7 @@ func NewGameService(d *db.DB, opt Options) *GameService {
 		MushroomRng: rand.Float64,
 		LabRng:      rand.Float64,
 		AutoFishRng: rand.Float64,
+		TreasureRng: rand.Float64,
 	}
 	if s.clock == nil {
 		s.clock = clock.System{}
@@ -319,7 +323,20 @@ type (
 	warehouseUsedKey struct{ farmID int64 }
 )
 
-func (s *GameService) activeEvents(ctx context.Context, t *db.Tx) ([]*eventrules.Event, error) {
+// activeEvents 生效中的活動（含每日天氣）；farm 不是 nil 且有所屬群組時，再加上群組的委託增益（2026-11-20）。
+func (s *GameService) activeEvents(ctx context.Context, t *db.Tx, farm *models.Farm) ([]*eventrules.Event, error) {
+	base, err := s.globalEvents(ctx, t)
+	if err != nil || farm == nil || farm.HomeGroupID == nil {
+		return base, err
+	}
+	buffs, err := s.boardBuffs(ctx, t, *farm.HomeGroupID)
+	if err != nil || len(buffs) == 0 {
+		return base, err
+	}
+	return append(slices.Clone(base), buffs...), nil
+}
+
+func (s *GameService) globalEvents(ctx context.Context, t *db.Tx) ([]*eventrules.Event, error) {
 	return db.Memo(t, eventsKey{}, func() ([]*eventrules.Event, error) {
 		now := s.now()
 		list, err := events.Active(ctx, t, now)

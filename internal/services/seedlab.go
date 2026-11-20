@@ -352,8 +352,12 @@ func (s *GameService) SeedLab(ctx context.Context, playerID int64) (SeedLabView,
 		if err != nil {
 			return v, err
 		}
+		hive, err := s.hivePlot(ctx, t, farm) // 蜂箱那一格不能種（2026-11-20）
+		if err != nil {
+			return v, err
+		}
 		for _, p := range plots {
-			if p.CropTypeID == nil {
+			if p.CropTypeID == nil && p.PlotNumber != hive {
 				v.EmptyPlots = append(v.EmptyPlots, p.PlotNumber)
 			}
 		}
@@ -1380,9 +1384,13 @@ func (s *GameService) PlantLabSeeds(ctx context.Context, playerID int64, seedIDs
 		if err != nil {
 			return ActionResult{}, err
 		}
+		hive, err := s.hivePlot(ctx, t, farm) // 蜂箱那一格不能種（2026-11-20）
+		if err != nil {
+			return ActionResult{}, err
+		}
 		var empty []int
 		for _, p := range plots {
-			if p.CropTypeID == nil {
+			if p.CropTypeID == nil && p.PlotNumber != hive {
 				empty = append(empty, p.PlotNumber)
 			}
 		}
@@ -1640,5 +1648,54 @@ func (s *GameService) ShareLabSeed(ctx context.Context, groupID, playerID, seedI
 		}
 		return result(txf(ctx, "🎁 已把%s分享給 %s（今天已分享 %d／%d 顆）。", label, receiver.Name, sent+1, cfg.ShareSendPerDay),
 			sender.Gold, 0, "", 1), nil
+	})
+}
+
+// MaxDiscardSeeds 一次最多丟棄幾顆特殊種子（Discord 選單一次最多勾 25 項）。
+const MaxDiscardSeeds = 25
+
+// DiscardLabSeeds 丟棄種子庫裡不要的特殊種子（Go 版新增，2026-11-20 使用者要求）：
+// 只能丟棄自己種子庫裡的種子（培育中、已種下的不行），丟棄後標成已消耗、不退任何東西，也不能復原。
+// 沒有實驗室也能丟棄朋友分享的種子。記一筆 seed_lab 交易（不動金幣），方便查詢。
+func (s *GameService) DiscardLabSeeds(ctx context.Context, playerID int64, seedIDs []int64) (ActionResult, error) {
+	ids := make([]int64, 0, len(seedIDs))
+	for _, id := range seedIDs {
+		if !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return ActionResult{}, gameerr.Validationf("請先勾選要丟棄的種子。")
+	}
+	if len(ids) > MaxDiscardSeeds {
+		return ActionResult{}, gameerr.Validationf("一次最多丟棄 %d 顆種子。", MaxDiscardSeeds)
+	}
+	slices.Sort(ids) // 依編號鎖定，避免並行請求死結
+	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
+		farm, err := s.lockedFarm(ctx, t, playerID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		now := s.now()
+		var labels []string
+		for _, id := range ids {
+			seed, err := storedSeed(ctx, t, farm.ID, id)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			if err := labrepo.SetStatus(ctx, t, seed.ID, models.LabSeedUsed, now); err != nil {
+				return ActionResult{}, err
+			}
+			label := fmt.Sprintf("%s 第 %d 代（%s）", s.cropName(ctx, t, seed.CropCode), seed.Generation, labrepo.GenesOf(seed).Text())
+			if seed.Mutation != "none" {
+				label += " ✨" + balance.Mutations[seed.Mutation]
+			}
+			labels = append(labels, label)
+		}
+		if err := s.record(ctx, t, farm, rules.EvSeedLab,
+			truncRunes(fmt.Sprintf("丟棄 %d 顆特殊種子：%s", len(labels), strings.Join(labels, "、")), 200), rec{}); err != nil {
+			return ActionResult{}, err
+		}
+		return result(txf(ctx, "🗑️ 已丟棄 %d 顆特殊種子。", len(labels)), farm.Gold, 0, "", len(labels)), nil
 	})
 }

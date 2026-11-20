@@ -191,7 +191,7 @@ func (s *GameService) SellPrize(ctx context.Context, playerID, prizeID int64, qu
 			return ActionResult{}, err
 		}
 		base := genetics.UnitPrice(c.SellPrice, prize.Quality, prize.Mutation, settings)
-		price, sell, err := s.sellPrice(ctx, t, &c, base*prize.Multiplier)
+		price, sell, err := s.sellPrice(ctx, t, farm, &c, base*prize.Multiplier)
 		if err != nil {
 			return ActionResult{}, err
 		}

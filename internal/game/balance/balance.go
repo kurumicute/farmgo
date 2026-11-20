@@ -361,7 +361,8 @@ type Recipe struct {
 
 var RecipeOrder = []string{"flour", "bread", "strawberry_jam", "tomato_jam", "grape_jam", "pumpkin_jam", "watermelon_jam",
 	"shiitake_bread", "mushroom_soup", "enoki_pancake", "lingzhi_cake", "truffle_bread", "glowcap_pie",
-	"mixed_jam", "cheese", "butter", "mayonnaise", "cake", "strawberry_cake", "lucky_sachet", "pet_treat"}
+	"mixed_jam", "cheese", "butter", "mayonnaise", "cake", "strawberry_cake", "lucky_sachet", "pet_treat",
+	"honey_cake", "honey_milk"}
 
 var Recipes = map[string]Recipe{
 	"flour":          {"麵粉", "mill", map[string]int{"wheat": 3}, []string{"wheat"}, "flour", 1, 30 * 60, []string{"麵粉"}},
@@ -391,6 +392,9 @@ var Recipes = map[string]Recipe{
 	// Go 版新增（2026-11-18）：限時增益道具（balance/boosts.go），在背包的「✨ 增益道具」使用；也可以直接賣
 	"lucky_sachet": {"幸運香包", "mill", map[string]int{"herb": 3, "wool": 1}, []string{"herb", "wool"}, "lucky_sachet", 1, 60 * 60, []string{"幸運香包", "香包"}},
 	"pet_treat":    {"寵物零食", "bakery", map[string]int{"flour": 1, "egg": 1, "milk": 1}, []string{"flour", "egg", "milk"}, "pet_treat", 1, 30 * 60, []string{"寵物零食", "零食"}},
+	// Go 版新增（2026-11-20）：蜂箱（game/beehive）產的蜂蜜；售價約為原料售價的 1.6 倍（同乳製品）
+	"honey_cake": {"蜂蜜蛋糕", "bakery", map[string]int{"honey": 3, "flour": 2}, []string{"honey", "flour"}, "honey_cake", 1, 60 * 60, []string{"蜂蜜蛋糕"}},
+	"honey_milk": {"蜂蜜牛奶", "dairy", map[string]int{"honey": 1, "milk": 2}, []string{"honey", "milk"}, "honey_milk", 1, 30 * 60, []string{"蜂蜜牛奶"}},
 }
 
 const (
@@ -410,7 +414,8 @@ type Good struct {
 var GoodOrder = []string{"flour", "bread", "strawberry_jam", "tomato_jam", "grape_jam", "pumpkin_jam", "watermelon_jam",
 	"shiitake", "button_mushroom", "enoki", "lingzhi", "truffle", "glowcap",
 	"shiitake_bread", "mushroom_soup", "enoki_pancake", "lingzhi_cake", "truffle_bread", "glowcap_pie",
-	"mixed_jam", "cheese", "butter", "mayonnaise", "cake", "strawberry_cake", "lucky_sachet", "pet_treat"}
+	"mixed_jam", "cheese", "butter", "mayonnaise", "cake", "strawberry_cake", "lucky_sachet", "pet_treat",
+	"honey", "honey_cake", "honey_milk"}
 
 var Goods = map[string]Good{
 	"flour":          {"麵粉", 45, []string{"麵粉"}},
@@ -444,6 +449,10 @@ var Goods = map[string]Good{
 	// 增益道具的賣價刻意壓低（原料約 120／130），主要用途是使用
 	"lucky_sachet": {"幸運香包", 150, []string{"幸運香包", "香包"}}, // 藥草 ×3（不能賣）＋羊毛 ×1 = 120
 	"pet_treat":    {"寵物零食", 120, []string{"寵物零食", "零食"}}, // 麵粉＋雞蛋＋牛奶 = 130
+	// Go 版新增（2026-11-20）：蜂箱產的蜂蜜（可以直接賣）與蜂蜜料理
+	"honey":      {"蜂蜜", 80, []string{"蜂蜜"}},
+	"honey_cake": {"蜂蜜蛋糕", 520, []string{"蜂蜜蛋糕"}}, // 蜂蜜 ×3＋麵粉 ×2 = 330
+	"honey_milk": {"蜂蜜牛奶", 320, []string{"蜂蜜牛奶"}}, // 蜂蜜＋牛奶 ×2 = 200
 }
 
 // ---------- 群組共同任務 ----------

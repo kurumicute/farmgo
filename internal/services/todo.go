@@ -6,13 +6,19 @@ package services
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"time"
 
 	"farmgm/internal/db"
 	"farmgm/internal/game/autofish"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/mushroom"
+	"farmgm/internal/game/npcorder"
+	"farmgm/internal/game/questboard"
 	"farmgm/internal/game/seedlab"
+	"farmgm/internal/game/treasure"
+	"farmgm/internal/game/weather"
 	fishrepo "farmgm/internal/repositories/fishing"
 	labrepo "farmgm/internal/repositories/seedlab"
 )
@@ -31,6 +37,13 @@ type TodoSummary struct {
 	TripArea       string     // 進行中或待領取的探險區域名稱（沒有探險時為空字串）
 	TripReturnAt   *time.Time // 探險隊回來的時間（2026-11-19 待辦區新增）
 	TripBack       bool       // 探險隊已經回來、可以領取
+	// NPC 訂單與藏寶圖（2026-11-20）：在同一條查詢裡讀 farm_tools 的 settings，不額外查詢
+	OrdersOpen       int        // 還沒過期的 NPC 訂單
+	OrdersNextExpire *time.Time // 最快過期的訂單
+	TreasureDone     bool       // 尋寶隊回來了
+	TreasureReturnAt *time.Time // 尋寶隊回來的時間（尋寶中）
+	RainbowClaimable bool       // 彩虹日、今天還沒領彩虹碎片
+	BoardBuffs       []string   // 所屬群組生效中的委託增益（難度，依 questboard.Tiers 排序）
 }
 
 func (s *GameService) TodoSummary(ctx context.Context, playerID int64) (TodoSummary, error) {
@@ -61,13 +74,43 @@ func (s *GameService) TodoSummary(ctx context.Context, playerID int64) (TodoSumm
 		// 實驗室等級、魚簍數量與探險回來時間合成一條查詢（總覽頁每次重繪都會讀，SQL 次數有上限，見 bot/querycount_test.go）
 		var labLevel, labExtra *int
 		var tripArea *string
+		var ordersRaw, treasureRaw map[string]any
+		var boardRaw *string
 		if err := t.QueryRow(ctx, `SELECT l.level, l.extra_slots,
 				(SELECT count(*) FROM farm_fish f WHERE f.farm_id = $1 AND `+fishrepo.InBasket("f")+`),
-				e.area_code, e.next_available_at
+				e.area_code, e.next_available_at,
+				(SELECT settings FROM farm_tools WHERE farm_id = $1 AND tool_code = $2 ORDER BY id DESC LIMIT 1),
+				(SELECT settings FROM farm_tools WHERE farm_id = $1 AND tool_code = $3 ORDER BY id DESC LIMIT 1),
+				(SELECT string_agg(DISTINCT created_by, ',') FROM quests WHERE group_id = $4 AND status = 'completed'
+					AND created_by LIKE 'questboard:%' AND completed_at > $5)
 			FROM (SELECT 1) AS one LEFT JOIN seed_labs l ON l.farm_id = $1
-			LEFT JOIN exploration_logs e ON e.farm_id = $1 AND e.claimed_at IS NULL`, farm.ID).Scan(&labLevel, &labExtra, &v.BasketCount, &tripArea, &v.TripReturnAt); err != nil {
+			LEFT JOIN exploration_logs e ON e.farm_id = $1 AND e.claimed_at IS NULL`, farm.ID, npcorder.ToolCode, treasure.ToolCode,
+			farm.HomeGroupID, now.Add(-questboard.BuffHours*time.Hour)).Scan(
+			&labLevel, &labExtra, &v.BasketCount, &tripArea, &v.TripReturnAt, &ordersRaw, &treasureRaw, &boardRaw); err != nil {
 			return v, err
 		}
+		if boardRaw != nil {
+			done := strings.Split(*boardRaw, ",")
+			for _, tier := range questboard.Tiers {
+				if slices.Contains(done, questboard.CreatorPrefix+tier) {
+					v.BoardBuffs = append(v.BoardBuffs, tier)
+				}
+			}
+		}
+		for _, o := range npcorder.Parse(ordersRaw).Orders {
+			if now.Before(o.Expires) {
+				v.OrdersOpen++
+				if exp := o.Expires; v.OrdersNextExpire == nil || exp.Before(*v.OrdersNextExpire) {
+					v.OrdersNextExpire = &exp
+				}
+			}
+		}
+		tm := treasure.Parse(treasureRaw)
+		v.TreasureDone = tm.HuntDone(now)
+		if tm.Hunting() && !v.TreasureDone {
+			v.TreasureReturnAt = tm.HuntEnd
+		}
+		v.RainbowClaimable = weather.HasLuck(now, weather.LuckRainbow) && tm.RainbowDay != weather.DayKey(now)
 		if tripArea != nil {
 			v.TripArea = exploration.AreaOf(*tripArea).Name
 			v.TripBack = v.TripReturnAt != nil && !now.Before(*v.TripReturnAt)

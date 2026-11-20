@@ -15,6 +15,7 @@ import (
 // 新增資料表時記得加入。
 var GameTables = []string{
 	"world_boss_reward_claims", "world_boss_contributions", "world_boss_supplies", "world_boss_events",
+	"fair_votes", "fair_entries", // 品評會（Migration 0048）
 	"aid_logs",                                   // 送禮與互助（Migration 0044）
 	"farm_cosmetics", "auctions", "auction_bids", // 金幣回收第二波（Migration 0046）
 	"lab_seed_shares", "lab_records", "lab_jobs", "seed_labs", "lab_seeds", // 種子實驗室（Migration 0039）

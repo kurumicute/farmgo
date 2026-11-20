@@ -238,3 +238,23 @@ func TestFindAreaAndRareCrops(t *testing.T) {
 		t.Fatal(RareSeedCodes())
 	}
 }
+
+// 乾涸的古井（天氣奇遇）：加一個事件名稱、三次額外掉落與 1–2 個水晶。
+func TestAddDryWell(t *testing.T) {
+	res := NewResult("ruins", false)
+	AddDryWell(res, 10, func() float64 { return 0.99 })
+	if len(res.Events) != 1 || res.Events[0] != DryWell.Name {
+		t.Fatalf("%v", res.Events)
+	}
+	if res.Items["crystal"] < DryWellCrystal[1] {
+		t.Fatalf("水晶 %d", res.Items["crystal"])
+	}
+	if len(res.Types) != 1+len(DryWell.Bonus) {
+		t.Fatalf("%v", res.Types)
+	}
+	low := NewResult("ruins", false)
+	AddDryWell(low, 10, func() float64 { return 0 })
+	if low.Items["crystal"] < DryWellCrystal[0] {
+		t.Fatalf("水晶 %d", low.Items["crystal"])
+	}
+}

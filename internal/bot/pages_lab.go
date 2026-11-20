@@ -40,6 +40,10 @@ type labState struct {
 	filterPage int
 	// 雜交頁母本、父本選單的作物篩選（"" / cropFilterAll = 全部、cropFilterPick = 正在選作物；2026-11-17）
 	motherCrop, fatherCrop string
+	// 丟棄頁（2026-11-20）：勾選要丟棄的種子（跨頁保留）、作物篩選、清單與篩選選單的頁碼
+	discard                        []int64
+	discardCrop                    string
+	discardPage, discardFilterPage int
 }
 
 // pageOf 第 page 頁（每頁 ui.MaxOptions 項）的內容、修正後的頁碼與總頁數。
@@ -654,6 +658,20 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 			return nil
 		}, btn{emoji: "🌱", style: ui.Success, row: 3, disabled: !free})
 	}
+	// 丟棄不要的種子（2026-11-20）：沒選種子時放在空著的第 3 列；選了種子時放在最後一列，並預先勾選這顆
+	if stored := len(v.Seeds) - countBusy(v.Seeds); stored > 0 {
+		var pre []int64
+		row := 2
+		if sel != nil {
+			pre, row = []int64{sel.ID}, 4
+		}
+		p.button(p.s("丟棄種子"), func(ctx context.Context, it ui.Interaction) error {
+			p.lab.discard, p.lab.discardCrop, p.lab.discardPage, p.lab.discardFilterPage = pre, p.lab.filter, 0, 0
+			p.lab.seed = 0
+			p.goTo(ctx, it, "lab_discard", "")
+			return nil
+		}, btn{emoji: "🗑️", row: row})
+	}
 	p.pageButtons("", &p.lab.seedPage, pages, 3, "lab_seeds")
 	p.labNav(4)
 	p.nav(p.s("回農田"), "plots", btn{emoji: "🌱", row: 4})
@@ -1121,4 +1139,144 @@ func cropFilterName(seeds []services.LabSeedView, crop string) string {
 		}
 	}
 	return ""
+}
+
+// buildLabDiscard 丟棄特殊種子（Go 版新增，2026-11-20 使用者要求）：勾選不要的種子（可跨頁、可篩選作物），
+// 按兩次「丟棄」確認。培育中的種子不能丟棄，不會列出。
+func (p *Panel) buildLabDiscard(_ context.Context, data any) (*ui.Embed, error) {
+	v := data.(services.SeedLabView)
+	e := &ui.Embed{Title: p.s("🗑️ ✦ 丟棄特殊種子 ✦"), Color: Teal}
+	var stored []services.LabSeedView
+	byID := map[int64]services.LabSeedView{}
+	for _, s := range v.Seeds {
+		if !s.Busy {
+			stored = append(stored, s)
+			byID[s.ID] = s
+		}
+	}
+	// 已經不在種子庫（種下、分享、丟棄）的勾選要拿掉
+	picked := p.lab.discard[:0]
+	for _, id := range p.lab.discard {
+		if _, ok := byID[id]; ok {
+			picked = append(picked, id)
+		}
+	}
+	p.lab.discard = picked
+	seeds := filterSeeds(sortSeedsByCrop(stored), p.lab.discardCrop)
+	if len(seeds) == 0 {
+		p.lab.discardCrop, seeds = "", sortSeedsByCrop(stored)
+	}
+	pageSeeds, page, pages := pageOf(seeds, p.lab.discardPage)
+	p.lab.discardPage = page
+
+	var lines []string
+	for _, id := range p.lab.discard {
+		lines = append(lines, seedLine(byID[id]))
+	}
+	intro := p.s("勾選不要的特殊種子，按兩次「丟棄」就會刪除。丟棄後**不會退回任何東西，也不能復原**。培育中的種子不能丟棄。")
+	parts := []any{intro}
+	switch {
+	case len(stored) == 0:
+		parts = append(parts, p.s("種子庫沒有可以丟棄的種子。"))
+	case len(lines) == 0:
+		parts = append(parts, p.s("👇 用下方選單勾選要丟棄的種子（可以翻頁、篩選作物後再勾）。"))
+	default:
+		parts = append(parts, Section{Title: p.f("準備丟棄 %d 顆", len(lines)), Lines: lines})
+	}
+	e.Description = runes(sections(parts...), 4000)
+	e.Footer = p.f("一次最多丟棄 %d 顆。", services.MaxDiscardSeeds)
+
+	if len(pageSeeds) > 0 {
+		holder := p.s("🗑️ 勾選要丟棄的種子（可複選）…")
+		if pages > 1 {
+			holder = p.f("🗑️ 勾選要丟棄的種子（第 %d/%d 頁）…", page+1, pages)
+		}
+		onPage := map[int64]bool{}
+		multi := &ui.Select{Placeholder: holder, Row: 0, MinValues: 1, MaxValues: len(pageSeeds),
+			OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
+				// 這一頁的勾選以這次選的為準，其他頁的勾選保留
+				var keep []int64
+				for _, id := range p.lab.discard {
+					if !onPage[id] {
+						keep = append(keep, id)
+					}
+				}
+				for _, val := range values {
+					if id, err := strconv.ParseInt(val, 10, 64); err == nil && !slices.Contains(keep, id) {
+						keep = append(keep, id)
+					}
+				}
+				notice := ""
+				if len(keep) > services.MaxDiscardSeeds {
+					keep = keep[:services.MaxDiscardSeeds]
+					notice = p.f("⚠️ 一次最多丟棄 %d 顆，超過的沒有勾選。", services.MaxDiscardSeeds)
+				}
+				p.lab.discard = keep
+				p.confirm = ""
+				p.refresh(ctx, it, notice, nil, p.s("重繪"), time.Time{})
+				return nil
+			}}
+		for _, s := range pageSeeds {
+			onPage[s.ID] = true
+			multi.Options = append(multi.Options, ui.SelectOption{Label: cut(seedOptionLabel(s), 100), Value: fmt.Sprint(s.ID),
+				Description: cut(seedOptionDesc(s), 100), Emoji: cropEmoji(s.CropCode), Default: slices.Contains(p.lab.discard, s.ID)})
+		}
+		p.add(multi)
+	}
+	if codes, _, _ := seedCrops(stored); len(codes) > 1 {
+		opts, fpage, fpages := pagedOptions(cropFilterOptions(stored, p.s("列出所有種子")), p.lab.discardFilterPage)
+		p.lab.discardFilterPage = fpage
+		holder := p.s("🔎 篩選作物：全部")
+		if name := cropFilterName(stored, p.lab.discardCrop); name != "" {
+			holder = p.s("🔎 篩選作物：只看 ") + name
+		}
+		p.selectMenu(holder+p.s("（選擇要看的作物）…"), opts, func(ctx context.Context, it ui.Interaction, value string) error {
+			if !turnPage(value, &p.lab.discardFilterPage, fpages) {
+				p.lab.discardCrop, p.lab.discardPage = strings.TrimPrefix(value, cropFilterPrefix), 0
+			}
+			p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
+			return nil
+		}, 1, "")
+	}
+	p.pageButtons("", &p.lab.discardPage, pages, 2, "lab_discard")
+	confirming := p.confirm == "lab_discard"
+	label, style := p.f("丟棄 %d 顆", len(p.lab.discard)), ui.Danger
+	if confirming {
+		label = p.f("確認丟棄 %d 顆", len(p.lab.discard))
+	}
+	p.button(label, func(ctx context.Context, it ui.Interaction) error {
+		if p.confirm != "lab_discard" {
+			p.confirm = "lab_discard"
+			p.refresh(ctx, it, p.f("⚠️ 丟棄後不能復原，確定要丟棄這 %d 顆種子的話，再按一次「確認丟棄」。", len(p.lab.discard)),
+				nil, p.s("重繪"), time.Time{})
+			return nil
+		}
+		ids := slices.Clone(p.lab.discard)
+		p.lab.discard = nil
+		p.act(ctx, it, p.call("discard_lab_seeds", func(ctx context.Context) (services.ActionResult, error) {
+			return p.svc().DiscardLabSeeds(ctx, p.playerID, ids)
+		}), actOpts{noProgress: true})
+		return nil
+	}, btn{emoji: "🗑️", style: style, row: 3, disabled: len(p.lab.discard) == 0})
+	if len(p.lab.discard) > 0 {
+		p.button(p.s("清除勾選"), func(ctx context.Context, it ui.Interaction) error {
+			p.lab.discard, p.confirm = nil, ""
+			p.refresh(ctx, it, "", nil, p.s("重繪"), time.Time{})
+			return nil
+		}, btn{emoji: "↩️", row: 3})
+	}
+	p.nav(p.s("回種子庫"), "lab_seeds", btn{emoji: "🌰", row: 4})
+	p.labNav(4)
+	return e, nil
+}
+
+// countBusy 培育中的種子顆數。
+func countBusy(seeds []services.LabSeedView) int {
+	n := 0
+	for _, s := range seeds {
+		if s.Busy {
+			n++
+		}
+	}
+	return n
 }

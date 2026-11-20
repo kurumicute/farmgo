@@ -35,6 +35,7 @@ import (
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/seasons"
+	"farmgm/internal/game/treasure"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/groups"
 	"farmgm/internal/repositories/players"
@@ -303,10 +304,11 @@ type FishingView struct {
 	BaitLeft       *BaitLeft
 	Basket         int
 	BasketCapacity int
-	Need           int  // 要成功拉幾下（舊 Session 為 0）
-	Progress       int  // 已成功拉幾下
-	PullsLeft      int  // 還要拉幾下
-	Stale          bool // 畫面已經更新過（重複點擊），這次操作沒有執行
+	Need           int    // 要成功拉幾下（舊 Session 為 0）
+	Progress       int    // 已成功拉幾下
+	PullsLeft      int    // 還要拉幾下
+	Stale          bool   // 畫面已經更新過（重複點擊），這次操作沒有執行
+	Fragment       string // 這次釣到魚時撿到的藏寶圖碎片（"" = 沒有，2026-11-20）
 
 	// 人機確認
 	Note        string
@@ -1205,7 +1207,7 @@ func (f *FishingService) FishingAction(ctx context.Context, playerID, sessionID 
 		if err != nil {
 			return FishingView{}, err
 		}
-		stale := false
+		stale, fragment := false, ""
 		if row != nil {
 			active, err := expire(ctx, t, row, now)
 			if err != nil {
@@ -1221,22 +1223,23 @@ func (f *FishingService) FishingAction(ctx context.Context, playerID, sessionID 
 				}
 				if state.Turn != turn {
 					stale = true // 畫面已經更新過（重複點擊），不重複執行
-				} else if err := f.applyAction(ctx, t, farm, row, state, action, now); err != nil {
+				} else if fragment, err = f.applyAction(ctx, t, farm, row, state, action, now); err != nil {
 					return FishingView{}, err
 				}
 			}
 		}
 		v, err := f.target(ctx, t, farm, row, now)
-		v.Stale = stale
+		v.Stale, v.Fragment = stale, fragment
 		return v, err
 	})
 }
 
+// applyAction 回傳釣到魚時撿到的藏寶圖碎片文字（"" = 沒有）。
 func (f *FishingService) applyAction(ctx context.Context, t *db.Tx, farm *models.Farm, row *models.FishingSession,
-	state fishing.State, action string, now time.Time) error {
+	state fishing.State, action string, now time.Time) (string, error) {
 	settings, err := decodeSettings(row.Settings)
 	if err != nil {
-		return err
+		return "", err
 	}
 	diff := settings.Difficulty[row.Rarity]
 	rod := decodeGear(row.Gear)["rod"].Effects
@@ -1245,7 +1248,7 @@ func (f *FishingService) applyAction(ctx context.Context, t *db.Tx, farm *models
 	}
 	next, res, err := fishing.Step(state, action, diff, rod, fishing.RNG(f.FishingRng))
 	if err != nil {
-		return err
+		return "", err
 	}
 	timeout := time.Duration(settings.ActionTimeoutSeconds) * time.Second
 	if fishing.GuardEnabled && row.ActionDeadline != nil {
@@ -1253,7 +1256,7 @@ func (f *FishingService) applyAction(ctx context.Context, t *db.Tx, farm *models
 		gap := now.Sub(row.ActionDeadline.Add(-timeout)).Seconds()
 		if gap < fishing.GuardFastActionSeconds {
 			if err := f.guardFlag(ctx, t, farm, "fast_action"); err != nil {
-				return err
+				return "", err
 			}
 		}
 		gaps := append(slices.Clone(next.Gaps), numfmt.RoundN(gap, 3))
@@ -1263,12 +1266,12 @@ func (f *FishingService) applyAction(ctx context.Context, t *db.Tx, farm *models
 		next.Gaps = gaps
 		if res != "" && fishing.RegularRhythm(gaps) {
 			if err := f.guardFlag(ctx, t, farm, "regular"); err != nil {
-				return err
+				return "", err
 			}
 		}
 	}
 	if row.State, err = mergeState(row.State, next); err != nil {
-		return err
+		return "", err
 	}
 	row.Turns = next.Turn
 	if res == "" {
@@ -1278,14 +1281,17 @@ func (f *FishingService) applyAction(ctx context.Context, t *db.Tx, farm *models
 		finish(row, res, now)
 	}
 	if err := saveSession(ctx, t, row); err != nil {
-		return err
+		return "", err
 	}
 	if res == "landed" { // session_id 唯一：同一次釣魚不會發兩隻魚
-		return db.Insert(ctx, t, "farm_fish", db.C("farm_id", farm.ID), db.C("session_id", row.ID),
+		if err := db.Insert(ctx, t, "farm_fish", db.C("farm_id", farm.ID), db.C("session_id", row.ID),
 			db.C("fish_code", row.FishCode), db.C("rarity", row.Rarity), db.C("weight_g", row.WeightG),
-			db.C("price", row.Price), db.C("caught_at", now))
+			db.C("price", row.Price), db.C("caught_at", now)); err != nil {
+			return "", err
+		}
+		return f.grantFragment(ctx, t, farm, treasure.SourceFish) // 藏寶圖碎片（2026-11-20；自動釣魚機不掉）
 	}
-	return nil
+	return "", nil
 }
 
 // GiveUpFishing 收竿放棄（已扣的魚餌不退還）。

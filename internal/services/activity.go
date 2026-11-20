@@ -15,6 +15,7 @@ import (
 
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
+	"farmgm/internal/game/questboard"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/repositories/community"
 	"farmgm/internal/repositories/transactions"
@@ -97,6 +98,9 @@ func onEvent(ctx context.Context, t *db.Tx, farm *models.Farm, tx transactions.T
 		amount := rules.QuestAmount(q.QuestType, q.Metric, filter, tx.EventType, itemCode, tx.Quantity, tx.GoldDelta)
 		if amount <= 0 {
 			continue
+		}
+		if _, board := questboard.TierOf(q.CreatedBy); board { // 委託板：新手的貢獻加倍（2026-11-20）
+			amount = questboard.Weighted(amount, farm.Level)
 		}
 		added, err := addQuestContribution(ctx, t, q.ID, farm.PlayerID, *tx.ID, amount, now)
 		if err != nil {

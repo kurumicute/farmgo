@@ -4,6 +4,7 @@ package bot
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -398,4 +399,75 @@ func TestLabSeedsCropFilter(t *testing.T) {
 	if p.selectMenu("篩選作物") == nil {
 		t.Fatal("取消選取後回到篩選")
 	}
+}
+
+// 丟棄不要的特殊種子（2026-11-20）：從種子庫進入、勾選、按兩次確認；選了種子再進入會預先勾選；不能丟別人的種子。
+func TestLabDiscardSeeds(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	pid := p.panel.playerID
+	e.setLevel(pid, 5)
+	e.setGold(pid, 100_000)
+	p.goPage("lab")
+	p.click("建造實驗室")
+	p.click("確認建造")
+	e.setInventory(pid, "seed_wheat", 3)
+	e.setInventory(pid, "seed_corn", 1)
+	p.goPage("lab")
+	p.chooseModal("鑑定一般種子", "wheat", "3")
+	p.choose("鑑定一般種子", "corn")
+	p.goPage("lab_seeds")
+	contains(t, p.Text, "特殊種子 4／25")
+
+	p.click("丟棄種子")
+	contains(t, p.Text, "丟棄特殊種子", "不能復原")
+	if !p.button("丟棄 0 顆").Disabled {
+		t.Fatal("沒有勾選時丟棄按鈕應停用")
+	}
+	ids := p.options("勾選要丟棄的種子")
+	if len(ids) != 4 {
+		t.Fatal(ids)
+	}
+	p.chooseMany("勾選要丟棄的種子", ids[:2])
+	contains(t, p.Text, "準備丟棄 2 顆")
+	// 篩選玉米後勾選，前面勾的小麥要保留
+	p.choose("篩選作物", cropFilterPrefix+"corn")
+	corn := p.options("勾選要丟棄的種子")
+	if len(corn) != 1 {
+		t.Fatal(corn)
+	}
+	p.chooseMany("勾選要丟棄的種子", corn)
+	contains(t, p.Text, "準備丟棄 3 顆")
+	p.click("清除勾選")
+	contains(t, p.Text, "用下方選單勾選要丟棄的種子")
+	p.choose("篩選作物", cropFilterPrefix+cropFilterAll)
+	p.chooseMany("勾選要丟棄的種子", ids[:2])
+	p.click("丟棄 2 顆")
+	contains(t, p.Text, "再按一次「確認丟棄」")
+	p.click("確認丟棄 2 顆")
+	contains(t, p.Text, "已丟棄 2 顆特殊種子")
+	p.goPage("lab_seeds")
+	contains(t, p.Text, "特殊種子 2／25")
+
+	// 選了種子再按「丟棄種子」：預先勾選那一顆
+	left := p.options("選擇種子")
+	p.choose("選擇種子", left[0])
+	p.click("丟棄種子")
+	contains(t, p.Text, "準備丟棄 1 顆")
+	p.click("丟棄 1 顆")
+	p.click("確認丟棄 1 顆")
+	contains(t, p.Text, "已丟棄 1 顆特殊種子")
+
+	// 不能丟別人的種子、已經丟掉的種子
+	b := e.makePlayer(bob, guildA, "阿華")
+	id, _ := strconv.ParseInt(left[1], 10, 64)
+	if _, err := e.admin.DiscardLabSeeds(e.ctx, b.panel.playerID, []int64{id}); err == nil || !strings.Contains(err.Error(), "找不到這顆種子") {
+		t.Fatal(err)
+	}
+	gone, _ := strconv.ParseInt(left[0], 10, 64)
+	if _, err := e.admin.DiscardLabSeeds(e.ctx, pid, []int64{id, gone}); err == nil || !strings.Contains(err.Error(), "已經種下或用掉了") {
+		t.Fatal(err)
+	}
+	p.goPage("lab_seeds")
+	contains(t, p.Text, "特殊種子 1／25") // 失敗時整筆交易不生效，另一顆還在
 }

@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"sync"
 
+	"farmgm/internal/game/rules"
 	"farmgm/internal/services"
 )
 
@@ -158,6 +159,7 @@ func ResetCache() {
 	sceneMemo = map[string][]byte{}
 	cellarMemo = map[string][]byte{}
 	decorCache = map[string][]byte{}
+	portraitMemo = map[string][]byte{}
 }
 
 func getManifest() (*manifest, error) {
@@ -281,7 +283,17 @@ type Plot struct {
 	Progress float64
 	Quality  string
 	Mutation string
+	// Lightning 天氣奇遇：這格空地上畫雷擊點（暴風隔天、還沒撿起雷擊種子時的第一格空地，2026-11-20）
+	Lightning bool
+	// Hive 這格放了蜂箱時為蜂箱等級（0 = 沒有，2026-11-20）；State 為 "beehive"
+	Hive int
 }
+
+// hiveSprite 蜂箱各等級的素材。
+func hiveSprite(level int) string { return fmt.Sprintf("field/beehive_%d.png", min(max(level, 1), 3)) }
+
+// LightningSpot 雷擊點素材（不登記在 manifest：只有這一張，路徑固定）。
+const LightningSpot = "field/lightning_spot.png"
 
 func deref(s *string) string {
 	if s == nil {
@@ -300,8 +312,20 @@ func PlotsFromStatus(st services.FarmStatus) []Plot {
 		if p.WateredAt != nil && p.ReadyAt != nil && p.ReadyAt.After(*p.WateredAt) {
 			progress = float64(st.Now.Sub(*p.WateredAt)) / float64(p.ReadyAt.Sub(*p.WateredAt))
 		}
-		out = append(out, Plot{Crop: deref(p.CropCode), State: string(p.State), Progress: min(1.0, max(0.0, progress)),
-			Quality: deref(p.Quality), Mutation: deref(p.Mutation)})
+		pl := Plot{Crop: deref(p.CropCode), State: string(p.State), Progress: min(1.0, max(0.0, progress)),
+			Quality: deref(p.Quality), Mutation: deref(p.Mutation)}
+		if p.State == rules.PlotBeehive && st.Beehive != nil {
+			pl.Hive = st.Beehive.Level
+		}
+		out = append(out, pl)
+	}
+	if st.LightningReady { // 雷擊點畫在第一格空地（和撿起時種下的位置相同；蜂箱那一格不算空地）
+		for i := range out {
+			if out[i].State == string(rules.PlotEmpty) {
+				out[i].Lightning = true
+				break
+			}
+		}
 	}
 	return out
 }
@@ -309,6 +333,8 @@ func PlotsFromStatus(st services.FarmStatus) []Plot {
 // StageOf 畫面階段：empty／seeds／sprout／young／unripe／ready／withered。
 func StageOf(p Plot) (string, error) {
 	switch p.State {
+	case "beehive": // 地面和空地相同，蜂箱在 drawPlotRim 另外畫
+		return "empty", nil
 	case "waiting_water":
 		return "seeds", nil
 	case "growing":
@@ -427,6 +453,12 @@ func drawPlotRim(m *manifest, canvas *image.NRGBA, r rect, p Plot, rim *image.NR
 	if err != nil {
 		return err
 	}
+	if p.Lightning && layer == "" { // 2' 空地上的雷擊點
+		layer = LightningSpot
+	}
+	if p.Hive > 0 { // 2' 蜂箱
+		layer = hiveSprite(p.Hive)
+	}
 	if layer != "" {
 		sprite, err := img(layer)
 		if err != nil {
@@ -467,6 +499,11 @@ func presetFor(m *manifest, plots []Plot) (*presetHit, error) {
 	presets, ok := m.Field.Presets[strconv.Itoa(len(plots))]
 	if !ok {
 		return nil, nil
+	}
+	for _, p := range plots {
+		if p.Lightning || p.Hive > 0 { // 雷擊點、蜂箱不在預先產生的圖裡，要即時拼
+			return nil, nil
+		}
 	}
 	stages := map[string]bool{}
 	for _, p := range plots {

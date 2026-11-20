@@ -105,7 +105,7 @@ func TestDairyIsUpgradableAndListsRecipes(t *testing.T) {
 			t.Fatalf("%+v", r)
 		}
 	}
-	if n != 3 {
+	if n != 4 { // 起司、奶油、美乃滋＋蜂蜜牛奶（2026-11-20）
 		t.Fatal(n)
 	}
 }

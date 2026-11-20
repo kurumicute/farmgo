@@ -12,6 +12,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/beehive"
 	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
@@ -195,6 +196,12 @@ func (s *GameService) plant(ctx context.Context, t *db.Tx, farm *models.Farm, pl
 // 品質基因、突變基因加到加成，種子本身的突變直接成為作物的突變，產量基因增加收成數量（生長基因在澆水時套用）。
 func (s *GameService) plantWith(ctx context.Context, t *db.Tx, farm *models.Farm, plot *models.FarmPlot, crop *models.CropType,
 	source string, labSeed *models.LabSeed) (string, *int, error) {
+	return s.plantForced(ctx, t, farm, plot, crop, source, labSeed, "")
+}
+
+// plantForced 同 plantWith；forced 不是 "" 時作物的突變固定為 forced（天氣奇遇的雷擊種子，2026-11-20）。
+func (s *GameService) plantForced(ctx context.Context, t *db.Tx, farm *models.Farm, plot *models.FarmPlot, crop *models.CropType,
+	source string, labSeed *models.LabSeed, forced string) (string, *int, error) {
 	now := s.now()
 	// 播種時一次決定整批的品質與主要突變，之後固定不變（收成、偷菜、重啟都不重新抽取）
 	settings, err := s.geneticsSettings(ctx, t)
@@ -202,7 +209,7 @@ func (s *GameService) plantWith(ctx context.Context, t *db.Tx, farm *models.Farm
 		return "", nil, err
 	}
 	// 限時事件的品質、突變與收成加成在播種當下決定，之後事件結束也不會改變
-	active, err := s.activeEvents(ctx, t)
+	active, err := s.activeEvents(ctx, t, farm)
 	if err != nil {
 		return "", nil, err
 	}
@@ -222,10 +229,26 @@ func (s *GameService) plantWith(ctx context.Context, t *db.Tx, farm *models.Farm
 	if sachet {
 		mutationBonus += balance.SachetMutationBP
 	}
+	// 蜂箱（2026-11-20）：那一格不能種；周圍 8 格授粉，突變機率提高
+	hive, err := s.hiveOf(ctx, t, farm)
+	if err != nil {
+		return "", nil, err
+	}
+	if hive.Placed() {
+		if plot.PlotNumber == hive.Plot {
+			return "", nil, gameerr.New(gameerr.PlotOccupied, "第 %d 格放了蜂箱，不能種植。", plot.PlotNumber)
+		}
+		if beehive.IsNeighbor(hive.Plot, plot.PlotNumber) {
+			mutationBonus += beehive.MutationBP[hive.Level]
+		}
+	}
 	quality := genetics.RollQuality(genetics.EffectiveQualityBP(settings, farm.Level, qualityBonus), s.geneticsRng())
 	mutation := genetics.RollMutation(settings, s.geneticsRng(), mutationBonus)
 	if labSeed != nil && labSeed.Mutation != "none" {
 		mutation = labSeed.Mutation
+	}
+	if forced != "" {
+		mutation = forced
 	}
 	quantity := genetics.HarvestQuantity(crop.HarvestQuantity, mutation, settings, h.Value)
 	if labSeed != nil {
@@ -275,9 +298,13 @@ func (s *GameService) autoPlant(ctx context.Context, t *db.Tx, farm *models.Farm
 	if err != nil {
 		return "", err
 	}
+	hive, err := s.hivePlot(ctx, t, farm) // 蜂箱那一格不能種（2026-11-20）
+	if err != nil {
+		return "", err
+	}
 	var empty []*models.FarmPlot
 	for i := range all {
-		if all[i].CropTypeID == nil {
+		if all[i].CropTypeID == nil && all[i].PlotNumber != hive {
 			empty = append(empty, &all[i].FarmPlot)
 		}
 	}
@@ -364,7 +391,7 @@ func (s *GameService) growBoostsOf(ctx context.Context, t *db.Tx, farm *models.F
 	}); err != nil {
 		return g, err
 	}
-	if g.active, err = s.activeEvents(ctx, t); err != nil {
+	if g.active, err = s.activeEvents(ctx, t, farm); err != nil {
 		return g, err
 	}
 	if g.settings, err = s.geneticsSettings(ctx, t); err != nil {
@@ -563,7 +590,7 @@ func (s *GameService) HarvestCrop(ctx context.Context, playerID int64, plotNumbe
 // details：要產生結果摘要時傳入，收成成功後加入這格的明細。
 func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.Farm, plot *models.FarmPlot,
 	crop *models.CropType, details *[]HarvestDetail) (string, int, string, error) {
-	active, err := s.activeEvents(ctx, t)
+	active, err := s.activeEvents(ctx, t, farm)
 	if err != nil {
 		return "", 0, "", err
 	}
@@ -705,8 +732,9 @@ func (s *GameService) NoteSale(ctx context.Context, playerID int64, income int) 
 }
 
 // sellPrice 目前的販售單價（含活動售價加成）與套用的活動。
-func (s *GameService) sellPrice(ctx context.Context, t *db.Tx, crop *models.CropType, base int) (int, eventrules.Bonus, error) {
-	active, err := s.activeEvents(ctx, t)
+// farm 為 nil 時不含群組的委託增益（只用於估價）。
+func (s *GameService) sellPrice(ctx context.Context, t *db.Tx, farm *models.Farm, crop *models.CropType, base int) (int, eventrules.Bonus, error) {
+	active, err := s.activeEvents(ctx, t, farm)
 	if err != nil {
 		return 0, eventrules.Bonus{}, err
 	}
@@ -721,7 +749,7 @@ func (s *GameService) estimateValue(ctx context.Context, t *db.Tx, crop *models.
 	if err != nil {
 		return 0, err
 	}
-	price, _, err := s.sellPrice(ctx, t, crop, genetics.UnitPrice(crop.SellPrice, quality, mutation, settings))
+	price, _, err := s.sellPrice(ctx, t, nil, crop, genetics.UnitPrice(crop.SellPrice, quality, mutation, settings))
 	return price * quantity, err
 }
 
@@ -769,10 +797,16 @@ func (s *GameService) plotsInState(ctx context.Context, t *db.Tx, farm *models.F
 	if err != nil {
 		return nil, err
 	}
+	hive := 0
+	if state == rules.PlotEmpty { // 蜂箱那一格不算空地（2026-11-20）
+		if hive, err = s.hivePlot(ctx, t, farm); err != nil {
+			return nil, err
+		}
+	}
 	var out []*models.FarmPlot
 	for i := range all {
 		p := &all[i].FarmPlot
-		if rules.PlotStateAt(p.CropTypeID, p.WateredAt, p.ReadyAt, now) == state {
+		if rules.PlotStateAt(p.CropTypeID, p.WateredAt, p.ReadyAt, now) == state && p.PlotNumber != hive {
 			out = append(out, p)
 		}
 	}
@@ -1018,9 +1052,13 @@ func (s *GameService) replantLocked(ctx context.Context, t *db.Tx, farm *models.
 	if err != nil {
 		return "", err
 	}
+	hive, err := s.hivePlot(ctx, t, farm) // 蜂箱那一格不能種（2026-11-20）
+	if err != nil {
+		return "", err
+	}
 	empty := map[int]*models.FarmPlot{}
 	for i := range all {
-		if all[i].CropTypeID == nil {
+		if all[i].CropTypeID == nil && all[i].PlotNumber != hive {
 			empty[all[i].PlotNumber] = &all[i].FarmPlot
 		}
 	}
@@ -1197,7 +1235,7 @@ func (s *GameService) sellLocked(ctx context.Context, t *db.Tx, farm *models.Far
 	if err != nil {
 		return 0, 0, err
 	}
-	price, sell, err := s.sellPrice(ctx, t, crop, genetics.UnitPrice(crop.SellPrice, quality, mutation, settings))
+	price, sell, err := s.sellPrice(ctx, t, farm, crop, genetics.UnitPrice(crop.SellPrice, quality, mutation, settings))
 	if err != nil {
 		return 0, 0, err
 	}

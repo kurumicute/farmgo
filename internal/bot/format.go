@@ -43,9 +43,9 @@ var (
 	ItemEmoji = map[string]string{"auto_fisher": "🤖", "hourglass": "⏳", "fertilizer": "🧪", "earthworm": "🪱", "auto_waterer": "🚿", "patrol_ticket": "🔦",
 		"auto_planter": "🤖", "auto_seller": "🏧", "thief_glove": "🧤"}
 	PlotEmoji = map[rules.PlotState]string{rules.PlotEmpty: "⬜", rules.PlotWaitingWater: "💧", rules.PlotGrowing: "🌱",
-		rules.PlotReady: "✅", rules.PlotWithered: "🥀"}
+		rules.PlotReady: "✅", rules.PlotWithered: "🥀", rules.PlotBeehive: "🐝"}
 	// plotStateOrder Python PlotState 列舉的順序
-	plotStateOrder = []rules.PlotState{rules.PlotEmpty, rules.PlotWaitingWater, rules.PlotGrowing, rules.PlotReady, rules.PlotWithered}
+	plotStateOrder = []rules.PlotState{rules.PlotEmpty, rules.PlotWaitingWater, rules.PlotGrowing, rules.PlotReady, rules.PlotWithered, rules.PlotBeehive}
 	Medals         = map[int]string{1: "🥇", 2: "🥈", 3: "🥉"}
 	KindNames      = map[string]string{"money": "金幣", "sales": "農產品販售", "goods": "商品總販售"}
 	PeriodNames    = map[string]string{"all": "全部期間", "day": "本日", "week": "本週", "month": "本月"}
@@ -302,6 +302,9 @@ func plotLine(lang string, p services.PlotInfo, owner bool) string {
 	emoji := PlotEmoji[p.State]
 	if p.State == rules.PlotEmpty {
 		return i18n.T(lang, "ui.plot.empty", "emoji", emoji, "n", fmt.Sprintf("%2d", p.PlotNumber))
+	}
+	if p.State == rules.PlotBeehive {
+		return i18n.T(lang, "ui.plot.beehive", "emoji", emoji, "n", fmt.Sprintf("%2d", p.PlotNumber))
 	}
 	genes := services.GeneticsLabelLang(lang, deref(p.Quality), deref(p.Mutation))
 	if deref(p.Mutation) == "variant" {

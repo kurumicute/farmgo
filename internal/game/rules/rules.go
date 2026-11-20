@@ -23,6 +23,8 @@ const (
 	PlotGrowing      PlotState = "growing"
 	PlotReady        PlotState = "ready"
 	PlotWithered     PlotState = "withered"
+	// PlotBeehive 放了蜂箱的空地（Go 版新增，2026-11-20）：只由農場狀態（services.FarmStatus）標記，PlotStateAt 不會回傳
+	PlotBeehive PlotState = "beehive"
 )
 
 var PlotStateLabels = map[PlotState]string{
@@ -31,6 +33,7 @@ var PlotStateLabels = map[PlotState]string{
 	PlotGrowing:      "生長中",
 	PlotReady:        "可收成",
 	PlotWithered:     "已乾枯",
+	PlotBeehive:      "蜂箱",
 }
 
 // EventType 交易紀錄事件類型（與資料庫 CHECK 約束一致）。
@@ -89,6 +92,9 @@ const (
 	EvAuctionBid       EventType = "auction_bid"       // 拍賣出價：金幣凍結
 	EvAuctionRefund    EventType = "auction_refund"    // 拍賣被超過：凍結的金幣退回
 	EvAuctionWin       EventType = "auction_win"       // 拍賣得標（金額 0，凍結的金幣正式回收）
+	// 品評會（Go 版新增，Migration 0048）
+	EvFairEntry  EventType = "fair_entry"  // 報名：扣報名費與參賽作品
+	EvFairReward EventType = "fair_reward" // 名次獎金，或流會時退回報名費
 )
 
 // EventTypeOrder 事件類型的定義順序（Python EventType 列舉順序）。
@@ -99,7 +105,7 @@ var EventTypeOrder = []EventType{
 	EvTransferGroup, EvGamble, EvExplore, EvBuildMachine, EvExchange, EvMakeSeed, EvFishingBuy, EvFishSell,
 	EvReleaseAnimal, EvBossDonate, EvBossReward, EvRenameFarm, EvCheckinReward, EvAchievementReward, EvRuinsDonate,
 	EvRuinsGuardian, EvRumorTreasure, EvSeedLab, EvSeedShare, EvAidGift, EvAidWater,
-	EvReputationDonate, EvAuctionBid, EvAuctionRefund, EvAuctionWin,
+	EvReputationDonate, EvAuctionBid, EvAuctionRefund, EvAuctionWin, EvFairEntry, EvFairReward,
 }
 
 var EventTypeLabels = map[EventType]string{
@@ -153,6 +159,8 @@ var EventTypeLabels = map[EventType]string{
 	EvAuctionBid:        "拍賣出價",
 	EvAuctionRefund:     "拍賣退回",
 	EvAuctionWin:        "拍賣得標",
+	EvFairEntry:         "品評會報名",
+	EvFairReward:        "品評會獎金",
 	EvAidWater:          "幫忙拔草",
 }
 

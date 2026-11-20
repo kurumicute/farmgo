@@ -429,6 +429,9 @@ func (p *Panel) buildFishResult(v services.FishingView) *ui.Embed {
 		e = &ui.Embed{Title: p.f("🎉 釣到了 %s %s！", fish.Emoji, p.s(fish.Name)), Color: rarityColor[fish.Rarity], Description: p.f(
 			"%s\n🐟 魚類：**%s**\n%s 稀有度：**%s**\n⚖️ 重量：**%s**\n💰 價值：**%s** 金幣\n%s%s\n%s\n🧺 已放進魚簍",
 			Line, p.s(fish.Name), fish.RarityEmoji, p.s(fish.RarityName), fish.WeightText, money(fish.Price), record, Line, celebrate[fish.Rarity])}
+		if v.Fragment != "" { // 藏寶圖碎片（2026-11-20）
+			e.Description += "\n" + v.Fragment
+		}
 		id := fish.ID
 		p.fishSelected = &id
 		p.button(p.s("再釣一次"), again, btn{emoji: "🎣", style: ui.Success, row: 0})
