@@ -1,6 +1,7 @@
 package services
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -61,6 +62,59 @@ func TestBeehive(t *testing.T) {
 	}
 	if v, _ := e.s.Beehive(e.ctx, pid); v.Hive.Level != 2 || v.Capacity != beehive.Capacity[2] {
 		t.Fatalf("%+v", v)
+	}
+	e.invariant()
+}
+
+// 拆除蜂箱（2026-11-20）：蜂蜜先收進倉庫、倉庫放不下時不拆、拆完那一格可以種、重新放置要再付放置費。
+func TestRemoveBeehive(t *testing.T) {
+	e := setup(t)
+	pid := e.player()
+	e.setGoldRecorded(pid, 100_000)
+	e.exec("UPDATE farms SET level = 3 WHERE player_id = $1", pid)
+	_, err := e.s.RemoveBeehive(e.ctx, pid)
+	wantMsg(t, err, gameerr.Validation, "還沒有蜂箱")
+
+	e.ok(e.s.PlaceBeehive(e.ctx, pid, 1))
+	e.ok(e.s.UpgradeBeehive(e.ctx, pid))
+	e.clock.Advance(2 * beehive.IntervalSeconds) // 陰天 Lv.2：每次 2 罐，共 4 罐
+
+	// 倉庫放不下全部蜂蜜：不拆
+	e.exec("UPDATE farms SET warehouse_capacity = 2 WHERE player_id = $1", pid)
+	_, err = e.s.RemoveBeehive(e.ctx, pid)
+	wantMsg(t, err, gameerr.WarehouseFull, "還有 4 罐蜂蜜")
+	if v, _ := e.s.Beehive(e.ctx, pid); !v.Hive.Placed() {
+		t.Fatal("失敗時蜂箱要保留")
+	}
+	e.exec("UPDATE farms SET warehouse_capacity = 200 WHERE player_id = $1", pid)
+
+	gold := e.gold(pid)
+	r := e.ok(e.s.RemoveBeehive(e.ctx, pid))
+	if !strings.Contains(r.Message, "已拆除第 1 格") || !strings.Contains(r.Message, "4 罐蜂蜜") || e.qty(pid, beehive.Honey) != 4 {
+		t.Fatal(r.Message, e.qty(pid, beehive.Honey))
+	}
+	if e.gold(pid) != gold {
+		t.Fatal("拆除不退費也不收費")
+	}
+	if v, _ := e.s.Beehive(e.ctx, pid); v.Hive.Placed() || !slices.Contains(v.EmptyPlots, 1) {
+		t.Fatalf("%+v", v)
+	}
+	st := e.status(pid)
+	if st.Beehive != nil || st.Plots[0].State != rules.PlotEmpty {
+		t.Fatalf("%+v", st.Plots[0])
+	}
+	e.ok(e.s.BuySeeds(e.ctx, pid, "wheat", 1))
+	e.ok(e.s.PlantCrop(e.ctx, pid, 1, "wheat")) // 那一格可以種了
+	_, err = e.s.RemoveBeehive(e.ctx, pid)
+	wantMsg(t, err, gameerr.Validation, "還沒有蜂箱")
+
+	// 重新放置要再付放置費，等級從 Lv.1 開始
+	r = e.ok(e.s.PlaceBeehive(e.ctx, pid, 2))
+	if r.GoldDelta != -beehive.Prices[1] {
+		t.Fatal(r.Message)
+	}
+	if v, _ := e.s.Beehive(e.ctx, pid); v.Hive.Level != 1 || v.Hive.Honey != 0 {
+		t.Fatalf("%+v", v.Hive)
 	}
 	e.invariant()
 }

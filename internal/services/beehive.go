@@ -280,6 +280,58 @@ func (s *GameService) CollectHoney(ctx context.Context, playerID int64) (ActionR
 	})
 }
 
+// RemoveBeehive 拆除蜂箱（2026-11-20 使用者要求）：那一格變回空地，等級歸零（之後要重新花錢放置、升級），不退費。
+// 蜂箱裡的蜂蜜先收進倉庫；倉庫放不下全部時不拆，請玩家先清出空間，避免蜂蜜不見。
+func (s *GameService) RemoveBeehive(ctx context.Context, playerID int64) (ActionResult, error) {
+	return inTx(ctx, s, func(t *db.Tx) (ActionResult, error) {
+		farm, err := s.lockedFarm(ctx, t, playerID)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		tool, h, err := lockedHive(ctx, t, farm)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if !h.Placed() {
+			return ActionResult{}, gameerr.Validationf("還沒有蜂箱，不用拆除。")
+		}
+		now := s.now()
+		plots, err := farms.ListPlots(ctx, t, farm.ID, false)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		h.Accrue(now, hiveFlowers(plots, h.Plot))
+		if h.Honey > 0 {
+			used, err := inventory.TotalQuantity(ctx, t, farm.ID)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			if free := farm.WarehouseCapacity - used; free < h.Honey {
+				return ActionResult{}, gameerr.New(gameerr.WarehouseFull,
+					"蜂箱裡還有 %d 罐蜂蜜，倉庫只剩 %d 格（%d/%d），清出空間後再拆除。", h.Honey, max(0, free), used, farm.WarehouseCapacity)
+			}
+			if err := inventory.Add(ctx, t, farm.ID, beehive.Honey, h.Honey, "normal", "none"); err != nil {
+				return ActionResult{}, err
+			}
+			if err := s.record(ctx, t, farm, rules.EvCraftCollect, fmt.Sprintf("拆除蜂箱前收成 %d 罐蜂蜜", h.Honey),
+				rec{ItemCode: beehive.Honey, Quantity: h.Honey}); err != nil {
+				return ActionResult{}, err
+			}
+		}
+		if err := s.record(ctx, t, farm, rules.EvBuyItem, fmt.Sprintf("拆除第 %d 格的蜂箱（Lv.%d）", h.Plot, h.Level), rec{}); err != nil {
+			return ActionResult{}, err
+		}
+		if err := saveSettingsTool(ctx, t, farm.ID, tool, beehive.ToolCode, map[string]any{}, now); err != nil {
+			return ActionResult{}, err
+		}
+		msg := txf(ctx, "🐝 已拆除第 %d 格的蜂箱，那一格變回空地。", h.Plot)
+		if h.Honey > 0 {
+			msg += txf(ctx, "蜂箱裡的 %d 罐蜂蜜已收進倉庫。", h.Honey)
+		}
+		return result(msg, farm.Gold, 0, beehive.Honey, h.Honey), nil
+	})
+}
+
 func nextText(at *time.Time, now time.Time) string {
 	if at == nil {
 		return rules.FormatDuration(beehive.IntervalSeconds)

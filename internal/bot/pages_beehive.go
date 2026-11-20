@@ -107,6 +107,23 @@ func (p *Panel) buildBeehive(_ context.Context, data any) (*ui.Embed, error) {
 				return nil
 			}, btn{emoji: "⬆️", style: style, row: 0, disabled: v.Gold < price})
 		}
+		// 拆除（2026-11-20 使用者要求）：按兩次確認；不退費，蜂蜜先收進倉庫
+		label := p.s("拆除蜂箱")
+		if p.confirm == "beehive_remove" {
+			label = p.s("確定拆除？")
+		}
+		p.button(label, func(ctx context.Context, it ui.Interaction) error {
+			if p.confirm != "beehive_remove" {
+				p.confirm = "beehive_remove"
+				p.refresh(ctx, it, p.f("⚠️ 拆除後第 %d 格變回空地，蜂箱等級歸零、不退費（之後要重新花 %s 金幣放置）；蜂箱裡的蜂蜜會先收進倉庫。再按一次「確定拆除？」。",
+					h.Plot, money(beehive.Prices[1])), nil, p.s("重繪"), time.Time{})
+				return nil
+			}
+			p.act(ctx, it, p.call("remove_beehive", func(ctx context.Context) (services.ActionResult, error) {
+				return p.svc().RemoveBeehive(ctx, p.playerID)
+			}), actOpts{})
+			return nil
+		}, btn{emoji: "🪓", style: ui.Danger, row: 0})
 	}
 	p.button(p.s("重新整理"), func(ctx context.Context, it ui.Interaction) error {
 		p.goTo(ctx, it, "beehive", "")

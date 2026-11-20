@@ -3698,5 +3698,12 @@
  "丟棄種子": "Discard Seeds",
  "請先勾選要丟棄的種子。": "Please tick the seeds to discard first.",
  "一次最多丟棄 %d 顆種子。": "Up to %d seeds can be discarded at a time.",
- "🗑️ 已丟棄 %d 顆特殊種子。": "🗑️ Discarded %d special seeds."
+ "🗑️ 已丟棄 %d 顆特殊種子。": "🗑️ Discarded %d special seeds.",
+ "還沒有蜂箱，不用拆除。": "You don't have a beehive to remove.",
+ "蜂箱裡還有 %d 罐蜂蜜，倉庫只剩 %d 格（%d/%d），清出空間後再拆除。": "The beehive still holds %d jars of honey, but your warehouse only has %d free slots (%d/%d). Free up space before removing it.",
+ "🐝 已拆除第 %d 格的蜂箱，那一格變回空地。": "🐝 Removed the beehive from Plot #%d — it's an empty plot again.",
+ "蜂箱裡的 %d 罐蜂蜜已收進倉庫。": " The %d jars of honey inside went to your warehouse.",
+ "拆除蜂箱": "Remove Beehive",
+ "確定拆除？": "Confirm removal?",
+ "⚠️ 拆除後第 %d 格變回空地，蜂箱等級歸零、不退費（之後要重新花 %s 金幣放置）；蜂箱裡的蜂蜜會先收進倉庫。再按一次「確定拆除？」。": "⚠️ Plot #%d will become empty again. The beehive's level resets and nothing is refunded (placing one again costs %s Gold); any honey inside goes to your warehouse first. Press \"Confirm removal?\" again."
 }
