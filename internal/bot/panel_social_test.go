@@ -443,3 +443,33 @@ func TestCraftPriceTable(t *testing.T) {
 	p.click("回加工")
 	contains(t, p.Text, "設施狀態")
 }
+
+// 領過的任務獎勵不再列在領取選單（2026-11-21 使用者回報：領完沒有消失）。
+func TestClaimedQuestLeavesClaimMenu(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "玩家")
+	gid := e.scalar("SELECT home_group_id FROM farms WHERE player_id = $1", p.panel.playerID).(int64)
+	now := e.clock.Now()
+	if _, err := e.admin.CreateQuest(e.ctx, "admin", services.NewQuest{GroupID: gid, Name: "收成任務", QuestType: "harvest", Target: 1,
+		RewardMode: "fixed", RewardType: "gold", RewardAmount: 100, StartsAt: now.Add(-time.Minute), EndsAt: now.Add(24 * time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	e.waterWheat(p)
+	e.clock.Advance(61)
+	p.goPage("plots")
+	p.click("全部收成")
+	p.goPage("quests")
+	contains(t, p.Text, "有 1 個任務獎勵可以領")
+	opts := p.options("領取任務獎勵")
+	if len(opts) != 1 {
+		t.Fatal(opts)
+	}
+	p.choose("領取任務獎勵", opts[0])
+	contains(t, p.Text, "已領取任務")
+	p.goPage("quests")
+	contains(t, p.Text, "✅ 已領取：100 金幣")
+	notContains(t, p.Text, "任務獎勵可以領")
+	if got := p.options("領取任務獎勵"); len(got) != 0 {
+		t.Fatal(got)
+	}
+}

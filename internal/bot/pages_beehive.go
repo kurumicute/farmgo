@@ -49,7 +49,7 @@ func (p *Panel) buildBeehive(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	h := v.Hive
 	weatherNote := p.s("☀️ 晴天產蜜 ×1.5、🌧️ 雨天 ×0.5、⛈️ 暴風當天不產蜜。")
-	flowers := p.s("花類作物：月光花、星夜花、緋月花。")
+	flowers := p.s("花類作物：月光花、星夜花、赤月花。")
 	if !h.Placed() {
 		e.Description = sections(
 			p.f("選一格空地放蜂箱（**%s** 金幣）。那一格不能種植，但周圍的作物比較容易突變，還會產蜂蜜、幫忙叮跑小偷。", money(beehive.Prices[1])),

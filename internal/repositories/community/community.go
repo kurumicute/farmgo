@@ -104,6 +104,20 @@ func GetClaim(ctx context.Context, t *db.Tx, questID, playerID int64) (*models.Q
 		`SELECT * FROM quest_claims WHERE quest_id = $1 AND player_id = $2 LIMIT 1`, questID, playerID)
 }
 
+// PlayerClaims 玩家在這些任務的領獎紀錄（quest_id → 紀錄）；面板列表一次查完。
+func PlayerClaims(ctx context.Context, t *db.Tx, questIDs []int64, playerID int64) (map[int64]models.QuestClaim, error) {
+	out := map[int64]models.QuestClaim{}
+	if len(questIDs) == 0 {
+		return out, nil
+	}
+	rows, err := db.QueryStructs[models.QuestClaim](ctx, t,
+		`SELECT * FROM quest_claims WHERE quest_id = ANY($1) AND player_id = $2`, questIDs, playerID)
+	for _, r := range rows {
+		out[r.QuestID] = r
+	}
+	return out, err
+}
+
 // ClaimWithPlayer 領獎紀錄與玩家名稱。
 type ClaimWithPlayer struct {
 	models.QuestClaim

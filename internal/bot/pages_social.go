@@ -511,13 +511,17 @@ func (p *Panel) buildQuests(_ context.Context, data any) (*ui.Embed, error) {
 		mark := "⏳"
 		if q.State == "completed" {
 			mark = "✅"
-			if q.MyContribution > 0 {
+			if q.MyContribution > 0 && q.MyClaim == nil { // 領過的不再列進領取選單（Go 版修正，Python 版會一直列著）
 				mark = "🎁" // 可以領獎的任務和單純已完成的分開標示
 				claimable = append(claimable, q)
 			}
 		}
-		questLines = append(questLines, p.f("%s **%s**［%s］\n　%s　%d/%d（%d%%）\n　🙋 我的貢獻 %d　⏰ %s截止\n　🎁 獎勵：%s",
-			mark, p.s(q.Name), q.GroupName, bar(q.Progress, q.Target, 10), q.Progress, q.Target, q.Percent, q.MyContribution, tsv(q.EndsAt), q.RewardText))
+		reward := p.f("🎁 獎勵：%s", q.RewardText)
+		if q.MyClaim != nil {
+			reward = p.f("✅ 已領取：%s", services.RewardLabel(q.MyClaim.RewardType, q.MyClaim.Amount))
+		}
+		questLines = append(questLines, p.f("%s **%s**［%s］\n　%s　%d/%d（%d%%）\n　🙋 我的貢獻 %d　⏰ %s截止\n　%s",
+			mark, p.s(q.Name), q.GroupName, bar(q.Progress, q.Target, 10), q.Progress, q.Target, q.Percent, q.MyContribution, tsv(q.EndsAt), reward))
 	}
 	for _, c := range d.competitions {
 		compLines = append(compLines, p.f("⚔️ **%s**（%s）\n　%s　⏰ %s結束", p.s(c.Name), c.TypeName, c.StateLabel, tsv(c.EndsAt)))

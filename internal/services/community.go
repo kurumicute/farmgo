@@ -585,10 +585,21 @@ func (c *CommunityService) PlayerQuests(ctx context.Context, playerID int64) ([]
 		if err != nil {
 			return nil, err
 		}
+		qids := make([]int64, len(rows))
+		for i, r := range rows {
+			qids[i] = r.Quest.ID
+		}
+		claims, err := community.PlayerClaims(ctx, t, qids, playerID) // 領過的獎勵（面板不再列成可領取）
+		if err != nil {
+			return nil, err
+		}
 		for _, r := range rows {
 			v := NewQuestView(r.Quest, r.GroupName, now, names)
 			if v.MyContribution, err = community.PlayerQuestContribution(ctx, t, v.QuestID, playerID); err != nil {
 				return nil, err
+			}
+			if c, ok := claims[v.QuestID]; ok {
+				v.MyClaim = &c
 			}
 			if v.State == "active" || v.State == "scheduled" || v.State == "completed" {
 				out = append(out, v)
