@@ -150,7 +150,7 @@ func TestLanguageToggle(t *testing.T) {
 	e := setup(t)
 	p := e.makePlayer(alice, guildA, "阿明")
 	p.choose("更多功能", langToggle)
-	contains(t, p.Text, "Plots (4)", "Home Server", "To-do")
+	contains(t, p.Text, "Farm Status", "Home Server", "To-do")
 	contains(t, strings.Join(p.labels(), " "), "Water All", "Harvest All", "Inventory")
 	p.goPage("plots")
 	contains(t, p.Text, "Plots (4)", "Empty")
@@ -161,7 +161,7 @@ func TestLanguageToggle(t *testing.T) {
 	}
 	// 重新開面板：沿用玩家設定
 	again := e.open(alice, guildA, "阿明")
-	contains(t, again.Text, "Plots (4)")
+	contains(t, again.Text, "Farm Status")
 	again.choose("More", langToggle)
-	contains(t, again.Text, "農田（4 格）", "介面語言已切換為繁體中文")
+	contains(t, again.Text, "📋 農場狀態", "介面語言已切換為繁體中文")
 }

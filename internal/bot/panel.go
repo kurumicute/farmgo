@@ -106,6 +106,7 @@ type Panel struct {
 	// 成就與圖鑑：目前查看的分類
 	achCategory   string
 	codexCategory string
+	sellerKeepKey string // 自動販售機設定頁正在設定保留條件的作物（"" = 所有作物；2026-11-22）
 	usageItem     string // 背包頁「🔍 查詢物品用途」選中的物品（"c|代碼" 作物、"i|代碼" 其他；2026-11-18）
 	// 世界 Boss：目前活動、玩家切換查看的活動、捐獻流程（類別、選項、已選物品、待確認）
 	bossEventID      *int64

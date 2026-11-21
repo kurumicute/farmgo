@@ -482,10 +482,19 @@ func TestOverviewListsCropsAndTimes(t *testing.T) {
 	p.choose("選擇作物", "wheat")
 	p.click("全部澆水")
 	p.goPage("main")
+	// 預設精簡版（2026-11-22）：不列每塊土地，狀態合成一個欄位
+	if strings.Count(p.Text, "小麥") > 0 || strings.Contains(p.Text, "📊 農田統計") {
+		t.Fatal(p.Text)
+	}
+	contains(t, p.Text, "📋 農場狀態", "🌱生長中 4", "📦 倉庫 **0/50**")
+	// 「更多功能」切換成完整版：列出每塊土地與農田統計；再切回精簡版
+	p.choose("更多功能", mainModeToggle)
 	if strings.Count(p.Text, "小麥") < 4 {
 		t.Fatal(p.Text)
 	}
 	contains(t, p.Text, "成熟 <t:", "📊 農田統計")
+	p.choose("更多功能", mainModeToggle)
+	contains(t, p.Text, "📋 農場狀態")
 }
 
 func TestPagesAttachImages(t *testing.T) {
@@ -565,7 +574,7 @@ func TestSlowActionSharesReplyBudget(t *testing.T) {
 	// 錯誤畫面的「返回」回到剛才的頁面
 	p.update(failing)
 	p.click("返回")
-	contains(t, p.Text, "農田（4 格）")
+	contains(t, p.Text, "📋 農場狀態")
 }
 
 func TestUnchangedImageReusesExistingAttachment(t *testing.T) {

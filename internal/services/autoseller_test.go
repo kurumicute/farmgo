@@ -99,3 +99,66 @@ func TestAutoSellerWithoutFish(t *testing.T) {
 	}
 	e.invariant()
 }
+
+// 保留條件（2026-11-22）：小麥只保留可以加工的，其他品質、突變的賣掉；作物自己的條件蓋過「所有作物」的。
+func TestAutoSellerKeep(t *testing.T) {
+	e := setup(t)
+	pid := e.rich()
+	e.ok(e.s.BuyItem(e.ctx, pid, balance.ToolAutoSeller, 1))
+	_, err := e.s.SetAutoSellerKeep(e.ctx, pid, "ufo", []string{KeepCraftable})
+	wantMsg(t, err, gameerr.Validation, "沒有這個作物")
+	_, err = e.s.SetAutoSellerKeep(e.ctx, pid, AutoSellFish, []string{KeepCraftable})
+	wantMsg(t, err, gameerr.Validation, "沒有這個作物")
+
+	r := e.ok(e.s.SetAutoSellerKeep(e.ctx, pid, "wheat", []string{KeepCraftable, "bogus"}))
+	if !strings.Contains(r.Message, "小麥收成時保留：可以加工的（普通品質）") {
+		t.Fatal(r.Message)
+	}
+	harvest := func(plot int, crop, quality, mutation string) string {
+		e.t.Helper()
+		e.grow(pid, plot, crop)
+		e.clock.Advance(3600)
+		e.exec("UPDATE farm_plots SET quality = $1, mutation = $2 WHERE plot_number = $3", quality, mutation, plot)
+		return e.ok(e.s.HarvestCrop(e.ctx, pid, plot)).Message
+	}
+	if m := harvest(1, "wheat", "normal", "giant"); strings.Contains(m, "自動販售機") { // 巨型也能加工：保留
+		t.Fatal(m)
+	}
+	if m := harvest(1, "wheat", "rare", "none"); !strings.Contains(m, "自動販售機賣出") {
+		t.Fatal(m)
+	}
+	if m := harvest(1, "wheat", "normal", "golden"); !strings.Contains(m, "自動販售機賣出") {
+		t.Fatal(m)
+	}
+	// 所有作物：保留傳說品質；胡蘿蔔沒有自己的條件，跟著所有作物
+	e.ok(e.s.SetAutoSellerKeep(e.ctx, pid, AutoSellKeepAll, []string{"q:legendary"}))
+	if m := harvest(1, "carrot", "legendary", "none"); strings.Contains(m, "自動販售機") {
+		t.Fatal(m)
+	}
+	if m := harvest(1, "carrot", "normal", "none"); !strings.Contains(m, "自動販售機賣出") {
+		t.Fatal(m)
+	}
+	// 小麥改成不保留：自己的空條件蓋過所有作物的（傳說也賣）
+	if r := e.ok(e.s.SetAutoSellerKeep(e.ctx, pid, "wheat", []string{KeepNone})); !strings.Contains(r.Message, "不保留") {
+		t.Fatal(r.Message)
+	}
+	if m := harvest(1, "wheat", "legendary", "none"); !strings.Contains(m, "自動販售機賣出") {
+		t.Fatal(m)
+	}
+	v := must[AutoSellerView](t)(e.s.AutoSeller(e.ctx, pid))
+	if c, ok := v.Keep["wheat"]; !ok || len(c) != 0 || len(v.Keep[AutoSellKeepAll]) != 1 {
+		t.Fatalf("%+v", v.Keep)
+	}
+	// 跟著所有作物：刪除小麥自己的條件
+	if r := e.ok(e.s.SetAutoSellerKeep(e.ctx, pid, "wheat", []string{KeepInherit})); !strings.Contains(r.Message, "改用「所有作物」") {
+		t.Fatal(r.Message)
+	}
+	if m := harvest(1, "wheat", "legendary", "none"); strings.Contains(m, "自動販售機") {
+		t.Fatal(m)
+	}
+	e.ok(e.s.SetAutoSellerKeep(e.ctx, pid, AutoSellKeepAll, []string{KeepNone}))
+	if v := must[AutoSellerView](t)(e.s.AutoSeller(e.ctx, pid)); len(v.Keep) != 0 {
+		t.Fatalf("%+v", v.Keep)
+	}
+	e.invariant()
+}

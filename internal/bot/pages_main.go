@@ -48,6 +48,7 @@ func (p *Panel) registerPages() {
 		"lab_records":     {p.loadLabRecords, p.buildLabRecords},
 		"lab_help":        {func(context.Context) (any, error) { return nil, nil }, p.buildLabHelp},
 		"backpack":        {p.loadBackpack, p.buildBackpack},
+		"auto_seller":     {p.loadAutoSeller, p.buildAutoSeller},
 		"boosts":          {p.loadBoosts, p.buildBoosts},
 		"shop":            {p.loadShop, p.buildShop},
 		"prices":          {p.loadPrices, p.buildPrices},
@@ -265,23 +266,27 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 		title = p.s("〔") + *s.Title + p.s("〕")
 	}
 	header := p.t("ui.main.header", "name", s.PlayerName, "title", title, "level", s.Level, "gold", money(s.Gold), "plots", len(s.Plots))
-	lines := plotLines(p.lang, s.Plots, true)
-	e := &ui.Embed{Title: fmt.Sprintf("🌾 ✦ %s ✦", p.s(s.Name)), Color: Green, Description: header + "\n" + strings.Join(lines, "\n")}
+	// 2026-11-22 使用者反映手機上總覽太長：預設精簡版（不列每塊土地、狀態合併成一個欄位、日報只留前 2 行、活動不顯示說明），
+	// 「更多功能」選單可以切換成完整版
+	full := p.cmds.mainFullOf(p.ownerID)
+	desc := strings.SplitN(header, "\n", 2)[0]
+	if full {
+		desc = header + "\n" + strings.Join(plotLines(p.lang, s.Plots, true), "\n")
+	}
+	e := &ui.Embed{Title: fmt.Sprintf("🌾 ✦ %s ✦", p.s(s.Name)), Color: Green, Description: desc}
 	if p.AvatarURL != "" {
 		e.Thumbnail = p.AvatarURL
 	}
 	p.attachImage(e, p.farmImage(d.status)) // 圖片在交易外產生
-	e.AddField(p.t("ui.main.storage"), fmt.Sprintf("%d/%d\n%s", s.WarehouseUsed, s.WarehouseCapacity, bar(s.WarehouseUsed, s.WarehouseCapacity, 8)), true)
+	storage := fmt.Sprintf("%d/%d\n%s", s.WarehouseUsed, s.WarehouseCapacity, bar(s.WarehouseUsed, s.WarehouseCapacity, 8))
 	home := p.t("ui.main.not_set")
 	if d.home != nil {
 		home = p.s(d.home.Name)
 	}
-	e.AddField(p.t("ui.main.home_server"), home, true)
-	stats := strings.ReplaceAll(summaryCounts(p.lang, s.Plots), "　", "\n")
+	stats := summaryCounts(p.lang, s.Plots)
 	if stats == "" {
 		stats = "—"
 	}
-	e.AddField(p.t("ui.main.plot_stats"), stats, true)
 	a := d.animals
 	animal := p.t("ui.main.no_animals")
 	if a.Used != 0 {
@@ -290,7 +295,6 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 			animal += "\n⏰ " + ts(a.NextReadyAt)
 		}
 	}
-	e.AddField(p.t("ui.main.animals"), animal, true)
 	done := 0
 	var busy []services.OrderView
 	for _, o := range d.orders {
@@ -313,7 +317,26 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	if craftText == "" {
 		craftText = p.t("ui.main.idle")
 	}
-	e.AddField(p.t("ui.main.crafting"), craftText, true)
+	if full {
+		e.AddField(p.t("ui.main.storage"), storage, true)
+		e.AddField(p.t("ui.main.home_server"), home, true)
+		e.AddField(p.t("ui.main.plot_stats"), strings.ReplaceAll(stats, "　", "\n"), true)
+		e.AddField(p.t("ui.main.animals"), animal, true)
+		e.AddField(p.t("ui.main.crafting"), craftText, true)
+	} else {
+		// 精簡版：一個欄位、每項一行（手機上並排欄位會一個一個往下疊）
+		crafts := craftText
+		if len(craft) > 0 {
+			crafts = strings.Join(craft[:min(2, len(craft))], "　")
+		}
+		status := []string{
+			p.t("ui.main.storage") + fmt.Sprintf(" **%d/%d**", s.WarehouseUsed, s.WarehouseCapacity) + "　" + p.t("ui.main.home_server") + " " + home,
+			"🌱 " + stats,
+			p.t("ui.main.animals") + " " + strings.ReplaceAll(animal, "\n", "　"),
+			p.t("ui.main.crafting") + " " + crafts,
+		}
+		e.AddField(p.s("📋 農場狀態"), strings.Join(status, "\n"), false)
+	}
 	var events []string
 	for _, ev := range d.events {
 		name, _ := ev.View["name"].(string)
@@ -324,7 +347,7 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 			line += p.t("ui.main.event_only", "crop", *ev.CropName)
 		}
 		line += p.t("ui.main.event_effect") + effects
-		if desc != "" {
+		if desc != "" && full {
 			line += p.s("\n　📝 ") + desc
 		}
 		events = append(events, line)
@@ -352,7 +375,11 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	// 待辦放在最後一個欄位，緊貼下方按鈕（玩家遊玩時視線停在按鈕區）
 	if d.news != nil && !d.news.Empty {
-		e.AddField(p.t("ui.main.gazette", "server", p.s(d.home.Name)), d.news.Text, false)
+		news := d.news.Text
+		if lines := strings.Split(news, "\n"); !full && len(lines) > 2 {
+			news = strings.Join(lines[:2], "\n") + "\n" + p.s("…完整日報：「更多功能」選「總覽：完整版」")
+		}
+		e.AddField(p.t("ui.main.gazette", "server", p.s(d.home.Name)), news, false)
 	}
 	e.AddField(p.t("ui.main.todo"), todo, false)
 	e.Footer = p.farmNextStep(s.Plots, false) // 大圖排在所有欄位之後，緊貼按鈕的只有 footer：放待辦摘要
@@ -654,9 +681,20 @@ func (p *Panel) moreMenu(row int) {
 	}
 	// 2026-11-19 語言切換：放在選單最後一項（總覽的按鈕列已滿）
 	options = append(options, option{p.t("ui.lang.option"), langToggle, p.t("ui.lang.option_desc"), "🌐"})
+	// 2026-11-22 總覽精簡／完整切換（手機上完整版太長）
+	if p.cmds.mainFullOf(p.ownerID) {
+		options = append(options, option{p.s("總覽：精簡版"), mainModeToggle, p.s("不列每塊土地、狀態合成一欄（適合手機）"), "📱"})
+	} else {
+		options = append(options, option{p.s("總覽：完整版"), mainModeToggle, p.s("列出每塊土地、完整日報與活動說明"), "🖥️"})
+	}
 	p.selectMenu(p.t("ui.more.placeholder"), options, func(ctx context.Context, it ui.Interaction, page string) error {
 		if page == langToggle {
 			return p.toggleLanguage(ctx, it)
+		}
+		if page == mainModeToggle {
+			p.cmds.setMainFull(p.ownerID, !p.cmds.mainFullOf(p.ownerID))
+			p.goTo(ctx, it, "main", "")
+			return nil
 		}
 		if !slices.ContainsFunc(moreEntries, func(m struct{ page, label, desc, emoji string }) bool { return m.page == page }) {
 			return gameerr.NotFoundf("找不到這個頁面。")
@@ -668,6 +706,9 @@ func (p *Panel) moreMenu(row int) {
 
 // langToggle 「更多功能」選單裡切換語言的選項值。
 const langToggle = "__language__"
+
+// mainModeToggle 「更多功能」選單裡切換總覽精簡／完整版的選項值（2026-11-22）。
+const mainModeToggle = "__main_mode__"
 
 // toggleLanguage 中英文互換，記在玩家設定（players.language），之後開面板都用這個語言。
 func (p *Panel) toggleLanguage(ctx context.Context, it ui.Interaction) error {
@@ -1146,40 +1187,9 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 		p.usageControls(e, bp, 2)
 	}
 	if sv := d.seller; sv.Owned {
-		// 自動販售機的販售項目（2026-11-15）：勾選要自動賣的東西，沒勾的作物收成後放進倉庫、魚放進魚簍
-		var picked []string
-		for _, o := range sv.Options {
-			if o.Selected {
-				picked = append(picked, p.s(o.Name))
-			}
-		}
-		text := p.s("全部都賣")
-		if !sv.All {
-			text = p.s("只賣 ") + strings.Join(picked, p.s("、"))
-		}
-		if !sv.Enabled {
-			text += p.s("（目前停用）")
-		}
-		e.AddField(p.s("🏧 自動販售機販售項目"), runes(text, 1000)+p.s("\n👇 用下方選單勾選要自動賣的東西"), false)
-		opts := sv.Options[:min(len(sv.Options), ui.MaxOptions)]
-		multi := &ui.Select{Placeholder: p.s("🏧 勾選自動販售機要賣的東西（可複選）…"), Row: 3, MinValues: 1, MaxValues: len(opts),
-			OnSelectMany: func(ctx context.Context, it ui.Interaction, values []string) error {
-				p.act(ctx, it, p.call("set_auto_seller_items", func(ctx context.Context) (services.ActionResult, error) {
-					return p.svc().SetAutoSellerItems(ctx, p.playerID, values)
-				}), actOpts{})
-				return nil
-			}}
-		for _, o := range opts {
-			emoji := cropEmoji(o.Code)
-			switch o.Code {
-			case services.AutoSellHybrid:
-				emoji = "🧬"
-			case services.AutoSellFish:
-				emoji = "🐟"
-			}
-			multi.Options = append(multi.Options, ui.SelectOption{Label: p.s(o.Name), Value: o.Code, Emoji: emoji, Default: o.Selected})
-		}
-		p.add(multi)
+		// 自動販售機（2026-11-22 販售項目與保留條件移到獨立的設定頁，背包頁只留摘要）
+		e.AddField(p.s("🏧 自動販售機"), p.autoSellerSummary(sv), false)
+		p.nav(p.s("自動販售機設定"), "auto_seller", btn{emoji: "🏧", row: 3})
 	}
 	p.navBack(4)
 	return e, nil

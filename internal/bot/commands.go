@@ -66,6 +66,7 @@ type Commands struct {
 	// 只存在記憶體，Bot 重新啟動後清空（只是方便用的捷徑，不需要寫進資料庫）
 	recentMu sync.Mutex
 	recent   map[string][]string
+	mainFull map[string]bool // 總覽用完整版的使用者（2026-11-22；預設精簡版，記在記憶體，Bot 重啟後回到精簡）
 }
 
 // recentPages 使用者最近用過的入口（複本）。
@@ -73,6 +74,27 @@ func (c *Commands) recentPages(userID string) []string {
 	c.recentMu.Lock()
 	defer c.recentMu.Unlock()
 	return slices.Clone(c.recent[userID])
+}
+
+// mainFullOf 使用者的總覽是不是完整版。
+func (c *Commands) mainFullOf(userID string) bool {
+	c.recentMu.Lock()
+	defer c.recentMu.Unlock()
+	return c.mainFull[userID]
+}
+
+// setMainFull 記下使用者選的總覽版本。
+func (c *Commands) setMainFull(userID string, full bool) {
+	c.recentMu.Lock()
+	defer c.recentMu.Unlock()
+	if c.mainFull == nil {
+		c.mainFull = map[string]bool{}
+	}
+	if full {
+		c.mainFull[userID] = true
+	} else {
+		delete(c.mainFull, userID)
+	}
 }
 
 // setRecentPages 記下使用者最近用過的入口。

@@ -23,7 +23,7 @@ const (
 	Dog        = "dog"
 	Rabbit     = "rabbit"   // Go 版新增（2026-11-18，Migration 0045 放寬 pet_code）：菇房收成數量 +X%
 	Bird       = "bird"     // Go 版新增：釣魚稀有魚機率提高
-	Hedgehog   = "hedgehog" // Go 版新增：清除乾枯作物時救回 X% 的作物
+	Hedgehog   = "hedgehog" // Go 版新增：收成時 X% 機率品質提升一級（2026-11-22 起；原本是清除乾枯作物時救回 X%）
 	DogBlocker = "pet_dog"  // steal_records.blocked_by（狗擋下時）
 	LevelLimit = 10         // farm_pets.level 的 CHECK 上限：升級價格最多 10 個
 	ConfigKey  = "pets"
@@ -111,7 +111,7 @@ var Pets = map[string]Pet{
 	Dog:      {Dog, "狗狗", "🐶", "保衛農田：趕走來偷菜的小偷", "防守設施沒擋住時，再有 {pct}% 機率擋下偷菜（所有農田）"},
 	Rabbit:   {Rabbit, "兔子", "🐰", "照顧菇床：幫忙翻動木屑、照看地下菇房", "地下菇房每個菇床收成數量 +{pct}%"},
 	Bird:     {Bird, "小鳥", "🐦", "找魚群：在水面上空盤旋，帶你找到好魚", "釣魚（含自動釣魚機）稀有以上的魚機率提高（{pct}% 加成）"},
-	Hedgehog: {Hedgehog, "刺蝟", "🦔", "看守農田：在乾枯的作物裡找回還能用的部分", "清除乾枯作物時，救回原本收成數量的 {pct}%"},
+	Hedgehog: {Hedgehog, "刺蝟", "🦔", "吃害蟲：把啃食作物的害蟲吃掉，作物長得更好", "收成時每格有 {pct}% 機率品質提升一級（最高傳說）"},
 }
 
 // BirdFishBP 小鳥的釣魚加成（萬分比，從普通魚扣除）：加成 pct% 時稀有 +pct×10、史詩 +pct×4、傳說 +pct。
@@ -120,6 +120,23 @@ func BirdFishBP(pct int) map[string]int {
 		return nil
 	}
 	return map[string]int{"rare": pct * 10, "epic": pct * 4, "legendary": pct}
+}
+
+// UpgradeQuality 刺蝟（2026-11-22 使用者要求，取代清除乾枯作物時救回）：u < pct% 時品質提升一級；
+// 已是最高品質或沒中時原樣回傳、ok = false。
+func UpgradeQuality(quality string, pct int, u float64) (string, bool) {
+	if pct <= 0 || u >= float64(pct)/100 {
+		return quality, false
+	}
+	if quality == "" {
+		quality = "normal"
+	}
+	for i, q := range balance.QualityOrder[:len(balance.QualityOrder)-1] {
+		if q == quality {
+			return balance.QualityOrder[i+1], true
+		}
+	}
+	return quality, false
 }
 
 // ItemCode 交易紀錄的 item_code（購買與升級都記 buy_item）。

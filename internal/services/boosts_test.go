@@ -95,15 +95,28 @@ func TestNewPetsAndTreat(t *testing.T) {
 		t.Fatal(pct(petrules.Bird))
 	}
 
-	// 刺蝟：清除乾枯作物時救回一部分（草莓 5 個 × 7% = 0.35，機率 0 → 救回 1 個）
+	// 刺蝟（2026-11-22 起）：收成時品質提升一級（機率 0 → 一定中）；清除乾枯作物不再救回
 	e.s.PetRng = func() float64 { return 0 }
 	e.grow(pid, 1, "strawberry")
 	e.clock.Advance(20 * 3600)
-	if r := e.ok(e.s.ClearWithered(e.ctx, pid, 1)); !strings.Contains(r.Message, "刺蝟從第 1 格救回 1 個草莓") {
+	if r := e.ok(e.s.ClearWithered(e.ctx, pid, 1)); strings.Contains(r.Message, "刺蝟") {
 		t.Fatal(r.Message)
 	}
-	if e.qty(pid, "strawberry") != 1 {
-		t.Fatal(e.qty(pid, "strawberry"))
+	e.grow(pid, 1, "strawberry")
+	e.clock.Advance(28800 + 60)
+	e.exec("UPDATE farm_plots SET quality = 'normal' WHERE plot_number = 1")
+	if r := e.ok(e.s.HarvestCrop(e.ctx, pid, 1)); !strings.Contains(r.Message, "刺蝟吃掉害蟲，品質提升為優良") {
+		t.Fatal(r.Message)
+	}
+	if got := e.scalar("SELECT coalesce(sum(quantity), 0) FROM inventory_items WHERE item_code = 'strawberry' AND quality = 'good'"); got == 0 {
+		t.Fatal("沒有優良品質的草莓")
+	}
+	e.s.PetRng = func() float64 { return 0.99 } // 沒中：品質不變
+	e.grow(pid, 1, "strawberry")
+	e.clock.Advance(28800 + 60)
+	e.exec("UPDATE farm_plots SET quality = 'normal' WHERE plot_number = 1")
+	if r := e.ok(e.s.HarvestCrop(e.ctx, pid, 1)); strings.Contains(r.Message, "刺蝟") {
+		t.Fatal(r.Message)
 	}
 	e.invariant()
 }

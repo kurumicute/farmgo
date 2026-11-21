@@ -614,7 +614,14 @@ func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.
 	}
 	catBonus := petrules.BonusQuantity(quantity, catPct, s.PetRng())
 	quantity += catBonus
-	autoSell, err := s.autoSells(ctx, t, farm.ID, autoSellKey(crop.Code)) // 販售項目沒勾的作物放進倉庫
+	quality, mutation := deref(plot.Quality), deref(plot.Mutation)
+	// 刺蝟吃掉害蟲（2026-11-22）：每格 X% 機率品質提升一級（只有主人收成時）
+	hedgehogPct, err := s.petPct(ctx, t, farm.ID, petrules.Hedgehog)
+	if err != nil {
+		return "", 0, "", err
+	}
+	quality, upgraded := petrules.UpgradeQuality(quality, hedgehogPct, s.PetRng())
+	autoSell, err := s.autoSellsLot(ctx, t, farm.ID, autoSellKey(crop.Code), quality, mutation) // 販售項目沒勾、或符合保留條件的作物放進倉庫
 	if err != nil {
 		return "", 0, "", err
 	}
@@ -624,7 +631,6 @@ func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.
 			return "", 0, "", err
 		}
 	}
-	quality, mutation := deref(plot.Quality), deref(plot.Mutation)
 	item := genetics.ProduceCode(crop.Code, crop.VariantCode, mutation)
 	name := genetics.ProduceName(crop.Name, crop.VariantName, mutation) + GeneticsLabel(quality, mutation)
 	// 這株被偷走的數量（只用於訊息）：一鍵收成時一次查出整座農場目前每格的數量
@@ -662,6 +668,9 @@ func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.
 	}
 	if catBonus > 0 {
 		note += fmt.Sprintf("（🐱 貓咪趕走老鼠 +%d 個）", catBonus)
+	}
+	if upgraded {
+		note += fmt.Sprintf("（🦔 刺蝟吃掉害蟲，品質提升為%s）", balance.Qualities[quality])
 	}
 	note += labNote
 	var applied []eventrules.Applied
@@ -761,10 +770,6 @@ func (s *GameService) ClearWithered(ctx context.Context, playerID int64, plotNum
 		if err != nil {
 			return ActionResult{}, err
 		}
-		saved, err := s.salvageWithered(ctx, t, farm, plot, crop)
-		if err != nil {
-			return ActionResult{}, err
-		}
 		if err := farms.Clear(ctx, t, plot); err != nil {
 			return ActionResult{}, err
 		}
@@ -775,7 +780,7 @@ func (s *GameService) ClearWithered(ctx context.Context, playerID int64, plotNum
 		if err != nil {
 			return ActionResult{}, err
 		}
-		return result(txf(ctx, "已清除第 %d 格乾枯的%s，土地恢復為空地。%s%s", plotNumber, crop.Name, saved, auto), farm.Gold, 0, "", 0), nil
+		return result(txf(ctx, "已清除第 %d 格乾枯的%s，土地恢復為空地。%s", plotNumber, crop.Name, auto), farm.Gold, 0, "", 0), nil
 	})
 }
 
@@ -1101,18 +1106,13 @@ func (s *GameService) ClearAllWithered(ctx context.Context, playerID int64) (Act
 		if len(plots) == 0 {
 			return ActionResult{}, gameerr.Validationf("%s", tr(ctx, "svc.clear.none"))
 		}
-		auto, saved := "", ""
+		auto := ""
 		if err := t.Bulk(ctx, func() error {
 			for _, plot := range plots {
 				crop, err := crops.Get(ctx, t, *plot.CropTypeID)
 				if err != nil {
 					return err
 				}
-				note, err := s.salvageWithered(ctx, t, farm, plot, crop)
-				if err != nil {
-					return err
-				}
-				saved += note
 				if err := farms.Clear(ctx, t, plot); err != nil {
 					return err
 				}
@@ -1127,37 +1127,8 @@ func (s *GameService) ClearAllWithered(ctx context.Context, playerID int64) (Act
 		}); err != nil {
 			return ActionResult{}, err
 		}
-		return result(tr(ctx, "svc.clear.done", "n", len(plots))+saved+auto, farm.Gold, 0, "", len(plots)), nil
+		return result(tr(ctx, "svc.clear.done", "n", len(plots))+auto, farm.Gold, 0, "", len(plots)), nil
 	})
-}
-
-// salvageWithered 刺蝟（2026-11-18）：清除乾枯作物時救回原本收成數量的 X%（小數部分依機率多 1 個），
-// 放進倉庫（倉庫放不下時不救回）。要在清空土地之前呼叫；回傳附在結果後面的說明（沒有救回時為空字串）。
-func (s *GameService) salvageWithered(ctx context.Context, t *db.Tx, farm *models.Farm, plot *models.FarmPlot, crop *models.CropType) (string, error) {
-	pct, err := s.petPct(ctx, t, farm.ID, petrules.Hedgehog)
-	if err != nil || pct == 0 || plot.RemainingQuantity == nil {
-		return "", err
-	}
-	quantity := petrules.BonusQuantity(*plot.RemainingQuantity, pct, s.PetRng())
-	if quantity <= 0 {
-		return "", nil
-	}
-	if err := s.ensureSpace(ctx, t, farm, quantity); gameerr.Is(err, gameerr.WarehouseFull) {
-		return txf(ctx, " 🦔 刺蝟想救回第 %d 格的%s，但倉庫放不下。", plot.PlotNumber, crop.Name), nil
-	} else if err != nil {
-		return "", err
-	}
-	quality, mutation := deref(plot.Quality), deref(plot.Mutation)
-	item := genetics.ProduceCode(crop.Code, crop.VariantCode, mutation)
-	if err := inventory.Add(ctx, t, farm.ID, item, quantity, quality, mutation); err != nil {
-		return "", err
-	}
-	t.Adjust(warehouseUsedKey{farm.ID}, quantity)
-	if err := s.record(ctx, t, farm, rules.EvClear, fmt.Sprintf("刺蝟從第 %d 格乾枯的%s救回 %d 個", plot.PlotNumber, crop.Name, quantity),
-		rec{ItemCode: item, Quantity: quantity, Quality: quality, Mutation: mutation}); err != nil {
-		return "", err
-	}
-	return txf(ctx, " 🦔 刺蝟從第 %d 格救回 %d 個%s。", plot.PlotNumber, quantity, crop.Name), nil
 }
 
 // ---------- 販售與擴建 ----------
