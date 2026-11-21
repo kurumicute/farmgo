@@ -229,6 +229,7 @@
 - **2026-11-20（使用者要求，Go 版新增）**：**丟棄特殊種子**。種子庫多一個「🗑️ 丟棄種子」按鈕（沒選種子時在第 3 列；選了種子時在最後一列，進去會預先勾選那一顆），新頁面 `lab_discard`（`buildLabDiscard`）用複選選單勾選要丟的種子，可以翻頁、篩選作物，勾選跨頁保留，按兩次「確認丟棄」才執行。服務 `DiscardLabSeeds`：一次最多 25 顆、只能丟自己種子庫裡的種子（培育中、已種下的不行，任一顆不符整筆不生效），種子標成 `used`，不退任何東西；記一筆 `seed_lab` 交易（不動金幣）。沒有實驗室也能丟朋友分享的種子。不需要 Migration。測試 `TestLabDiscardSeeds`。
 - **2026-11-20（使用者要求，Go 版新增）**：**拆除蜂箱**。蜂箱頁多一個「🪓 拆除蜂箱」按鈕（按兩次確認），服務 `RemoveBeehive`：先結算蜂蜜並全部收進倉庫（記成 `craft_collect`；倉庫放不下全部時不拆，請玩家先清空間），再把 `farm_tools.settings` 清成空的，那一格變回空地。不退費、等級歸零，重新放置要再付放置費。拆除記一筆 `buy_item`（不動金幣）。測試 `TestRemoveBeehive`、`TestBeehiveRemovePanel`。
 - **2026-11-21（使用者回報，修正）**：任務競賽頁領完群組任務獎勵後，任務還一直列在「🎁 領取任務獎勵」選單、也還算在「有 N 個任務獎勵可以領」裡（Python 版也是這樣：`PlayerQuests` 沒有查領獎紀錄）。改成 `PlayerQuests` 一次查出玩家的領獎紀錄（`community.PlayerClaims`）填進 `MyClaim`，領過的任務顯示「✅ 已領取：…」、不再列進領取選單。另外蜂箱頁的花類作物說明把「緋月花」改成正確的作物名稱「赤月花」（`crimson_moon_flower`）。測試 `TestClaimedQuestLeavesClaimMenu`。
+- **2026-11-21（使用者要求，Go 版新增）**：**販售頁直接顯示加工品的浮動售價**，不用切到加工品售價表。`BuildBackpack` 的加工品帶出本期的總成本、範圍與下次換價時間（`BackpackLine.PriceCost／PriceLow／PriceHigh／PriceUntil`；監控網站的背包 JSON 多 `price_cost`、`price_low`、`price_high`）。販售頁每一項加一行「📈／📉 浮動售價：比成本 N 金 ±X%（範圍 低～高），某時換價」，選單選項的說明加「比成本 ±X%」，選了之後的確認欄位也有同一行。不浮動的商品（菇類、動物產品）不顯示。測試 `TestSellShowsFloatingCraftPrice`。
 
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
@@ -656,7 +657,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `go.sum` | `57fff2606d2e1ed7ed9f91d4933e6be9a516a7f713d459f85cf6c3c46153e3ed` |
 | `i18n/README.md` | `5804b3be07f09e59ea5ac2e9a3939e09765eb418d5ed9965ba0b74abd70bfedc` |
 | `i18n/en.json` | `8838ee138591e4552d2b0d301f5ebf6893c29378e6ab8cd9a01879d2676e4980` |
-| `i18n/en.text.json` | `dd26f11a1cbba1d01579242a5c4a8ef815b822aa5f4df56fa19871e35f6ef522` |
+| `i18n/en.text.json` | `67fcc39b3f0e862cfab3f5e06b3397b4de815a0b7f2ec4fa1b2c99669ff91048` |
 | `i18n/i18n.go` | `9607e661181898dfaa80baafd02f6a5863597b1cc00ca34013dea211a3dd23e4` |
 | `i18n/i18n_test.go` | `c30f905a93d9aeab3427254876b1b037a537203ba30088723304fa8c22cb8840` |
 | `i18n/site/en.json` | `484836dcfbe9746521a7851d2fcc4103b7faa3141f729f9503b8afa263eae49f` |
@@ -711,7 +712,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/pages_progress.go` | `92ce6fbf8d0c1fc0643ea75161ee6075598e739b842f83eb7e5840ee9d6a6914` |
 | `internal/bot/pages_ranch.go` | `a25b657a5b5be502da196ab99551eedb52494ffe8fa03a454d8993f2eb872692` |
 | `internal/bot/pages_seedmaker.go` | `cc7b54eecc2b5987b27529b060185f92957edd1c931685bb683d5539d8d4e341` |
-| `internal/bot/pages_shop.go` | `78513717fddd4fd4cca09f7003ffc71966a0b72b8af0fc8320ec4d4f483c59ee` |
+| `internal/bot/pages_shop.go` | `ec98505837b4c6aba2b787699e89ce0e3bb193e17b18447157ed79f102458869` |
 | `internal/bot/pages_social.go` | `5cf07fa477b3b1bd93eca2c56d4785be75720034713f9c9a5b3ecf90cd7d5bce` |
 | `internal/bot/panel.go` | `874c2d86c247cba4e14cf14cbc3b5ee47602068e3d4487f259b64cadf84385ba` |
 | `internal/bot/panel_aid_test.go` | `1a4c0cd9fe8e99f2a2100d3f2aa1cea070c5db582eb0dad212e12cc51673322d` |
@@ -725,7 +726,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/panel_lab_test.go` | `3b5ce35a1d895a9fc33fe004eb111fae8f22ef09f37ac292041adb54d07871b9` |
 | `internal/bot/panel_progress_test.go` | `f8738ee2532b93da6ec75847d1f7c0114388a4606bf2d2122c86a6ed10ea4f6c` |
 | `internal/bot/panel_ranch_test.go` | `980736dbf5c5726a45135c13279dd3478365434f503504495be95a5042cb826d` |
-| `internal/bot/panel_shop_test.go` | `c992fda095572e81ec390d9083b6d21869ac099c401316f15ef6f1c03bcd80b6` |
+| `internal/bot/panel_shop_test.go` | `7ac65cbe3837c238433e007532c4ca1e7168b309f07837c3eb0a57eb79a4768f` |
 | `internal/bot/panel_social_test.go` | `7c744677595442d64fd0c18632cbdecf1ef3199a9f4b4964e41d9deb1bd83052` |
 | `internal/bot/panel_test.go` | `e4066d172401da6bf113e08685f89e68d421d86c4eeef623ba3c5ebb71e2e122` |
 | `internal/bot/panel_upgrade_test.go` | `5dee0df268c9c265b203ac94482d8ab3f8a71598275758eda3ca896cc284d4bd` |
@@ -932,7 +933,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/autoseller.go` | `49e5cafae5d72b6e917606879cab54c85ccadc8593a8e6e3d706f619e50bbff6` |
 | `internal/services/autoseller_test.go` | `970fa39a39fdd2418d15f765e1c6770e529043fa1ce12a68c273be45aec206e7` |
 | `internal/services/away_test.go` | `35ab2172ea393d71579dc438506697abcb850324c264316c157cb00ce6e0ee40` |
-| `internal/services/backpack.go` | `7156f999f96b07d5efd0dc42ef2dae79b6d054cc9314febe0876c7cb19f0887b` |
+| `internal/services/backpack.go` | `b38d95f32acf529f9fb3734466479934fa83b8e659b81546c65959d12212ecaf` |
 | `internal/services/batch_test.go` | `9e04362497997f348edce7bade3a8d600e5f4a8521e2f34322bf6ff343b1bd49` |
 | `internal/services/beehive.go` | `4f97feea65cfd3d9a81e995052ab7b2ad601bffc41d2c8f05db181a77082b7be` |
 | `internal/services/beehive_test.go` | `591cf1dc4941bca4e204623298c44016cc25f462065cee0cfedcf59f7a956538` |
@@ -951,7 +952,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/database_test.go` | `7f9087209119e70b912f4ac1a70e43014276d3a8b211db9b6645982d201f83c3` |
 | `internal/services/decor.go` | `d3b91e298de58f960935da20175512e2253f09d0c485eeeda53da446ae3e3e73` |
 | `internal/services/defense_test.go` | `64f1a9fe08a69da86ea97cb31b7c4b8fa1e501ea093184d019ec8099a740fb1e` |
-| `internal/services/dto.go` | `c61185155218c69cab14da1285d1927582bb478c41ac6ae3eae7ddfffb26e27d` |
+| `internal/services/dto.go` | `7956df6e1d41a5c7cb3c834e3bca45f0c2ab74b3fe93eafb536e581dcfbccaa2` |
 | `internal/services/expansion_test.go` | `3c3470294b254770a2d4d4c4bac1dfda3797c10e91516d7eddf931a9fa1bb075` |
 | `internal/services/expansions_test.go` | `a519a050543749029c2e19bbf3bd5dc7af3d6abab46a916c135139c6cb2c2df4` |
 | `internal/services/exploration.go` | `fdd65dba50d29fab2fffed53e0c16e191e8d78a6cd768ba5d50b1b02f89a4125` |
@@ -979,7 +980,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/jam_test.go` | `067d5b83180d9dcc95c3cd0488eaf7f1404ac332f794b8e71a1ca1197ec8dd2a` |
 | `internal/services/lang.go` | `10111be3a61cc1936aeb94241f6d6127221bf97870aeaaab57a5764895d174fb` |
 | `internal/services/luxury_test.go` | `91fd0f13d9c784d3f1bab6de2cabcf59da34a4ffd6154580f07920803b932a0f` |
-| `internal/services/monitor.go` | `0dcf16552690bf6e0e0c76459056da52daae0c10732fa0be3ed1c42084949085` |
+| `internal/services/monitor.go` | `53a11692b0f0c561c66e4a10547c49022b06b3dd42b033d42c3cbb2d8d30b163` |
 | `internal/services/monitor_more.go` | `295e3a6404296592391953e903fc48d9996abf7e015184a8ef6994b554761461` |
 | `internal/services/monitor_more2.go` | `9bcf88fce251713494c1d377204e4b29b682653037582a7b0fe50d725e77beb2` |
 | `internal/services/monitor_test.go` | `9490a74814411c190cbd075b5bfc181f4c3d63aaf1b862320b653fd5453eb5d9` |

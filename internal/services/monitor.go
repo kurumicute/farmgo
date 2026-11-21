@@ -471,14 +471,18 @@ func (m *MonitorService) Leaderboard(ctx context.Context, kind string, groupID *
 
 // BackpackJSON 背包的 JSON（Python vars(dataclass) 的鍵）。
 type BackpackLineJSON struct {
-	Code        string `json:"code"`
-	Name        string `json:"name"`
-	Quantity    int    `json:"quantity"`
-	Price       int    `json:"price"`
-	Description string `json:"description"`
-	Quality     string `json:"quality"`
-	Mutation    string `json:"mutation"`
-	PriceNote   string `json:"price_note,omitempty"` // 2026-11-18：單價加成說明（與 BackpackLine 欄位一致才能直接轉換）
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Quantity    int       `json:"quantity"`
+	Price       int       `json:"price"`
+	Description string    `json:"description"`
+	Quality     string    `json:"quality"`
+	Mutation    string    `json:"mutation"`
+	PriceNote   string    `json:"price_note,omitempty"` // 2026-11-18：單價加成說明（與 BackpackLine 欄位一致才能直接轉換）
+	PriceCost   int       `json:"price_cost,omitempty"` // 2026-11-21：加工品浮動售價的總成本與本期範圍
+	PriceLow    int       `json:"price_low,omitempty"`
+	PriceHigh   int       `json:"price_high,omitempty"`
+	PriceUntil  time.Time `json:"-"`
 }
 
 type ToolJSON struct {

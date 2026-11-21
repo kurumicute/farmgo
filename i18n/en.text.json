@@ -3707,5 +3707,7 @@
  "蜂箱裡的 %d 罐蜂蜜已收進倉庫。": " The %d jars of honey inside went to your warehouse.",
  "拆除蜂箱": "Remove Beehive",
  "確定拆除？": "Confirm removal?",
- "⚠️ 拆除後第 %d 格變回空地，蜂箱等級歸零、不退費（之後要重新花 %s 金幣放置）；蜂箱裡的蜂蜜會先收進倉庫。再按一次「確定拆除？」。": "⚠️ Plot #%d will become empty again. The beehive's level resets and nothing is refunded (placing one again costs %s Gold); any honey inside goes to your warehouse first. Press \"Confirm removal?\" again."
+ "⚠️ 拆除後第 %d 格變回空地，蜂箱等級歸零、不退費（之後要重新花 %s 金幣放置）；蜂箱裡的蜂蜜會先收進倉庫。再按一次「確定拆除？」。": "⚠️ Plot #%d will become empty again. The beehive's level resets and nothing is refunded (placing one again costs %s Gold); any honey inside goes to your warehouse first. Press \"Confirm removal?\" again.",
+ "%s 浮動售價：比成本 %s 金 %+d%%（範圍 %s～%s），%s換價": "%s Floating price vs. cost %s gold: %+d%% (range %s–%s), changes %s",
+ "｜%s 比成本 %+d%%": " | %s %+d%% vs. cost"
 }

@@ -331,3 +331,19 @@ func TestShopKeptPickerRechecksGold(t *testing.T) {
 		t.Fatalf("買完後金幣不夠再買 1 個，應顯示停用的金幣不足按鈕：%v", p.labels())
 	}
 }
+
+// 加工品的浮動售價直接顯示在販售頁（2026-11-21 使用者要求：不用切到價格表）。
+func TestSellShowsFloatingCraftPrice(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "玩家")
+	e.exec(`INSERT INTO inventory_items (farm_id, item_code, quality, mutation, quantity)
+		SELECT id, 'cheese', 'normal', 'none', 2 FROM farms`)
+	p.goPage("sell")
+	contains(t, p.Text, "起司", "浮動售價：比成本", "換價")
+	sel := p.selectMenu("選擇要賣的東西")
+	if sel == nil || !strings.Contains(sel.Options[0].Description, "比成本") {
+		t.Fatal(sel)
+	}
+	p.choose("選擇要賣的東西", "g|cheese")
+	contains(t, p.Text, "全部賣出預計", "浮動售價")
+}

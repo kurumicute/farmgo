@@ -148,6 +148,9 @@ type BackpackLine struct {
 	Mutation    string // 預設 none
 	// PriceNote 單價和基本售價不同的原因（農產品：品質突變加成、非當季 +30%；2026-11-18 確認畫面顯示損益），沒有加成時為空
 	PriceNote string
+	// 加工品浮動售價（2026-11-21 販售頁直接顯示）：本期範圍、總成本與下次換價時間；不浮動時 PriceHigh == PriceLow
+	PriceCost, PriceLow, PriceHigh int
+	PriceUntil                     time.Time
 }
 
 func line(code, name string, quantity, price int, desc string) BackpackLine {

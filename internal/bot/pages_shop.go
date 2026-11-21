@@ -547,9 +547,40 @@ type sellRow struct {
 	quantity, price                           int
 	prize                                     bool
 	prizeID                                   int64
+	// 加工品浮動售價（2026-11-21 使用者要求：賣的時候直接看到，不用切到價格表）；high > low 才是浮動價
+	cost, low, high int
+	until           time.Time
 }
 
 func (r sellRow) subtotal() int { return r.quantity * r.price }
+
+// floating 是不是浮動售價的加工品。
+func (r sellRow) floating() bool { return r.high > r.low }
+
+// floatNote 浮動售價說明：本期價格和總成本相比的漲跌、範圍與下次換價時間。
+func (p *Panel) floatNote(r sellRow) string {
+	mark, diff := "📈", 0
+	if r.cost > 0 {
+		diff = (r.price - r.cost) * 100 / r.cost
+	}
+	if diff < 0 {
+		mark = "📉"
+	}
+	return p.f("%s 浮動售價：比成本 %s 金 %+d%%（範圍 %s～%s），%s換價", mark, money(r.cost), diff, money(r.low), money(r.high), tsv(r.until))
+}
+
+// floatShort 選單選項用的簡短漲跌（選單不能顯示 Discord 時間戳記）。
+func (p *Panel) floatShort(r sellRow) string {
+	if !r.floating() || r.cost <= 0 {
+		return ""
+	}
+	diff := (r.price - r.cost) * 100 / r.cost
+	mark := "📈"
+	if diff < 0 {
+		mark = "📉"
+	}
+	return p.f("｜%s 比成本 %+d%%", mark, diff)
+}
 
 func (p *Panel) loadSell(ctx context.Context) (any, error) {
 	return p.svc().GetBackpack(ctx, p.playerID)
@@ -570,7 +601,7 @@ func sellables(bp services.Backpack) []sellRow {
 	}
 	for _, x := range bp.Goods {
 		rows = append(rows, sellRow{key: "g|" + x.Code, code: x.Code, quality: "normal", mutation: "none", name: x.Name,
-			quantity: x.Quantity, price: x.Price, emoji: "🥚"})
+			quantity: x.Quantity, price: x.Price, emoji: "🥚", cost: x.PriceCost, low: x.PriceLow, high: x.PriceHigh, until: x.PriceUntil})
 	}
 	return rows
 }
@@ -679,6 +710,9 @@ func (p *Panel) buildSell(_ context.Context, data any) (*ui.Embed, error) {
 		if r.note != "" {
 			s += p.s("\n　📈 ") + r.note
 		}
+		if r.floating() {
+			s += "\n　" + p.floatNote(r)
+		}
 		return s
 	}
 	var lines []string
@@ -732,6 +766,9 @@ func (p *Panel) buildSell(_ context.Context, data any) (*ui.Embed, error) {
 		if row.note != "" {
 			price += p.s("（") + row.note + p.s("）")
 		}
+		if row.floating() {
+			price += "\n" + p.floatNote(row)
+		}
 		p.picker = &Picker{Key: row.key, Label: p.f("%s %s（持有 %d，單價 %s）", row.emoji, row.name, row.quantity, money(row.price)),
 			Verb: p.s("賣"), Max: row.quantity, Presets: presets, Run: run, PriceText: price,
 			LabelFor: func(q int) string { return p.f("賣 %d（+%s 金）", q, money(q*row.price)) }}
@@ -767,7 +804,7 @@ func (p *Panel) buildSell(_ context.Context, data any) (*ui.Embed, error) {
 			}}
 		for _, r := range choices {
 			multi.Options = append(multi.Options, ui.SelectOption{Label: cut(fmt.Sprintf("%s ×%d", r.name, r.quantity), 100), Value: r.key,
-				Emoji: r.emoji, Description: cut(p.f("🏷️ 單價 %s｜💰 全賣 %s 金", money(r.price), money(r.subtotal())), 100),
+				Emoji: r.emoji, Description: cut(p.f("🏷️ 單價 %s｜💰 全賣 %s 金", money(r.price), money(r.subtotal()))+p.floatShort(r), 100),
 				Default: slices.Contains(p.sellKeys, r.key)}) // 單選（數量按鈕）時不預設勾選：改選另一項會直接換成那一項
 		}
 		p.add(multi)

@@ -14,6 +14,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/craftprice"
 	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
@@ -144,13 +145,18 @@ func BuildBackpack(ctx context.Context, t *db.Tx, farm *models.Farm, now time.Ti
 			bp.Goods = append(bp.Goods, line(a.ProductCode, a.ProductName, n, a.ProductPrice, ""))
 		}
 	}
-	goodPrice, err := goodPrices(ctx, t, now) // 加工品是這一期的浮動售價
+	quotes, err := craftQuotes(ctx, t, now) // 加工品是這一期的浮動售價
 	if err != nil {
 		return Backpack{}, err
 	}
+	until := craftprice.PeriodEnd(now)
 	for _, code := range balance.GoodOrder {
 		if n := quantities[code]; n != 0 {
-			bp.Goods = append(bp.Goods, line(code, balance.Goods[code].Name, n, goodPrice[code], ""))
+			l := line(code, balance.Goods[code].Name, n, balance.Goods[code].SellPrice, "")
+			if q, ok := quotes[code]; ok {
+				l.Price, l.PriceCost, l.PriceLow, l.PriceHigh, l.PriceUntil = q.Price, q.Cost, q.Low, q.High, until
+			}
+			bp.Goods = append(bp.Goods, l)
 		}
 	}
 	slices.SortStableFunc(bp.Produce, func(a, b BackpackLine) int {
