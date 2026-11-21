@@ -1292,21 +1292,21 @@ func (r *RanchService) PetStatus(ctx context.Context, playerID int64) ([]PetView
 				level = intPtr(lv)
 			}
 			v := PetView{Code: code, Name: pet.Name, Emoji: pet.Emoji, Role: pet.Role, Owned: level != nil, Level: level,
-				MaxLevel: petrules.MaxLevel(), Pct: petrules.BonusPct(level), Effect: petrules.EffectText(code, level)}
+				MaxLevel: petrules.MaxLevel(code), Pct: petrules.BonusPct(code, level), Effect: petrules.EffectText(code, level)}
 			if level == nil {
-				v.NextPrice = intPtr(petrules.BuyPrice())
-				v.NextPct = petrules.BonusPct(intPtr(0))
+				v.NextPrice = intPtr(petrules.BuyPrice(code))
+				v.NextPct = petrules.BonusPct(code, intPtr(0))
 			} else {
-				if p, ok := petrules.UpgradePrice(*level); ok {
+				if p, ok := petrules.UpgradePrice(code, *level); ok {
 					v.NextPrice = intPtr(p)
 				}
-				v.NextPct = petrules.BonusPct(intPtr(*level + 1))
+				v.NextPct = petrules.BonusPct(code, intPtr(*level+1))
 			}
 			if code == petrules.Cat {
 				// 每種作物每格實際多收幾個：已領養看目前等級，還沒領養看領養後的 Lv0
 				shown := v.Pct
 				if shown == 0 {
-					shown = petrules.BonusPct(intPtr(0))
+					shown = petrules.BonusPct(code, intPtr(0))
 				}
 				list, err := crops.ListAll(ctx, t, true)
 				if err != nil {
@@ -1343,7 +1343,7 @@ func (r *RanchService) BuyPet(ctx context.Context, playerID int64, petCode strin
 		if row != nil {
 			return ActionResult{}, gameerr.New(gameerr.AlreadyExists, "你已經有%s了，可以幫牠升級。", pet.Name)
 		}
-		price := petrules.BuyPrice()
+		price := petrules.BuyPrice(petCode)
 		if farm.Gold < price {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：%s需要 %s，目前只有 %s。", pet.Name,
 				numfmt.Comma(price), numfmt.Comma(farm.Gold))
@@ -1362,7 +1362,7 @@ func (r *RanchService) BuyPet(ctx context.Context, playerID int64, petCode strin
 			rec{ItemCode: item, Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
 		}
-		nxt, _ := petrules.UpgradePrice(0)
+		nxt, _ := petrules.UpgradePrice(petCode, 0)
 		return result(txf(ctx, "%s 領養了%s！牠會出現在農場上。現在是 Lv0：%s；升到 Lv1 需要 %s 金幣：%s。%s",
 			pet.Emoji, pet.Name, petrules.EffectText(petCode, intPtr(0)), numfmt.Comma(nxt), petrules.EffectText(petCode, intPtr(1)),
 			GoldChange(farm.Gold, -price)), farm.Gold, -price, item, 1), nil
@@ -1384,11 +1384,11 @@ func (r *RanchService) UpgradePet(ctx context.Context, playerID int64, petCode s
 			return ActionResult{}, err
 		}
 		if row == nil {
-			return ActionResult{}, gameerr.NotFoundf("你還沒有%s，先領養（%s 金幣）。", pet.Name, numfmt.Comma(petrules.BuyPrice()))
+			return ActionResult{}, gameerr.NotFoundf("你還沒有%s，先領養（%s 金幣）。", pet.Name, numfmt.Comma(petrules.BuyPrice(petCode)))
 		}
-		price, ok := petrules.UpgradePrice(row.Level)
+		price, ok := petrules.UpgradePrice(petCode, row.Level)
 		if !ok {
-			return ActionResult{}, gameerr.Validationf("%s已經是最高等級 Lv%d。", pet.Name, petrules.MaxLevel())
+			return ActionResult{}, gameerr.Validationf("%s已經是最高等級 Lv%d。", pet.Name, petrules.MaxLevel(petCode))
 		}
 		if farm.Gold < price {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：升級需要 %s，目前只有 %s。",
@@ -1411,11 +1411,11 @@ func (r *RanchService) UpgradePet(ctx context.Context, playerID int64, petCode s
 			return ActionResult{}, err
 		}
 		tail := txt(ctx, "已達最高等級。")
-		if nxt, ok := petrules.UpgradePrice(lv); ok {
+		if nxt, ok := petrules.UpgradePrice(petCode, lv); ok {
 			tail = txf(ctx, "下一級需要 %s 金幣。", numfmt.Comma(nxt))
 		}
 		return result(txf(ctx, "%s %s升到 Lv%d：%s。\n📈 Lv%d → Lv%d：%d%% → %d%%%s\n%s", pet.Emoji, pet.Name, lv, effect,
-			lv-1, lv, petrules.BonusPct(intPtr(lv-1)), petrules.BonusPct(&lv), GoldChange(farm.Gold, -price), tail),
+			lv-1, lv, petrules.BonusPct(petCode, intPtr(lv-1)), petrules.BonusPct(petCode, &lv), GoldChange(farm.Gold, -price), tail),
 			farm.Gold, -price, item, 1), nil
 	})
 }

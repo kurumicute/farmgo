@@ -424,7 +424,6 @@
  "• 「🏅 成就圖鑑」看簽到紀錄、領成就獎勵、選稱號、看各種圖鑑\n": "• \"🏅 Achievements\": check-in history, achievement rewards, titles and all Collections\n",
  "• 「🏆 排行榜」有個人、本伺服器、群組總排行\n": "• \"🏆 Leaderboard\" has player, this-server and group rankings\n",
  "• 「🏭 加工」用磨坊、烘焙坊、果醬工坊把作物做成更值錢的商品\n": "• In \"🏭 Processing\", turn crops into more valuable goods at the Mill, Bakery and Jam Workshop\n",
- "• 「🐔 動物」→「🐾 寵物」領養 %s 金：貓咪增加收成數量、狗狗多擋一次偷菜\n": "• \"🐔 Animals\" → \"🐾 Pets\": adopt for %s Gold — cats boost harvests, dogs block an extra steal\n",
  "• 「🐔 動物」先建造畜舍 → 買動物 → 餵食 → 等生產後收集\n": "• In \"🐔 Animals\", build a Barn → buy animals → feed them → collect when they're done\n",
  "• 「👥 群組」可以把農場轉移到目前的伺服器（每 7 天一次）": "• \"👥 Server\" lets you move your farm to the current server (once every 7 days)",
  "• 「💧 全部澆水」→ 等成熟 →「🧺 全部收成」→「💰 販售」\n": "• \"💧 Water All\" → wait until ripe → \"🧺 Harvest All\" → \"💰 Sell\"\n",
@@ -437,7 +436,6 @@
  "• 只有在所屬群組的操作才計入群組任務與競賽\n": "• Only actions in your Home Server count toward its quests and contests\n",
  "• 可以切換金幣、農產品販售、商品總販售與期間；排名獎勵自動發放": "• Switch between Gold, Crop Sales, Total Goods Sales and periods; ranking rewards are paid out automatically",
  "• 商店的「傳說扒手手套」不受每日限制\n": "• The shop's \"Legendary Pickpocket Gloves\" ignore the daily limits\n",
- "• 寵物加成 Lv0 是 %d%%，每升一級 +%d%%，最高 Lv%d（%d%%）": "• Pet bonus is %d%% at Lv0, +%d%% per level, up to Lv%d (%d%%)",
  "• 帶回素材、🪵木屑、稀有種子與假幣（「🎒 背包」兌換，1 個 = %s 金）\n": "• Brings back materials, 🪵 sawdust, rare seeds and Old Coins (exchange in \"🎒 Inventory\", 1 = %s Gold)\n",
  "• 成熟後 16 小時沒收成會乾枯；農田最多 %d 格（第 17 格起是第二塊農田，畫在農田圖下方）\n": "• Crops wither 16 hours after ripening if not harvested; up to %d plots (plot 17+ is Field 2, drawn below Field 1)\n",
  "• 投入🪵木屑（山洞帶回）提高稀有菇機率，投滿 %d 個保證一半以上是稀有菇\n": "• Add 🪵 sawdust (from expeditions) to raise the rare mushroom chance — fill it with %d to guarantee at least half rare\n",
@@ -1633,7 +1631,6 @@
  "最近 10 次探索": "Last 10 expeditions",
  "最長連續簽到": "Longest check-in streak",
  "最高售價": "Maximum price",
- "最高等級的加成為 %d%%，不可超過 100%%。": "The top level's bonus is %d%%, which can't exceed 100%%.",
  "會突然衝刺的掠食魚。": "A predator that dashes without warning.",
  "會繞著礁石狂奔的大型掠食魚。": "A big predator that races around the reef.",
  "月光": "Moonlight",
@@ -3734,5 +3731,8 @@
  "🏧 %s不設保留條件：有勾選販售的都自動賣出。": "🏧 %s: no keep rule — every checked item is sold automatically.",
  "🏧 %s改用「所有作物」的保留條件。": "🏧 %s now follows the \"All crops\" keep rule.",
  "🏧 %s不保留：有勾選販售的都自動賣出。": "🏧 %s keeps nothing — every checked item is sold automatically.",
- "🏧 %s收成時保留：%s，其他的自動賣出。": "🏧 %[1]s keeps: %[2]s at harvest; everything else is sold automatically."
+ "🏧 %s收成時保留：%s，其他的自動賣出。": "🏧 %[1]s keeps: %[2]s at harvest; everything else is sold automatically.",
+ "• 「🐔 動物」→「🐾 寵物」領養：貓咪多收成、狗狗多擋偷菜、兔子多收菇、小鳥釣到好魚、刺蝟讓品質升級\n": "• \"🐔 Animals\" → \"🐾 Pets\" to adopt: Cats boost harvests, Dogs block more thieves, Bunnies grow more mushrooms, Birds find better fish, Hedgehogs raise crop quality\n",
+ "• 每種寵物的領養價格與每級加成不同，到「🐾 寵物」頁查看": "• Each pet has its own adoption price and per-level bonus — see the \"🐾 Pets\" page",
+ "%s最高等級加成為 %d%%，不可超過 100%%。": "%s top-level bonus is %d%%, which can't exceed 100%%."
 }

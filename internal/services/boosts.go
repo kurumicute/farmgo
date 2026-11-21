@@ -143,7 +143,7 @@ func (s *GameService) petPct(ctx context.Context, t *db.Tx, farmID int64, code s
 	if err != nil || level == nil {
 		return 0, err
 	}
-	pct := petrules.BonusPct(level)
+	pct := petrules.BonusPct(code, level)
 	treat, err := s.boostActive(ctx, t, farmID, balance.ItemPetTreat, s.now())
 	if err != nil {
 		return 0, err

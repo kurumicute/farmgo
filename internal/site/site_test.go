@@ -527,13 +527,13 @@ func TestGuideHasPets(t *testing.T) {
 	for _, x := range list(p["upgrade_prices"]) {
 		ups = append(ups, int(num(x)))
 	}
-	if num(p["buy_price"]) != float64(pets.BuyPrice()) || !slices.Equal(ups, pets.UpgradePrices()) || len(list(p["pets"])) != len(pets.Pets) {
+	if num(p["buy_price"]) != float64(pets.BuyPrice(pets.Cat)) || !slices.Equal(ups, pets.UpgradePrices(pets.Cat)) || len(list(p["pets"])) != len(pets.Pets) {
 		t.Fatal(p)
 	}
 	wheat := find(p["cat_odds"], "name", "小麥")
 	levels := list(wheat["levels"])
-	maxLevel := pets.MaxLevel()
-	if len(levels) != maxLevel+1 || levels[len(levels)-1] != pets.OddsText(int(num(wheat["quantity"])), pets.BonusPct(&maxLevel)) {
+	maxLevel := pets.MaxLevel(pets.Cat)
+	if len(levels) != maxLevel+1 || levels[len(levels)-1] != pets.OddsText(int(num(wheat["quantity"])), pets.BonusPct(pets.Cat, &maxLevel)) {
 		t.Fatal(levels)
 	}
 }

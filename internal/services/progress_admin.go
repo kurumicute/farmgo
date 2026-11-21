@@ -178,6 +178,15 @@ type FeatureSettingsView struct {
 	Cosmetics    []FeatureCosmeticKind    `json:"cosmetics"` // 外觀收藏的各種商品（名牌、主題、帽子、顏色）
 	Defenses     []FeatureItemView        `json:"defenses"`  // 防守設施（設施與道具價格，2026-11-21）
 	Buildings    []FeatureItemView        `json:"buildings"` // 建築（設施與道具價格）
+	Pets         []FeaturePetView         `json:"pets"`      // 寵物（每種分開設定，2026-11-22）
+}
+
+// FeaturePetView 管理網站寵物設定的一種寵物。
+type FeaturePetView struct {
+	Code   string `json:"code"`
+	Name   string `json:"name"`
+	Emoji  string `json:"emoji"`
+	Effect string `json:"effect"` // 效果說明（{pct} 換成 X）
 }
 
 // FeatureCosmeticKind 管理網站「外觀收藏」的一種商品。
@@ -360,6 +369,10 @@ func (a *AdminService) FeatureSettings(ctx context.Context) (FeatureSettingsView
 	for _, code := range balance.BuildingOrder {
 		b := balance.BuildingOf(code)
 		v.Buildings = append(v.Buildings, FeatureItemView{code, b.Name, b.Price})
+	}
+	for _, code := range pets.PetOrder {
+		p := pets.Pets[code]
+		v.Pets = append(v.Pets, FeaturePetView{code, p.Name, p.Emoji, strings.ReplaceAll(p.Effect, "{pct}", "X")})
 	}
 	for _, b := range cosmetics.Badges {
 		v.Badges = append(v.Badges, FeatureBadgeView{b.Code, b.Emoji, b.Name, b.How})
@@ -563,7 +576,7 @@ func (a *AdminService) AdminProgress(ctx context.Context, playerID int64) (Admin
 			if lv, ok := owned[code]; ok {
 				level = &lv
 			}
-			v.Pets = append(v.Pets, AdminPet{code, p.Name, p.Emoji, level, pets.MaxLevel(), pets.BonusPct(level)})
+			v.Pets = append(v.Pets, AdminPet{code, p.Name, p.Emoji, level, pets.MaxLevel(code), pets.BonusPct(code, level)})
 		}
 		ts, err := titlesView(ctx, t, farm)
 		if err != nil {
@@ -663,7 +676,7 @@ func (a *AdminService) SetPetLevel(ctx context.Context, actor string, playerID i
 		return false, gameerr.NotFoundf("沒有「%s」這種寵物。", petCode)
 	}
 	if level != nil {
-		n, err := featurecfg.IntValue(*level, pet.Name+"等級", 0, pets.MaxLevel())
+		n, err := featurecfg.IntValue(*level, pet.Name+"等級", 0, pets.MaxLevel(petCode))
 		if err != nil {
 			return false, err
 		}

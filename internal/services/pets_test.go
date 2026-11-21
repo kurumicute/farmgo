@@ -25,15 +25,15 @@ func (e *env) goldMatchesTransactions() bool {
 
 func TestPetRules(t *testing.T) {
 	var pcts []int
-	pcts = append(pcts, petrules.BonusPct(nil))
+	pcts = append(pcts, petrules.BonusPct(petrules.Cat, nil))
 	for lv := 0; lv <= 4; lv++ {
-		pcts = append(pcts, petrules.BonusPct(intPtr(lv)))
+		pcts = append(pcts, petrules.BonusPct(petrules.Cat, intPtr(lv)))
 	}
 	if !slices.Equal(pcts, []int{0, 5, 10, 15, 20, 25}) {
 		t.Fatal(pcts)
 	}
 	for lv, want := range []int{10_000, 20_000, 30_000, 40_000, -1} {
-		p, ok := petrules.UpgradePrice(lv)
+		p, ok := petrules.UpgradePrice(petrules.Cat, lv)
 		if !ok {
 			p = -1
 		}
@@ -55,12 +55,12 @@ func TestBuyAndUpgradePet(t *testing.T) {
 	wantKind(t, err, gameerr.NotFound)
 	before := e.gold(pid)
 	if r := e.ok(e.r.BuyPet(e.ctx, pid, petrules.Cat)); !strings.Contains(r.Message, "領養了貓咪") ||
-		e.gold(pid) != before-petrules.BuyPrice() {
+		e.gold(pid) != before-petrules.BuyPrice(petrules.Cat) {
 		t.Fatal(r.Message)
 	}
 	_, err = e.r.BuyPet(e.ctx, pid, petrules.Cat)
 	wantKind(t, err, gameerr.AlreadyExists)
-	for i, price := range petrules.UpgradePrices() {
+	for i, price := range petrules.UpgradePrices(petrules.Cat) {
 		before := e.gold(pid)
 		r := e.ok(e.r.UpgradePet(e.ctx, pid, petrules.Cat))
 		if !strings.Contains(r.Message, "Lv"+string(rune('1'+i))) || e.gold(pid) != before-price {
@@ -74,7 +74,7 @@ func TestBuyAndUpgradePet(t *testing.T) {
 		status[v.Code] = v
 	}
 	cat, dog := status["cat"], status["dog"]
-	if *cat.Level != 4 || cat.Pct != 25 || cat.NextPrice != nil || dog.Owned || *dog.NextPrice != petrules.BuyPrice() {
+	if *cat.Level != 4 || cat.Pct != 25 || cat.NextPrice != nil || dog.Owned || *dog.NextPrice != petrules.BuyPrice(petrules.Cat) {
 		t.Fatalf("%+v %+v", cat, dog)
 	}
 	if cat.Odds == nil || !cat.Odds.Current || cat.Odds.Pct != 25 || dog.Odds != nil {

@@ -4282,43 +4282,60 @@ if (typeof document !== "undefined") {
     });
   }
 
+  // 寵物：每種寵物分開設定領養價格、升級價格、Lv0 加成與每級加成（2026-11-22；之前是所有寵物共用一組）
   function petsCard() {
     const c = featureKey("pets").current;
     const lim = features.data.limits.pet_levels;
-    const buy = numInput(null, c.buy_price, 1, 100000000);
-    const prices = textInput(c.upgrade_prices.join(", "), 200, "例如 10000, 20000, 30000, 40000");
-    prices.classList.add("reason-input");
-    const base = numInput(null, c.base_pct, 0, 100);
-    const per = numInput(null, c.pct_per_level, 0, 100);
-    const preview = el("p", { className: "muted small" });
-    const update = () => {
-      const list = parseIntList(prices.value);
-      const top = list ? Number(base.value) + list.length * Number(per.value) : NaN;
-      preview.textContent = list ? `Lv0 ${base.value}% → 最高 Lv${list.length} ${top}%${top > 100 ? "（不可超過 100%）" : ""}` : "升級價格格式不正確（用逗號分隔的整數）。";
-    };
-    for (const n of [prices, base, per]) n.addEventListener("input", update);
-    update();
+    const per = c.per_pet || {};
+    const rows = (features.data.pets || []).map((pet) => {
+      const cur = Object.assign({ buy_price: c.buy_price, upgrade_prices: c.upgrade_prices, base_pct: c.base_pct, pct_per_level: c.pct_per_level }, per[pet.code] || {});
+      const buy = numInput(null, cur.buy_price, 1, 100000000);
+      buy.classList.add("wide-num");
+      const prices = listBox(cur.upgrade_prices, "例如 10000, 20000, 30000, 40000");
+      const base = numInput(null, cur.base_pct, 0, 100);
+      const step = numInput(null, cur.pct_per_level, 0, 100);
+      const preview = el("span", { className: "muted small" });
+      const update = () => {
+        const list = parseIntList(prices.value);
+        const top = list ? Number(base.value) + list.length * Number(step.value) : NaN;
+        preview.textContent = list ? `Lv0 ${base.value}% → Lv${list.length} ${top}%${top > 100 ? "（不可超過 100%）" : ""}` : "升級價格格式不正確";
+      };
+      for (const n of [prices, base, step]) n.addEventListener("input", update);
+      update();
+      return { pet, cur, buy, prices, base, step, preview };
+    });
     const body = el("div", {}, [
-      el("div", { className: "controls" }, [
-        el("label", { className: "inline", text: "領養價格 " }, [buy]),
-        el("label", { className: "inline", text: "Lv0 加成 % " }, [base]),
-        el("label", { className: "inline", text: "每級再加 % " }, [per]),
-      ]),
-      el("label", { className: "inline", text: `升級價格（Lv0→1、1→2…，最多 ${lim} 級） ` }, [prices]),
-      preview,
+      miniTable(["寵物", "領養價格", `升級價格（Lv0→1、1→2…，最多 ${lim} 級）`, "Lv0 加成 %", "每級再加 %", "加成範圍"],
+        rows.map((r) => el("tr", {}, [
+          td(`${r.pet.emoji} ${r.pet.name}：${r.pet.effect}`), el("td", {}, [r.buy]), el("td", {}, [r.prices]),
+          el("td", {}, [r.base]), el("td", {}, [r.step]), el("td", {}, [r.preview]),
+        ])), "沒有寵物"),
+      el("p", { className: "muted small", text: "X 是寵物的加成 %：Lv0 加成 + 等級 × 每級再加，最高等級不可超過 100%。寵物零食生效時加成 ×1.5。降低最高等級時，已超過的寵物以新的最高等級計算，等級不會被收回。" }),
     ]);
-    return featureCard("pets", "貓咪：收成數量 +X%；狗狗：防守設施沒擋住時再有 X% 擋下偷菜。降低最高等級時，已超過的寵物以新的最高等級計算", body, () => {
-      const list = parseIntList(prices.value);
-      if (!list) throw new Error("升級價格請用逗號分隔的整數，例如 10000, 20000。");
-      const value = { buy_price: Number(buy.value), upgrade_prices: list, base_pct: Number(base.value), pct_per_level: Number(per.value) };
-      return [value, [
-        diffRow("領養價格", fmtNum(c.buy_price), fmtNum(value.buy_price)),
-        diffRow("升級價格", listText(c.upgrade_prices), listText(value.upgrade_prices)),
-        diffRow("Lv0 加成", `${c.base_pct}%`, `${value.base_pct}%`),
-        diffRow("每級再加", `${c.pct_per_level}%`, `${value.pct_per_level}%`),
-      ].filter(Boolean)];
+    return featureCard("pets", "🐾 寵物：每種寵物的領養價格、升級價格與加成", body, () => {
+      const value = { buy_price: c.buy_price, upgrade_prices: c.upgrade_prices, base_pct: c.base_pct, pct_per_level: c.pct_per_level, per_pet: {} };
+      const diff = [];
+      for (const r of rows) {
+        const name = r.pet.name;
+        const v = {
+          buy_price: intIn(r.buy, `${name}的領養價格`, 1, 100000000),
+          upgrade_prices: listIn(r.prices, `${name}的升級價格`, 1, 100000000, 1, lim),
+          base_pct: intIn(r.base, `${name}的 Lv0 加成`, 0, 100),
+          pct_per_level: intIn(r.step, `${name}的每級加成`, 0, 100),
+        };
+        if (v.base_pct + v.upgrade_prices.length * v.pct_per_level > 100) throw fieldError(`${name}最高等級的加成超過 100%。`, r.step);
+        value.per_pet[r.pet.code] = v;
+        diff.push(
+          diffRow(`${name}領養價格`, fmtNum(r.cur.buy_price), fmtNum(v.buy_price)),
+          diffRow(`${name}升級價格`, listText(r.cur.upgrade_prices), listText(v.upgrade_prices)),
+          diffRow(`${name} Lv0 加成`, `${r.cur.base_pct}%`, `${v.base_pct}%`),
+          diffRow(`${name}每級再加`, `${r.cur.pct_per_level}%`, `${v.pct_per_level}%`),
+        );
+      }
+      return [value, diff.filter(Boolean)];
     });
   }
+
 
   function specialShopCard() {
     const c = featureKey("special_shop").current;

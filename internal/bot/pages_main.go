@@ -21,7 +21,6 @@ import (
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/mushroom"
-	"farmgm/internal/game/pets"
 	"farmgm/internal/game/questboard"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/weather"
@@ -1265,18 +1264,16 @@ func (p *Panel) buildHelp(_ context.Context, data any) (*ui.Embed, error) {
 
 // HelpEmbed 玩法說明（/help 與說明頁共用）：每個主題用短條列，寫出完整的進入路徑。
 func HelpEmbed() *ui.Embed {
-	maxLevel := pets.MaxLevel()
 	e := &ui.Embed{Title: "❓ 怎麼玩", Color: Blue, Description: "輸入 **/farm** 打開農場面板，所有操作都用按鈕和選單完成，面板只有你看得到；15 分鐘沒有操作會逾時，再輸入 /farm 就能重新打開。"}
 	e.AddField("🌱 種田", fmt.Sprintf("• 「🌱 農田」選作物 → 種滿空地（種子不夠會自動買）\n"+
 		"• 「💧 全部澆水」→ 等成熟 →「🧺 全部收成」→「💰 販售」\n"+
 		"• 成熟後 16 小時沒收成會乾枯；農田最多 %d 格（第 17 格起是第二塊農田，畫在農田圖下方）\n"+
 		"• 加速：化肥剩餘時間 -%d%%、蚯蚓生長時間 ×%v、溫室（商店）每級再縮短；自動澆水器種下就澆水",
 		expansion.MaxPlots(), balance.FertilizerPct, balance.EarthwormGrowMultiplier), false)
-	e.AddField("🐔 養殖與加工", fmt.Sprintf("• 「🐔 動物」先建造畜舍 → 買動物 → 餵食 → 等生產後收集\n"+
+	e.AddField("🐔 養殖與加工", "• 「🐔 動物」先建造畜舍 → 買動物 → 餵食 → 等生產後收集\n"+
 		"• 「🏭 加工」用磨坊、烘焙坊、果醬工坊把作物做成更值錢的商品\n"+
-		"• 「🐔 動物」→「🐾 寵物」領養 %s 金：貓咪增加收成數量、狗狗多擋一次偷菜\n"+
-		"• 寵物加成 Lv0 是 %d%%，每升一級 +%d%%，最高 Lv%d（%d%%）",
-		money(pets.BuyPrice()), pets.BasePct(), pets.PctPerLevel(), maxLevel, pets.BonusPct(&maxLevel)), false)
+		"• 「🐔 動物」→「🐾 寵物」領養：貓咪多收成、狗狗多擋偷菜、兔子多收菇、小鳥釣到好魚、刺蝟讓品質升級\n"+
+		"• 每種寵物的領養價格與每級加成不同，到「🐾 寵物」頁查看", false)
 	e.AddField("🥷 偷菜與防守", fmt.Sprintf("• 「🥷 偷菜」選一位同伺服器玩家 → 打開他的農田 → 選要偷哪一格\n"+
 		"• 每天每位玩家最多偷 %d 格；每人每天最多被 %d 人偷；每次最多偷 %d 個（小麥 1 個）\n"+
 		"• 商店的「傳說扒手手套」不受每日限制\n"+

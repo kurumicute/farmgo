@@ -537,8 +537,8 @@ func TestAdminProgressAPIRequiresLoginAndWorks(t *testing.T) {
 		}
 	}
 	if code, v := e.call("PUT", "/api/admin/feature-settings/pets", with(cfg, "buy_price", 4_321)); code != 200 ||
-		pets.BuyPrice() != 4_321 || v["key"] != "pets" || num(v["current"].(obj)["buy_price"]) != 4_321 {
-		t.Fatal(code, v, pets.BuyPrice())
+		pets.BuyPrice(pets.Cat) != 4_321 || v["key"] != "pets" || num(v["current"].(obj)["buy_price"]) != 4_321 {
+		t.Fatal(code, v, pets.BuyPrice(pets.Cat))
 	}
 	if code, v := e.call("PUT", "/api/admin/feature-settings/pets", with(cfg, "base_pct", 999)); code != 400 ||
 		!strings.Contains(v["detail"].(string), "Lv0 加成") {
@@ -547,8 +547,8 @@ func TestAdminProgressAPIRequiresLoginAndWorks(t *testing.T) {
 	if e.status("PUT", "/api/admin/feature-settings/nope", map[string]any{}) != 422 {
 		t.Fatal("未知的設定")
 	}
-	if e.status("DELETE", "/api/admin/feature-settings/pets", nil) != 200 || pets.BuyPrice() != 5_000 {
-		t.Fatal("還原預設", pets.BuyPrice())
+	if e.status("DELETE", "/api/admin/feature-settings/pets", nil) != 200 || pets.BuyPrice(pets.Cat) != 5_000 {
+		t.Fatal("還原預設", pets.BuyPrice(pets.Cat))
 	}
 	// 2026-11-21：以前的 key 清單是手寫的，漏了 expansion 等 4 個，管理網站存不了；現在由 services.FeatureKeys 產生
 	if code, v := e.call("PUT", "/api/admin/feature-settings/upgrades", obj{"building_prices": []int{1, 2}, "building_cut_pct": []int{5, 10}}); code != 200 ||

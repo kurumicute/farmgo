@@ -413,6 +413,8 @@
  "在修復遺跡頁選素材攻擊：${dmg} 傷害（假幣不行）；每次探索遺跡也會自動造成 ${gd.expedition_damage} 傷害。": "Attack by picking materials on the Restore Ruins page: ${dmg} damage (Old Coins don't count); every ruins exploration also deals ${gd.expedition_damage} damage automatically.",
  "在修復遺跡頁選素材攻擊：普通素材每個 3、稀有 15、極稀有 80 傷害（假幣不行）；每次探索遺跡也會自動造成 200 傷害。": "Attack it by choosing materials on the Restore Ruins page: 3 damage per common material, 15 per rare and 80 per very rare (Old Coins don't work). Every Ancient Ruins run also deals 200 damage automatically.",
  "在文字頻道輸入": "In a text channel, type",
+ "每種寵物的價格與加成可以不同（見下表）。以貓咪為例：領養": "Each pet can have its own price and bonus (see the table below). Taking the Cat as an example: adopt for",
+ "${x.effect}（X：Lv0 ${x.base_pct}% → Lv${x.max_level} ${x.max_pct}%；領養 ${num.format(x.buy_price)} 金幣）": "${x.effect} (X: Lv0 ${x.base_pct}% → Lv${x.max_level} ${x.max_pct}%; adopt for ${num.format(x.buy_price)} Gold)",
  "吃掉害蟲，收成時每格有 X% 機率品質提升一級（最高傳說）。": "eats pests, giving each plot an X% chance to gain one quality tier at harvest (up to Legendary).",
  "在稻草人、警戒犬、防盜圍欄都沒擋住時再判定一次，不受防守設施整體": "gets one more roll when the Scarecrow, Guard Dog, and Anti-Theft Fence all fail to stop a thief, ignoring the overall defense cap of",
  "在總覽按「⛰️ 山洞」，選一個區域查看可能的獎勵，再按「🧭 出發探險」。": "On the Home page, tap \"⛰️ Expedition\", pick an area to see its possible rewards, then tap \"🧭 Set Off\".",

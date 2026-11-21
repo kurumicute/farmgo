@@ -1015,25 +1015,30 @@ func buildProgress() map[string]any {
 }
 
 // buildPets 寵物規則；cat_odds：每種啟用中的作物在貓咪 Lv0～最高級時，每格實際多收多少（與遊戲相同算法）。
+// 2026-11-22 起每種寵物的價格與加成分開設定：最上層的數值是貓咪的（貓咪表格與舉例用），pets 每一項帶自己的數值。
 func buildPets(activeCrops []models.CropType) map[string]any {
-	maxLevel := pets.MaxLevel()
+	cat := pets.Of(pets.Cat)
+	maxLevel := len(cat.UpgradePrices)
 	odds := []map[string]any{}
 	for _, c := range activeCrops {
 		levels := []string{}
 		for lv := 0; lv <= maxLevel; lv++ {
-			levels = append(levels, pets.OddsText(c.HarvestQuantity, pets.BonusPct(&lv)))
+			levels = append(levels, pets.OddsText(c.HarvestQuantity, pets.BonusPct(pets.Cat, &lv)))
 		}
 		odds = append(odds, map[string]any{"name": c.Name, "quantity": c.HarvestQuantity, "levels": levels})
 	}
 	list := []map[string]any{}
 	for _, code := range pets.PetOrder {
-		p := pets.Pets[code]
+		p, c := pets.Pets[code], pets.Of(code)
+		top := len(c.UpgradePrices)
 		list = append(list, map[string]any{"name": p.Emoji + " " + p.Name, "role": p.Role,
-			"effect": strings.ReplaceAll(p.Effect, "{pct}", "X")})
+			"effect":    strings.ReplaceAll(p.Effect, "{pct}", "X"),
+			"buy_price": c.BuyPrice, "upgrade_prices": c.UpgradePrices, "base_pct": c.BasePct, "pct_per_level": c.PctPerLevel,
+			"max_level": top, "max_pct": pets.BonusPct(code, &top)})
 	}
-	return map[string]any{"cat_odds": odds, "buy_price": pets.BuyPrice(), "upgrade_prices": pets.UpgradePrices(),
-		"base_pct": pets.BasePct(), "pct_per_level": pets.PctPerLevel(), "max_level": maxLevel,
-		"max_pct": pets.BonusPct(&maxLevel), "pets": list,
+	return map[string]any{"cat_odds": odds, "buy_price": cat.BuyPrice, "upgrade_prices": cat.UpgradePrices,
+		"base_pct": cat.BasePct, "pct_per_level": cat.PctPerLevel, "max_level": maxLevel,
+		"max_pct": pets.BonusPct(pets.Cat, &maxLevel), "pets": list,
 		// 狗狗不受防守設施整體阻止機率上限的限制
 		"defense_cap_pct": numfmt.Round(balance.DefenseMaxBlockChance * 100)}
 }

@@ -13,16 +13,16 @@ func TestRules(t *testing.T) {
 	featurecfg.Reset()
 	want := []int{0, 5, 10, 15, 20, 25}
 	for i, lv := range []*int{nil, ip(0), ip(1), ip(2), ip(3), ip(4)} {
-		if BonusPct(lv) != want[i] {
+		if BonusPct(Cat, lv) != want[i] {
 			t.Fatalf("bonus %d", i)
 		}
 	}
 	for lv, w := range []int{10_000, 20_000, 30_000, 40_000} {
-		if p, ok := UpgradePrice(lv); !ok || p != w {
+		if p, ok := UpgradePrice(Cat, lv); !ok || p != w {
 			t.Fatal(lv)
 		}
 	}
-	if _, ok := UpgradePrice(4); ok {
+	if _, ok := UpgradePrice(Cat, 4); ok {
 		t.Fatal("max level")
 	}
 	if BonusQuantity(5, 10, 0.49) != 1 || BonusQuantity(5, 10, 0.5) != 0 { // 0.5 個 → 50% 多 1 個
@@ -61,8 +61,8 @@ func TestSettings(t *testing.T) {
 	defer featurecfg.Reset()
 	bad, _ := featurecfg.Decode([]byte(`{"buy_price":-1}`))
 	featurecfg.Apply(map[string]featurecfg.Value{ConfigKey: bad}) // 不合法：退回預設值
-	if BuyPrice() != 5_000 {
-		t.Fatal(BuyPrice())
+	if BuyPrice(Cat) != 5_000 {
+		t.Fatal(BuyPrice(Cat))
 	}
 	over, _ := featurecfg.Decode([]byte(`{"buy_price":1,"upgrade_prices":[1,2,3,4,5,6,7,8,9,10],"base_pct":5,"pct_per_level":10}`))
 	if _, err := featurecfg.Validate(ConfigKey, over); !gameerr.Is(err, gameerr.Validation) {
@@ -70,7 +70,37 @@ func TestSettings(t *testing.T) {
 	}
 	ok, _ := featurecfg.Decode([]byte(`{"buy_price":9,"upgrade_prices":[1,2],"base_pct":0,"pct_per_level":50}`))
 	featurecfg.Apply(map[string]featurecfg.Value{ConfigKey: ok})
-	if BuyPrice() != 9 || MaxLevel() != 2 || BonusPct(ip(5)) != 100 {
+	if BuyPrice(Cat) != 9 || MaxLevel(Dog) != 2 || BonusPct(Bird, ip(5)) != 100 { // 沒有個別設定：每種都用最上層的
 		t.Fatal(Config())
+	}
+	// 2026-11-22 每種寵物分開設定：沒列的欄位用最上層的，沒列的寵物整組用最上層的
+	per, _ := featurecfg.Decode([]byte(`{"buy_price":9,"upgrade_prices":[1,2],"base_pct":0,"pct_per_level":50,
+		"per_pet":{"dog":{"buy_price":7000,"upgrade_prices":[100,200,300],"base_pct":10,"pct_per_level":10},"hedgehog":{"base_pct":0,"pct_per_level":30}}}`))
+	norm, err := featurecfg.Validate(ConfigKey, per)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pm, _ := featurecfg.AsMap(norm["per_pet"]); len(pm) != len(PetOrder) {
+		t.Fatal(norm)
+	}
+	featurecfg.Apply(map[string]featurecfg.Value{ConfigKey: norm})
+	if BuyPrice(Dog) != 7000 || MaxLevel(Dog) != 3 || BonusPct(Dog, ip(3)) != 40 || BonusPct(Dog, nil) != 0 {
+		t.Fatal(Of(Dog))
+	}
+	if p, ok := UpgradePrice(Dog, 2); !ok || p != 300 {
+		t.Fatal(p)
+	}
+	if BuyPrice(Cat) != 9 || BonusPct(Cat, ip(1)) != 50 || BuyPrice(Hedgehog) != 9 || BonusPct(Hedgehog, ip(1)) != 30 {
+		t.Fatal(Of(Cat), Of(Hedgehog))
+	}
+	if got := EffectText(Dog, ip(3)); got != "防守設施沒擋住時，再有 40% 機率擋下偷菜（所有農田）" {
+		t.Fatal(got)
+	}
+	// 每種寵物各自檢查 100% 上限；不認識的寵物拒絕
+	for _, raw := range []string{`{"per_pet":{"cat":{"base_pct":60,"pct_per_level":20}}}`, `{"per_pet":{"ufo":{}}}`, `{"per_pet":5}`} {
+		v, _ := featurecfg.Decode([]byte(raw))
+		if _, err := featurecfg.Validate(ConfigKey, v); !gameerr.Is(err, gameerr.Validation) {
+			t.Fatal(raw, err)
+		}
 	}
 }

@@ -51,8 +51,8 @@ func TestPetsSettingsApplyAndReset(t *testing.T) {
 	e := setup(t)
 	pid := e.progressFarmer()
 	e.mustFeature("pets", featurecfg.Value{"buy_price": 1_000, "upgrade_prices": []any{2_000, 3_000}, "base_pct": 10, "pct_per_level": 20})
-	if pets.BuyPrice() != 1_000 || pets.MaxLevel() != 2 || pets.BonusPct(intPtr(2)) != 50 {
-		t.Fatal(pets.BuyPrice(), pets.MaxLevel())
+	if pets.BuyPrice(pets.Cat) != 1_000 || pets.MaxLevel(pets.Cat) != 2 || pets.BonusPct(pets.Cat, intPtr(2)) != 50 {
+		t.Fatal(pets.BuyPrice(pets.Cat), pets.MaxLevel(pets.Cat))
 	}
 	before := e.gold(pid)
 	e.ok(e.r.BuyPet(e.ctx, pid, pets.Cat))
@@ -66,11 +66,25 @@ func TestPetsSettingsApplyAndReset(t *testing.T) {
 	if e.scalar("SELECT (details->'after'->>'base_pct')::int FROM admin_actions WHERE action = 'update_feature_settings'") != 10 {
 		t.Fatal("管理紀錄不對")
 	}
+	// 2026-11-22 每種寵物分開設定：狗狗自己的價格與等級，貓咪沿用最上層的
+	e.mustFeature("pets", featurecfg.Value{"buy_price": 1_000, "upgrade_prices": []any{2_000, 3_000}, "base_pct": 10, "pct_per_level": 20,
+		"per_pet": map[string]any{"dog": map[string]any{"buy_price": 777, "upgrade_prices": []any{50}, "base_pct": 30, "pct_per_level": 30}}})
+	before = e.gold(pid)
+	e.ok(e.r.BuyPet(e.ctx, pid, pets.Dog))
+	if e.gold(pid) != before-777 || pets.MaxLevel(pets.Dog) != 1 || pets.BonusPct(pets.Dog, intPtr(1)) != 60 || pets.BuyPrice(pets.Cat) != 1_000 {
+		t.Fatal(e.gold(pid), pets.Of(pets.Dog))
+	}
+	r := e.ok(e.r.UpgradePet(e.ctx, pid, pets.Dog))
+	if !strings.Contains(r.Message, "60%") {
+		t.Fatal(r.Message)
+	}
+	_, err = e.r.UpgradePet(e.ctx, pid, pets.Dog)
+	wantMsg(t, err, gameerr.Validation, "最高等級 Lv1")
 	err = e.updateFeature("pets", featurecfg.Value{"buy_price": 1, "upgrade_prices": []any{1, 1, 1}, "base_pct": 50, "pct_per_level": 20})
 	wantMsg(t, err, gameerr.Validation, "不可超過 100%")
 	must[featurecfg.Value](t)(e.a.ResetFeatureSettings(e.ctx, "root", "pets"))
-	if pets.BuyPrice() != 5_000 || pets.BonusPct(intPtr(4)) != 25 {
-		t.Fatal(pets.BuyPrice())
+	if pets.BuyPrice(pets.Cat) != 5_000 || pets.BonusPct(pets.Cat, intPtr(4)) != 25 {
+		t.Fatal(pets.BuyPrice(pets.Cat))
 	}
 	if e.scalar("SELECT count(*) FROM feature_settings WHERE key = 'pets'") != 0 {
 		t.Fatal("資料列沒有刪除")
@@ -104,8 +118,8 @@ func TestInvalidStoredSettingsFallBackToDefaults(t *testing.T) {
 	})
 	featuresettings.Invalidate()
 	e.status(pid)
-	if pets.BuyPrice() != 5_000 {
-		t.Fatal(pets.BuyPrice())
+	if pets.BuyPrice(pets.Cat) != 5_000 {
+		t.Fatal(pets.BuyPrice(pets.Cat))
 	}
 }
 

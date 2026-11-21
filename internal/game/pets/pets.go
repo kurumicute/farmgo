@@ -1,7 +1,7 @@
 // Package pets 寵物（貓、狗）：規則與數值，不碰資料庫（對應 Python app/game/pets.py）。
 //
 //   - 購買後是 Lv0（出現在農場圖的左上／右上），加成 base_pct%；之後升級，每級再 +pct_per_level%（預設 Lv4 = 25%）。
-//   - 價格與加成可在管理網站調整（featurecfg 的 "pets"），一律經 BuyPrice()／UpgradePrices()／BonusPct() 讀取。
+//   - 價格與加成可在管理網站調整（featurecfg 的 "pets"，2026-11-22 起每種寵物分開設定），一律經 Of(code)／BuyPrice(code)／BonusPct(code, level) 讀取。
 //   - 貓：趕走偷吃作物的老鼠，主人收成時收成數量 +X%（小數部分依機率多 1 個，見 BonusQuantity）。
 //   - 狗：趕走偷菜的小偷。防守設施（稻草人、警戒犬、防盜圍欄）都沒擋住時，狗再判定一次 X%；
 //     不受防守設施 60% 整體上限限制。擋下時偷菜紀錄的 blocked_by = DogBlocker。
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/featurecfg"
@@ -29,6 +30,8 @@ const (
 	ConfigKey  = "pets"
 )
 
+// 2026-11-22 使用者要求：每種寵物分開設定（per_pet：寵物代碼 → 4 個數值）。最上層的 4 個數值是沒有個別設定時的預設，
+// 所以之前存的快照（只有最上層）照常可用：每種寵物都套用最上層的數值。
 func defaults() featurecfg.Value {
 	return featurecfg.Value{
 		"buy_price":      5_000,
@@ -38,29 +41,84 @@ func defaults() featurecfg.Value {
 	}
 }
 
-// ValidateConfig 驗證並正規化寵物設定。
+// Settings 一種寵物的數值。
+type Settings struct {
+	BuyPrice      int
+	UpgradePrices []int // Lv0→1、1→2…
+	BasePct       int   // Lv0 的加成
+	PctPerLevel   int   // 每升一級再加
+}
+
+func (c Settings) value() featurecfg.Value {
+	return featurecfg.Value{"buy_price": c.BuyPrice, "upgrade_prices": c.UpgradePrices, "base_pct": c.BasePct, "pct_per_level": c.PctPerLevel}
+}
+
+// parseSettings 驗證一組數值；label 放在錯誤訊息前面（例如「貓咪的」）。缺少的欄位用 fallback。
+func parseSettings(raw featurecfg.Value, fallback featurecfg.Value, label string) (Settings, error) {
+	get := func(k string) any {
+		if v, ok := raw[k]; ok && v != nil {
+			return v
+		}
+		return fallback[k]
+	}
+	var c Settings
+	var err error
+	if c.BuyPrice, err = featurecfg.IntValue(get("buy_price"), label+"領養價格", 1, 100_000_000); err != nil {
+		return c, err
+	}
+	if c.UpgradePrices, err = featurecfg.IntList(get("upgrade_prices"), label+"升級價格", 1, 100_000_000, 1, LevelLimit); err != nil {
+		return c, err
+	}
+	if c.BasePct, err = featurecfg.IntValue(get("base_pct"), label+"Lv0 加成", 0, 100); err != nil {
+		return c, err
+	}
+	if c.PctPerLevel, err = featurecfg.IntValue(get("pct_per_level"), label+"每級加成", 0, 100); err != nil {
+		return c, err
+	}
+	if top := c.BasePct + len(c.UpgradePrices)*c.PctPerLevel; top > 100 {
+		return c, gameerr.Validationf("%s最高等級加成為 %d%%，不可超過 100%%。", label, top)
+	}
+	return c, nil
+}
+
+// parse 回傳最上層的預設與每種寵物的數值。
+func parse(raw featurecfg.Value) (Settings, map[string]Settings, error) {
+	shared, err := parseSettings(raw, defaults(), "")
+	if err != nil {
+		return Settings{}, nil, err
+	}
+	per := map[string]Settings{}
+	m, ok := featurecfg.AsMap(raw["per_pet"])
+	if raw["per_pet"] != nil && !ok {
+		return Settings{}, nil, gameerr.Validationf("每種寵物的設定格式不正確。")
+	}
+	for k := range m {
+		if _, known := Pets[k]; !known {
+			return Settings{}, nil, gameerr.Validationf("沒有「%s」這種寵物。", k)
+		}
+	}
+	for _, code := range PetOrder {
+		sub, _ := featurecfg.AsMap(m[code])
+		if per[code], err = parseSettings(sub, shared.value(), Pets[code].Name+"的"); err != nil {
+			return Settings{}, nil, err
+		}
+	}
+	return shared, per, nil
+}
+
+// ValidateConfig 驗證並正規化寵物設定（輸出一律包含每種寵物的完整數值）。
 func ValidateConfig(raw featurecfg.Value) (featurecfg.Value, error) {
-	buy, err := featurecfg.IntValue(raw["buy_price"], "領養價格", 1, 100_000_000)
+	shared, per, err := parse(raw)
 	if err != nil {
 		return nil, err
 	}
-	prices, err := featurecfg.IntList(raw["upgrade_prices"], "升級價格", 1, 100_000_000, 1, LevelLimit)
-	if err != nil {
-		return nil, err
+	out := shared.value()
+	pm := map[string]any{}
+	for code, c := range per {
+		pm[code] = map[string]any(c.value())
 	}
-	base, err := featurecfg.IntValue(raw["base_pct"], "Lv0 加成", 0, 100)
-	if err != nil {
-		return nil, err
-	}
-	per, err := featurecfg.IntValue(raw["pct_per_level"], "每級加成", 0, 100)
-	if err != nil {
-		return nil, err
-	}
-	top := base + len(prices)*per
-	if top > 100 {
-		return nil, gameerr.Validationf("最高等級的加成為 %d%%，不可超過 100%%。", top)
-	}
-	return featurecfg.Value{"buy_price": buy, "upgrade_prices": prices, "base_pct": base, "pct_per_level": per}, nil
+	out["per_pet"] = pm
+	return out, nil
 }
 
 func init() {
@@ -69,31 +127,35 @@ func init() {
 
 func Config() featurecfg.Value { return featurecfg.Get(ConfigKey) }
 
-func intOf(key string) int {
-	n, _ := featurecfg.AsInt(Config()[key])
-	return n
-}
+var (
+	cfgMu      sync.Mutex
+	cfgVersion = -1
+	cfgCache   map[string]Settings
+)
 
-func BuyPrice() int { return intOf("buy_price") }
-
-func UpgradePrices() []int {
-	switch v := Config()["upgrade_prices"].(type) {
-	case []int:
-		return v
-	default:
-		list, _ := featurecfg.AsList(v)
-		out := make([]int, 0, len(list))
-		for _, x := range list {
-			n, _ := featurecfg.AsInt(x)
-			out = append(out, n)
+// Of 這種寵物目前的數值（未知的代碼用最上層的預設）。
+func Of(code string) Settings {
+	cfgMu.Lock()
+	defer cfgMu.Unlock()
+	if v := featurecfg.Version(); cfgCache == nil || cfgVersion != v {
+		shared, per, err := parse(Config())
+		if err != nil {
+			shared, per, _ = parse(defaults())
 		}
-		return out
+		per[""] = shared
+		cfgCache, cfgVersion = per, v
 	}
+	if c, ok := cfgCache[code]; ok {
+		return c
+	}
+	return cfgCache[""]
 }
 
-func MaxLevel() int    { return len(UpgradePrices()) }
-func BasePct() int     { return intOf("base_pct") }
-func PctPerLevel() int { return intOf("pct_per_level") }
+func BuyPrice(code string) int        { return Of(code).BuyPrice }
+func UpgradePrices(code string) []int { return Of(code).UpgradePrices }
+func MaxLevel(code string) int        { return len(Of(code).UpgradePrices) }
+func BasePct(code string) int         { return Of(code).BasePct }
+func PctPerLevel(code string) int     { return Of(code).PctPerLevel }
 
 // Pet 寵物定義。
 type Pet struct {
@@ -143,16 +205,17 @@ func UpgradeQuality(quality string, pct int, u float64) (string, bool) {
 func ItemCode(petCode string) string { return "pet_" + petCode }
 
 // BonusPct level 為 nil 表示沒有這隻寵物。
-func BonusPct(level *int) int {
+func BonusPct(code string, level *int) int {
 	if level == nil {
 		return 0
 	}
-	return BasePct() + max(0, min(*level, MaxLevel()))*PctPerLevel()
+	c := Of(code)
+	return c.BasePct + max(0, min(*level, len(c.UpgradePrices)))*c.PctPerLevel
 }
 
 // UpgradePrice 從目前等級升到下一級的價格；已滿級時 ok = false。
-func UpgradePrice(level int) (price int, ok bool) {
-	prices := UpgradePrices()
+func UpgradePrice(code string, level int) (price int, ok bool) {
+	prices := UpgradePrices(code)
 	if level >= 0 && level < len(prices) {
 		return prices[level], true
 	}
@@ -160,7 +223,7 @@ func UpgradePrice(level int) (price int, ok bool) {
 }
 
 func EffectText(code string, level *int) string {
-	return strings.ReplaceAll(Pets[code].Effect, "{pct}", strconv.Itoa(BonusPct(level)))
+	return strings.ReplaceAll(Pets[code].Effect, "{pct}", strconv.Itoa(BonusPct(code, level)))
 }
 
 // BonusQuantity 貓的收成加成：quantity × pct%，整數部分一定給，小數部分以機率 u ∈ [0, 1) 決定是否多 1 個。
