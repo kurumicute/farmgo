@@ -236,3 +236,42 @@ func TestCraftUsesFastCrops(t *testing.T) {
 		t.Fatal(stock("none"), stock("giant"), stock("fast"), stock("golden"))
 	}
 }
+
+// 水晶作物也能當加工原料（2026-11-21 使用者要求）：排在快速生長之後扣；夜光作物（售價 ×2）不算。
+func TestCraftUsesCrystalCrops(t *testing.T) {
+	e := setup(t)
+	f := e.rancher()
+	e.ok(e.r.Build(e.ctx, f, "磨坊"))
+	e.setInv(f, "wheat", "normal", "fast", 1)
+	for _, x := range []struct {
+		quality, mutation string
+		n                 int
+	}{{"normal", "crystal", 5}, {"normal", "glow", 9}, {"good", "crystal", 9}} { // 管理員方法不收實驗室突變，直接寫資料庫
+		e.exec(`INSERT INTO inventory_items (farm_id, item_code, quality, mutation, quantity)
+			SELECT id, 'wheat', $1, $2, $3 FROM farms WHERE player_id = $4`, x.quality, x.mutation, x.n, f)
+	}
+	pid := f
+	for _, r := range must[[]RecipeView](t)(e.r.Recipes(e.ctx, &pid)) {
+		if r.Code == "flour" && (r.CanMake == nil || *r.CanMake != 2) { // (1 + 5) / 3 = 2 份
+			t.Fatalf("可做份數不對：%+v", r.CanMake)
+		}
+	}
+	e.ok(e.r.StartCraft(e.ctx, f, "flour", 2)) // 需要 6 個：快速 1 + 水晶 5
+	farmID := must[FarmStatus](t)(e.s.GetFarmStatus(e.ctx, f)).FarmID
+	for _, c := range []struct {
+		quality, mutation string
+		want              int
+	}{{"normal", "fast", 0}, {"normal", "crystal", 0}, {"normal", "glow", 9}, {"good", "crystal", 9}} {
+		n := 0
+		if err := e.s.transaction(e.ctx, func(tx *dbTx) error {
+			var err error
+			n, err = inventory.GetQuantity(e.ctx, tx, farmID, "wheat", c.quality, c.mutation)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if n != c.want {
+			t.Fatal(c, n)
+		}
+	}
+}

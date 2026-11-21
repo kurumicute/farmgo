@@ -27,7 +27,7 @@ import (
 // NPC 限時訂單（Go 版新增，2026-11-20，規則見 game/npcorder）。狀態存在 farm_tools 的 settings；
 // 交貨記成 sell（把東西賣給 NPC，也會算進販賣類的群組任務與競賽），換單費記成 buy_item，都不需要 Migration。
 
-// orderMutations 交貨時收的突變：和加工原料相同（巨型、快速生長的售價與普通相同），黃金、珍稀變種不收。
+// orderMutations 交貨時收的突變：和加工原料相同（巨型、快速生長、水晶的售價與普通相同），黃金、珍稀變種不收。
 var orderMutations = CraftMutations
 
 // orderEligible 這座農場現在做得出來的物品 → 基準售價（當季作物、已蓋設施的加工品、有養的動物產品、已開放的菇類）。

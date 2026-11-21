@@ -1623,7 +1623,7 @@ func (x *ExplorationService) autoProcess(ctx context.Context, t *db.Tx, farm *mo
 		case busy == nil:
 			quantity := balance.CraftMaxQuantity
 			for _, item := range rc.InputOrder {
-				have, err := craftStock(ctx, t, farm.ID, item) // 巨型、快速生長作物也能加工
+				have, err := craftStock(ctx, t, farm.ID, item) // 巨型、快速生長、水晶作物也能加工
 				if err != nil {
 					return "", err
 				}
