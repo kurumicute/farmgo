@@ -233,6 +233,7 @@
 - **2026-11-21（使用者要求，Go 版新增）**：**水晶作物也能當加工原料**。`CraftMutations` 加上 `crystal`（扣除順序：無突變 → 巨型 → 快速生長 → 水晶），水晶作物的售價和普通的一樣（只在收成時多給水晶），所以和巨型、快速生長同樣處理；仍只收普通品質。NPC 訂單交貨（`orderMutations`）、自動加工機、介紹網站的說明也跟著改。夜光、豐收作物不收。測試 `TestCraftUsesCrystalCrops`。
 - **2026-11-21（使用者要求，刪除）**：**刪除天氣奇遇的「⚡ 雷擊種子」**（暴風隔天在第一格空地種下保證突變的作物）。刪掉 `weather.LuckLightning`、`LightningMutations`、`LuckToolCode`、`services/weatherluck.go`（`PickLightningSeed`、`lightningReady`）、`FarmStatus.LightningReady`、`plantForced`（併回 `plantWith`）、農田圖的雷擊點與素材 `field/lightning_spot.png`、總覽待辦與農田種植選單的「撿起雷擊種子」、相關翻譯與測試。暴風隔天不再有奇遇；其他三種奇遇（枯井、毛毛雨、彩虹日）不變。已經種下的雷擊作物照常生長；舊的撿取紀錄（`farm_tools` 的 `weather_luck`）留在資料庫，不再讀取。
 - **2026-11-21（使用者要求，調整）**：**蜂蜜改版**。蜂蜜售價 80 → **300**；產蜜改成固定**每 12 小時 2 罐、每個蜂箱最多存 10 罐**，不分等級，天氣與周圍的花類作物都不再影響（刪掉 `beehive.BaseHoney`、`Capacity` 陣列、`WeatherPct`、`FlowerCrops`、`PerInterval` 與 `hiveFlowers`；`Accrue` 不再需要花的格數）。蜂箱等級只影響授粉突變與叮小偷。舊規則下 Lv.2、Lv.3 存超過 10 罐的蜂蜜會保留，收走之前不再增加。總覽只要蜂箱裡有蜂蜜，就有「🍯 收蜂蜜」按鈕，**按一下直接全部收進倉庫**（不用進蜂箱頁；`todoGo.collectHoney`）。蜂蜜蛋糕、蜂蜜牛奶的浮動售價依原料成本計算，會跟著蜂蜜漲價。測試 `TestAccrue`、`TestOverviewCollectsHoney`。
+- **2026-11-21（使用者要求，調整）**：**蜂箱最高等級 Lv.3 → Lv.5**。新增兩級（`beehive.MaxLevel = 5`）：升到 Lv.4 花 100,000 金幣（突變 +2.5%、叮小偷 30%），升到 Lv.5 花 200,000 金幣（突變 +3%、叮小偷 35%）；Lv.1～3 不變。產蜜不分等級。農田圖的蜂箱素材只有 3 張，Lv.4、Lv.5 沿用 Lv.3 的圖。測試 `TestBeehive` 升到 Lv.5 並確認不能再升。
 
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
@@ -683,7 +684,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/farmimage/decor.go` | `e847e97f839448de56d5bb25a2f9646368f8aa744653368f85d369bdb34b545b` |
 | `internal/bot/farmimage/decor_test.go` | `11ca61b171f62046a8334fce8a34145091b567923d5931b841396cb2bd21d36c` |
 | `internal/bot/farmimage/farm/` | `ebce745135ece4d21fc10dde815194d6d1ed44608b5bd069643be152eaff2ffe` |
-| `internal/bot/farmimage/farmimage.go` | `8d3af09b1878937783fd5c536aaf22f41c6e95a095e9befa8749a20e86da80e9` |
+| `internal/bot/farmimage/farmimage.go` | `3acecec3012a9557bab46ee3e3872e9d983bcd8d5c0d78a8462129c1e697ba85` |
 | `internal/bot/farmimage/farmimage_test.go` | `65d360308373204577fcd4b235efdb8da89ba62a4406045262b0246df21c6536` |
 | `internal/bot/farmimage/field_theme.go` | `530db9cace46b74abc50851f36082ee77ac62c457e5b139cdd51623c5fa4920b` |
 | `internal/bot/farmimage/field_theme_test.go` | `97366765ba61bdb8acbccaca7715da91edfcb7c4a8e7c0f66e745a510bde4302` |
@@ -779,7 +780,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/game/autofish/autofish_test.go` | `3638f72d743d34fa270d8a1f46b33334d83051c326b62e04e80881ad37f10dd4` |
 | `internal/game/balance/balance.go` | `1b8fdaa0c40cb11e643d8d9eaf7db7c5ae6a0034ca7eb087b090290f2d216c3f` |
 | `internal/game/balance/boosts.go` | `18df16718981775972e113b633858c6e5d73f58d889b242ceb211d2cd5ccd88c` |
-| `internal/game/beehive/beehive.go` | `4dbdde74604deb04ce3001875fd33835b923b4c9514b26a650079045cde79f49` |
+| `internal/game/beehive/beehive.go` | `4ae4848bb2dc69b211725c948b04793eb499ad39f2f00979d6686f3f18cf19fa` |
 | `internal/game/beehive/beehive_test.go` | `1aaab2f949fe5d8dec5bdd0faf0e3116a3aae6ad6dc410b303b47357dc5a292f` |
 | `internal/game/checkin/checkin.go` | `7f48d4457a07a7cea8f8ca487c385bd9a8719e833345cb8236ed76506e740d17` |
 | `internal/game/checkin/checkin_test.go` | `0ca089b008745912db964774e892ac603c79494cda262f90196b07c23d72c860` |
@@ -939,7 +940,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/backpack.go` | `b38d95f32acf529f9fb3734466479934fa83b8e659b81546c65959d12212ecaf` |
 | `internal/services/batch_test.go` | `9e04362497997f348edce7bade3a8d600e5f4a8521e2f34322bf6ff343b1bd49` |
 | `internal/services/beehive.go` | `c4b8ed10d67e545381a7c9f0453a3199bef89c2e233b1d6c0ba734d6baea8404` |
-| `internal/services/beehive_test.go` | `4be33f9bceea244c033c979682cb444a1e7d068afa59e6ae2629a00dd2c3f9f1` |
+| `internal/services/beehive_test.go` | `157e3f79daf677e6f3ead33c0cbeed795fd16c19c8b8e7d00d8110593fa0462d` |
 | `internal/services/boosts.go` | `2eb599019e601429768bdc3ee7f624363b81616ed640741f763873384780936d` |
 | `internal/services/boosts_test.go` | `d3cee9be8e59281912bfc4e4cea32e73c2f187e4e85e2f9047203514722fcaf1` |
 | `internal/services/building_upgrade_test.go` | `05a3d1410b05e2cd6e6d442221bf4d6ccd2de369fdd1d73d7f053fdf700af965` |
@@ -1056,7 +1057,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/web/ws.go` | `dda2e1fd64b2f7f6adb5d31c531feebfb0e0956b3ea5a2ed7e93863c39bd8b9c` |
 | `付費道具流程圖.md` | `1bc4a3b87580cee6cd49dcfe6934e7d8e0e0658531172991921f0ff51b3378bc` |
 | `效能比較.md` | `5ae92c8fc2ef392bc332f241ef9a87432565549cbe82673114752a5a6e6c66f3` |
-| `新玩法六項_流程圖.md` | `d9459656979a2b6dcf93f927411cf4573954aac9dc6479f7cd048ec5484ef3ac` |
+| `新玩法六項_流程圖.md` | `519bfade24e9449804cf7dbe174e81a1e30344ecf5e8fa308c79274bb2e2b1c7` |
 | `種子實驗室_作物素材需求.md` | `3706778fdc011485721ab039fdad9ddd1fa01a473f5628bc79177f1f9a03bfe2` |
 | `種子實驗室流程圖.md` | `f569ca792e01927818396db4d4a710f1bfd7b7a20a6649a879c1b0548c8b02b8` |
 | `英文翻譯用語表_已填寫.md` | `fb6d67284a5a5ad70be2a0b2e152f22a2e51bd9db6b9cce8843edf055e9a4aa5` |

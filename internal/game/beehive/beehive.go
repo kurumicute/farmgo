@@ -17,7 +17,7 @@ import (
 const (
 	ToolCode         = "beehive"
 	UnlockLevel      = 3
-	MaxLevel         = 3
+	MaxLevel         = 5 // 2026-11-21 使用者要求從 3 級加到 5 級
 	MoveFee          = 500
 	IntervalSeconds  = 12 * 3600
 	HoneyPerInterval = 2         // 每次產幾罐
@@ -31,9 +31,9 @@ const (
 
 // 各等級的數值（索引 = 等級，0 不使用）。Prices[1] 是放置費，Prices[2..] 是升到該級的費用。
 var (
-	Prices     = [MaxLevel + 1]int{0, 8_000, 20_000, 50_000}
-	MutationBP = [MaxLevel + 1]int{0, 100, 150, 200}
-	StingBP    = [MaxLevel + 1]int{0, 1500, 2000, 2500}
+	Prices     = [MaxLevel + 1]int{0, 8_000, 20_000, 50_000, 100_000, 200_000}
+	MutationBP = [MaxLevel + 1]int{0, 100, 150, 200, 250, 300}
+	StingBP    = [MaxLevel + 1]int{0, 1500, 2000, 2500, 3000, 3500}
 )
 
 // Neighbors 周圍 8 格的格子編號（1 起算；同一塊 4×4 農田內，不跨到另一塊）。不檢查格子是否存在。

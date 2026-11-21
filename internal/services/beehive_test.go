@@ -63,6 +63,18 @@ func TestBeehive(t *testing.T) {
 	if v, _ := e.s.Beehive(e.ctx, pid); v.Hive.Level != 2 || v.Capacity != beehive.Capacity {
 		t.Fatalf("%+v", v)
 	}
+	// 2026-11-21 起最高 Lv.5
+	e.setGoldRecorded(pid, 400_000)
+	for lv := 3; lv <= beehive.MaxLevel; lv++ {
+		if r := e.ok(e.s.UpgradeBeehive(e.ctx, pid)); r.GoldDelta != -beehive.Prices[lv] {
+			t.Fatal(lv, r.Message)
+		}
+	}
+	_, err = e.s.UpgradeBeehive(e.ctx, pid)
+	wantMsg(t, err, gameerr.Validation, "最高等級（Lv.5）")
+	if v, _ := e.s.Beehive(e.ctx, pid); v.Hive.Level != 5 {
+		t.Fatalf("%+v", v)
+	}
 	e.invariant()
 }
 

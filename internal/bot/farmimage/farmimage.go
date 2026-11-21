@@ -287,7 +287,7 @@ type Plot struct {
 	Hive int
 }
 
-// hiveSprite 蜂箱各等級的素材。
+// hiveSprite 蜂箱各等級的素材（只有 3 張，Lv.4、Lv.5 沿用 Lv.3 的圖）。
 func hiveSprite(level int) string { return fmt.Sprintf("field/beehive_%d.png", min(max(level, 1), 3)) }
 
 func deref(s *string) string {
