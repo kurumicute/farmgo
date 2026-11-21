@@ -513,16 +513,12 @@ func (s *GameService) status(ctx context.Context, t *db.Tx, farm *models.Farm, p
 	if err != nil {
 		return FarmStatus{}, err
 	}
-	lightning, err := s.lightningReady(ctx, t, farm.ID)
-	if err != nil {
-		return FarmStatus{}, err
-	}
 	var hiveInfo *HiveInfo
 	if hive, err := s.hiveOf(ctx, t, farm); err != nil {
 		return FarmStatus{}, err
 	} else if hive.Placed() {
-		hive.Accrue(now, hiveFlowers(plots, hive.Plot))
-		hiveInfo = &HiveInfo{Plot: hive.Plot, Level: hive.Level, Honey: hive.Honey, Capacity: beehive.Capacity[hive.Level]}
+		hive.Accrue(now)
+		hiveInfo = &HiveInfo{Plot: hive.Plot, Level: hive.Level, Honey: hive.Honey, Capacity: beehive.Capacity}
 		for i := range infos {
 			if infos[i].PlotNumber == hive.Plot && infos[i].State == rules.PlotEmpty {
 				infos[i].State = rules.PlotBeehive
@@ -533,7 +529,7 @@ func (s *GameService) status(ctx context.Context, t *db.Tx, farm *models.Farm, p
 		FarmID: farm.ID, PlayerID: farm.PlayerID, HomeGroupID: farm.HomeGroupID, PlayerName: playerName,
 		Name: farm.Name, Level: farm.Level, Gold: farm.Gold, WarehouseUsed: used,
 		WarehouseCapacity: farm.WarehouseCapacity, Plots: infos, Now: now, Title: farm.Title, Pets: levels, Decor: placed,
-		Theme: deref(farm.Theme), PetSkins: skins, LightningReady: lightning, Beehive: hiveInfo,
+		Theme: deref(farm.Theme), PetSkins: skins, Beehive: hiveInfo,
 	}, nil
 }
 

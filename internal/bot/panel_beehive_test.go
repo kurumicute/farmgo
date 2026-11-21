@@ -26,3 +26,22 @@ func TestBeehiveRemovePanel(t *testing.T) {
 		t.Fatal("沒有蜂箱時不顯示拆除按鈕")
 	}
 }
+
+// 總覽有蜂蜜時直接給「收蜂蜜」按鈕，按一下全部收進倉庫（2026-11-21）。
+func TestOverviewCollectsHoney(t *testing.T) {
+	e := setup(t)
+	p := e.makePlayer(alice, guildA, "阿明")
+	pid := p.panel.playerID
+	e.setLevel(pid, 3)
+	e.setGold(pid, 100_000)
+	p.goPage("beehive")
+	p.choose("選一格空地放蜂箱", "3")
+	p.goPage("main")
+	notContains(t, p.Text, "罐蜂蜜，可以收了")
+	e.clock.Advance(2 * 12 * 3600)
+	p.goPage("main")
+	contains(t, p.Text, "蜂箱裡有 4／10 罐蜂蜜")
+	p.click("收蜂蜜")
+	contains(t, p.Text, "收了 4 罐蜂蜜")
+	notContains(t, p.Text, "罐蜂蜜，可以收了")
+}

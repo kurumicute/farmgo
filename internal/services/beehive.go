@@ -11,7 +11,6 @@ import (
 	"farmgm/internal/game/beehive"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
-	"farmgm/internal/game/weather"
 	"farmgm/internal/repositories/farms"
 	"farmgm/internal/repositories/inventory"
 )
@@ -50,17 +49,6 @@ func lockedHive(ctx context.Context, t *db.Tx, farm *models.Farm) (*models.FarmT
 	return tool, beehive.Parse(toolSettings(tool)), nil
 }
 
-// hiveFlowers 蜂箱周圍種著花類作物的格數。
-func hiveFlowers(plots []farms.PlotWithCrop, hive int) int {
-	n := 0
-	for _, p := range plots {
-		if p.Crop != nil && beehive.IsFlower(p.Crop.Code) && beehive.IsNeighbor(hive, p.PlotNumber) {
-			n++
-		}
-	}
-	return n
-}
-
 func hiveLocked(farm *models.Farm) error {
 	return gameerr.Validationf("蜂箱在農場 Lv.%d 開放（目前 Lv.%d）。", beehive.UnlockLevel, farm.Level)
 }
@@ -72,8 +60,6 @@ type BeehiveView struct {
 	Unlocked   bool
 	Hive       beehive.State // Honey 已結算到現在（只顯示，不寫回）
 	Capacity   int
-	Flowers    int
-	PerNow     int // 現在的天氣下每次產多少
 	NextAt     *time.Time
 	Neighbors  []int
 	EmptyPlots []int // 可以放置／搬移的空地
@@ -106,10 +92,8 @@ func (s *GameService) Beehive(ctx context.Context, playerID int64) (BeehiveView,
 			}
 		}
 		if h.Placed() {
-			v.Flowers = hiveFlowers(plots, h.Plot)
-			h.Accrue(now, v.Flowers)
-			v.Capacity = beehive.Capacity[h.Level]
-			v.PerNow = beehive.PerInterval(h.Level, v.Flowers, weather.Today(now).Code)
+			h.Accrue(now)
+			v.Capacity = beehive.Capacity
 			v.NextAt = h.NextAt()
 			for _, n := range beehive.Neighbors(h.Plot) {
 				if slices.ContainsFunc(plots, func(p farms.PlotWithCrop) bool { return p.PlotNumber == n }) {
@@ -152,11 +136,7 @@ func (s *GameService) PlaceBeehive(ctx context.Context, playerID int64, plotNumb
 		now := s.now()
 		fee, desc := beehive.Prices[1], fmt.Sprintf("在第 %d 格放置蜂箱", plotNumber)
 		if h.Placed() {
-			plots, err := farms.ListPlots(ctx, t, farm.ID, false)
-			if err != nil {
-				return ActionResult{}, err
-			}
-			h.Accrue(now, hiveFlowers(plots, h.Plot)) // 搬家前先結算原本位置的蜂蜜
+			h.Accrue(now) // 搬家前先結算原本位置的蜂蜜
 			fee, desc = beehive.MoveFee, fmt.Sprintf("蜂箱從第 %d 格搬到第 %d 格", h.Plot, plotNumber)
 		} else {
 			h = beehive.State{Level: 1, Last: now}
@@ -207,11 +187,7 @@ func (s *GameService) UpgradeBeehive(ctx context.Context, playerID int64) (Actio
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：蜂箱升級需要 %d，目前只有 %d。", price, farm.Gold)
 		}
 		now := s.now()
-		plots, err := farms.ListPlots(ctx, t, farm.ID, false)
-		if err != nil {
-			return ActionResult{}, err
-		}
-		h.Accrue(now, hiveFlowers(plots, h.Plot)) // 升級前的產量照舊等級結算
+		h.Accrue(now) // 升級前先結算
 		h.Level++
 		farm.Gold -= price
 		if err := s.saveFarm(ctx, t, farm, db.C("gold", farm.Gold)); err != nil {
@@ -224,9 +200,8 @@ func (s *GameService) UpgradeBeehive(ctx context.Context, playerID int64) (Actio
 		if err := saveSettingsTool(ctx, t, farm.ID, tool, beehive.ToolCode, h.Encode(), now); err != nil {
 			return ActionResult{}, err
 		}
-		return result(txf(ctx, "🐝 蜂箱升級到 Lv.%d（花費 %d 金幣）：突變 +%s%%、每次產蜜 %d 份起、叮小偷 %s%%、存量上限 %d。",
-			h.Level, price, bpText(beehive.MutationBP[h.Level]), beehive.BaseHoney[h.Level], bpText(beehive.StingBP[h.Level]),
-			beehive.Capacity[h.Level]), farm.Gold, -price, "", 0), nil
+		return result(txf(ctx, "🐝 蜂箱升級到 Lv.%d（花費 %d 金幣）：突變 +%s%%、叮小偷 %s%%。",
+			h.Level, price, bpText(beehive.MutationBP[h.Level]), bpText(beehive.StingBP[h.Level])), farm.Gold, -price, "", 0), nil
 	})
 }
 
@@ -245,11 +220,7 @@ func (s *GameService) CollectHoney(ctx context.Context, playerID int64) (ActionR
 			return ActionResult{}, gameerr.Validationf("還沒有蜂箱，先選一格空地放蜂箱。")
 		}
 		now := s.now()
-		plots, err := farms.ListPlots(ctx, t, farm.ID, false)
-		if err != nil {
-			return ActionResult{}, err
-		}
-		h.Accrue(now, hiveFlowers(plots, h.Plot))
+		h.Accrue(now)
 		if h.Honey == 0 {
 			return ActionResult{}, gameerr.Validationf("蜂箱裡還沒有蜂蜜，%s後產下一批。", nextText(h.NextAt(), now))
 		}
@@ -296,11 +267,7 @@ func (s *GameService) RemoveBeehive(ctx context.Context, playerID int64) (Action
 			return ActionResult{}, gameerr.Validationf("還沒有蜂箱，不用拆除。")
 		}
 		now := s.now()
-		plots, err := farms.ListPlots(ctx, t, farm.ID, false)
-		if err != nil {
-			return ActionResult{}, err
-		}
-		h.Accrue(now, hiveFlowers(plots, h.Plot))
+		h.Accrue(now)
 		if h.Honey > 0 {
 			used, err := inventory.TotalQuantity(ctx, t, farm.ID)
 			if err != nil {

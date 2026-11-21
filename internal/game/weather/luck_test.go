@@ -13,13 +13,12 @@ func TestLucksFrom(t *testing.T) {
 		days []string
 		want []string
 	}{
-		{[]string{Cloudy, Storm, Cloudy}, []string{LuckLightning}},
-		{[]string{Cloudy, Cloudy, Storm}, nil}, // 暴風當天沒有，隔天才有
+		{[]string{Cloudy, Storm, Cloudy}, nil}, // 雷擊種子已刪除（2026-11-21）：暴風隔天沒有奇遇
 		{[]string{Sunny, Sunny, Sunny}, []string{LuckDrought}},
 		{[]string{Cloudy, Sunny, Sunny}, nil},
 		{[]string{Cloudy, Rainy, Rainy}, []string{LuckDrizzle}},
 		{[]string{Rainy, Cloudy, Rainy}, nil},
-		{[]string{Sunny, Storm, Rainy}, []string{LuckLightning}},
+		{[]string{Sunny, Storm, Rainy}, nil},
 		{[]string{Cloudy, Rainy, Sunny}, []string{LuckRainbow}},
 		{[]string{Sunny, Sunny, Sunny}, []string{LuckDrought}}, // 連續晴天不是彩虹日
 		{[]string{Rainy, Sunny, Sunny}, nil},
@@ -55,14 +54,16 @@ func TestOnMatchesForDate(t *testing.T) {
 
 func TestFixedLucks(t *testing.T) {
 	defer func() { Fixed = "" }()
-	for fixed, luck := range map[string]string{Storm: LuckLightning, Sunny: LuckDrought, Rainy: LuckDrizzle} {
+	for fixed, luck := range map[string]string{Sunny: LuckDrought, Rainy: LuckDrizzle} {
 		Fixed = fixed
 		if !HasLuck(time.Now(), luck) {
 			t.Errorf("固定 %s 時應有 %s", fixed, luck)
 		}
 	}
-	Fixed = Cloudy
-	if len(LucksOn(time.Now(), 0)) != 0 {
-		t.Error("陰天不應有奇遇")
+	for _, fixed := range []string{Cloudy, Storm} {
+		Fixed = fixed
+		if len(LucksOn(time.Now(), 0)) != 0 {
+			t.Errorf("固定 %s 時不應有奇遇", fixed)
+		}
 	}
 }

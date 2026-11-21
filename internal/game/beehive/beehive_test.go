@@ -30,39 +30,34 @@ func TestNeighbors(t *testing.T) {
 	}
 }
 
-func TestPerInterval(t *testing.T) {
-	if PerInterval(1, 0, weather.Cloudy) != 1 || PerInterval(1, 0, weather.Rainy) != 1 || PerInterval(1, 0, weather.Storm) != 0 {
-		t.Fatal("Lv.1 陰天 1、雨天 0.5 四捨五入為 1、暴風 0")
-	}
-	if PerInterval(3, 2, weather.Sunny) != 8 || PerInterval(2, 1, weather.Rainy) != 2 {
-		t.Fatal("(3+2)×1.5 = 7.5 → 8；(2+1)×0.5 = 1.5 → 2")
-	}
-}
-
+// 產蜜（2026-11-21 改成固定）：每 12 小時 2 罐，最多存 10 罐，天氣與周圍的花都不影響。
 func TestAccrue(t *testing.T) {
-	weather.Fixed = weather.Cloudy
-	defer func() { weather.Fixed = "" }()
 	start := time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC)
-	s := State{Plot: 6, Level: 1, Last: start}
-	if s.Accrue(start.Add(5*time.Hour), 0) != 0 || !s.Last.Equal(start) {
-		t.Fatal("不到 6 小時不產")
+	for _, fixed := range []string{weather.Cloudy, weather.Storm, weather.Rainy} { // 天氣不影響產量
+		weather.Fixed = fixed
+		s := State{Plot: 6, Level: 1, Last: start}
+		if s.Accrue(start.Add(11*time.Hour)) != 0 || !s.Last.Equal(start) {
+			t.Fatal("不到 12 小時不產")
+		}
+		if got := s.Accrue(start.Add(25 * time.Hour)); got != 4 || s.Honey != 4 || !s.Last.Equal(start.Add(24*time.Hour)) {
+			t.Fatalf("%s：2 次 × 2 = 4，got %d %+v", fixed, got, s)
+		}
 	}
-	if got := s.Accrue(start.Add(13*time.Hour), 2); got != 6 || s.Honey != 6 || !s.Last.Equal(start.Add(12*time.Hour)) {
-		t.Fatalf("2 次 × (1+2) = 6，got %d %+v", got, s)
-	}
-	// 存滿之後不再累積，Last 推到現在
+	weather.Fixed = ""
+	// 存滿之後不再累積，Last 推到現在；等級不影響上限
 	now := start.Add(100 * time.Hour)
-	s.Accrue(now, 2)
-	if s.Honey != Capacity[1] || !s.Last.Equal(now) || s.NextAt() != nil {
+	s := State{Plot: 6, Level: 3, Last: start}
+	s.Accrue(now)
+	if s.Honey != Capacity || !s.Last.Equal(now) || s.NextAt() != nil {
 		t.Fatalf("%+v", s)
 	}
-	weather.Fixed = weather.Storm
-	s = State{Plot: 1, Level: 3, Last: start}
-	if s.Accrue(start.Add(24*time.Hour), 5) != 0 {
-		t.Fatal("暴風不產蜜")
+	// 舊規則存下超過上限的蜂蜜保留，不會被砍掉
+	old := State{Plot: 1, Level: 3, Honey: 25, Last: start}
+	if old.Accrue(now) != 0 || old.Honey != 25 {
+		t.Fatalf("%+v", old)
 	}
 	var none State
-	if none.Accrue(now, 3) != 0 || none.Placed() {
+	if none.Accrue(now) != 0 || none.Placed() {
 		t.Fatal("沒有蜂箱")
 	}
 }

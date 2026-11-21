@@ -1,11 +1,9 @@
 package services
 
 import (
-	"slices"
 	"strings"
 	"testing"
 
-	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/weather"
@@ -73,56 +71,6 @@ func (e *env) ok2fish(pid int64) map[string]float64 {
 		e.t.Fatal(err)
 	}
 	return ov.Chances
-}
-
-// 天氣奇遇・雷擊種子（2026-11-20）：暴風隔天每天撿 1 次，種在第一格空地，突變固定。
-func TestLightningSeed(t *testing.T) {
-	e := setup(t)
-	defer func() { weather.Fixed = weather.Cloudy }()
-	pid := e.player()
-	_, err := e.s.PickLightningSeed(e.ctx, pid)
-	wantMsg(t, err, gameerr.Validation, "今天沒有雷擊種子")
-	if e.status(pid).LightningReady {
-		t.Fatal("陰天不能撿")
-	}
-
-	weather.Fixed = weather.Storm // 每天都暴風：昨天也是暴風
-	if !e.status(pid).LightningReady {
-		t.Fatal("暴風隔天應該可以撿")
-	}
-	r := e.ok(e.s.PickLightningSeed(e.ctx, pid))
-	if !strings.Contains(r.Message, "撿起雷擊種子") || !strings.Contains(r.Message, "第 1 格") {
-		t.Fatal(r.Message)
-	}
-	p := e.plot(pid, 1)
-	if p.CropCode == nil || p.Mutation == nil || !slices.Contains(weather.LightningMutations, *p.Mutation) {
-		t.Fatalf("%+v", p)
-	}
-	_, err = e.s.PickLightningSeed(e.ctx, pid)
-	wantMsg(t, err, gameerr.Validation, "已經撿過")
-	if e.status(pid).LightningReady {
-		t.Fatal("撿過之後不再顯示")
-	}
-	if n := e.scalar("SELECT count(*)::int FROM farm_tools WHERE tool_code = $1", weather.LuckToolCode); n != 1 {
-		t.Fatal(n)
-	}
-
-	// 隔天又可以撿；沒有空地時撿不起來，也不算撿過
-	e.clock.Advance(24 * 3600)
-	if !e.status(pid).LightningReady {
-		t.Fatal("隔天應該可以再撿")
-	}
-	for n := 2; n <= len(e.status(pid).Plots); n++ {
-		e.grow(pid, n, "wheat")
-	}
-	if e.status(pid).EmptyPlots() == 0 {
-		_, err = e.s.PickLightningSeed(e.ctx, pid)
-		wantKind(t, err, gameerr.PlotOccupied)
-		if !e.status(pid).LightningReady {
-			t.Fatal("沒撿成功不能算撿過")
-		}
-	}
-	e.invariant()
 }
 
 // 天氣奇遇・連綿細雨（2026-11-20）：連續雨天時菇房每床多收、稀有機率提高。

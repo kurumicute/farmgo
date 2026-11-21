@@ -283,17 +283,12 @@ type Plot struct {
 	Progress float64
 	Quality  string
 	Mutation string
-	// Lightning 天氣奇遇：這格空地上畫雷擊點（暴風隔天、還沒撿起雷擊種子時的第一格空地，2026-11-20）
-	Lightning bool
 	// Hive 這格放了蜂箱時為蜂箱等級（0 = 沒有，2026-11-20）；State 為 "beehive"
 	Hive int
 }
 
 // hiveSprite 蜂箱各等級的素材。
 func hiveSprite(level int) string { return fmt.Sprintf("field/beehive_%d.png", min(max(level, 1), 3)) }
-
-// LightningSpot 雷擊點素材（不登記在 manifest：只有這一張，路徑固定）。
-const LightningSpot = "field/lightning_spot.png"
 
 func deref(s *string) string {
 	if s == nil {
@@ -318,14 +313,6 @@ func PlotsFromStatus(st services.FarmStatus) []Plot {
 			pl.Hive = st.Beehive.Level
 		}
 		out = append(out, pl)
-	}
-	if st.LightningReady { // 雷擊點畫在第一格空地（和撿起時種下的位置相同；蜂箱那一格不算空地）
-		for i := range out {
-			if out[i].State == string(rules.PlotEmpty) {
-				out[i].Lightning = true
-				break
-			}
-		}
 	}
 	return out
 }
@@ -453,9 +440,6 @@ func drawPlotRim(m *manifest, canvas *image.NRGBA, r rect, p Plot, rim *image.NR
 	if err != nil {
 		return err
 	}
-	if p.Lightning && layer == "" { // 2' 空地上的雷擊點
-		layer = LightningSpot
-	}
 	if p.Hive > 0 { // 2' 蜂箱
 		layer = hiveSprite(p.Hive)
 	}
@@ -501,7 +485,7 @@ func presetFor(m *manifest, plots []Plot) (*presetHit, error) {
 		return nil, nil
 	}
 	for _, p := range plots {
-		if p.Lightning || p.Hive > 0 { // 雷擊點、蜂箱不在預先產生的圖裡，要即時拼
+		if p.Hive > 0 { // 蜂箱不在預先產生的圖裡，要即時拼
 			return nil, nil
 		}
 	}

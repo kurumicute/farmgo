@@ -7,12 +7,13 @@ import (
 )
 
 // 天氣奇遇（Go 版新增，2026-11-20，設計見「新玩法六項_流程圖.md」#4）：由連續幾天的天氣觸發。
-// 天氣只由日期決定，所以奇遇也只由日期決定、不寫資料庫；「今天撿過沒」記在 farm_tools（LuckToolCode）。
+// 天氣只由日期決定，所以奇遇也只由日期決定、不寫資料庫。
+// 2026-11-21 使用者要求刪除「雷擊種子」（暴風隔天在第一格空地種下保證突變的作物）；已經種下的作物照常生長。
+// 舊的撿取紀錄 farm_tools（tool_code weather_luck）留在資料庫，不再讀取。
 const (
-	LuckLightning = "lightning" // 昨天暴風 → 今天農田出現雷擊種子（每人每天 1 次，種下保證突變）
-	LuckDrought   = "drought"   // 連續 DroughtDays 天晴天（含今天）→ 古代遺跡多一個「乾涸的古井」事件
-	LuckDrizzle   = "drizzle"   // 連續 DrizzleDays 天雨天（含今天）→ 地下菇房每床多收、稀有機率提高
-	LuckRainbow   = "rainbow"   // 昨天雨天、今天晴天 → 藏寶圖碎片掉率加倍，每人可以領 1 片（2026-11-20，#9）
+	LuckDrought = "drought" // 連續 DroughtDays 天晴天（含今天）→ 古代遺跡多一個「乾涸的古井」事件
+	LuckDrizzle = "drizzle" // 連續 DrizzleDays 天雨天（含今天）→ 地下菇房每床多收、稀有機率提高
+	LuckRainbow = "rainbow" // 昨天雨天、今天晴天 → 藏寶圖碎片掉率加倍，每人可以領 1 片（2026-11-20，#9）
 )
 
 const (
@@ -20,15 +21,10 @@ const (
 	DrizzleDays       = 2
 	DrizzleExtraYield = 1  // 連綿細雨：每個菇床多收幾朵
 	DrizzleRarePct    = 10 // 連綿細雨：稀有菇機率加幾個百分點
-	// LuckToolCode farm_tools 的代碼：settings {"lightning_day": "YYYY-MM-DD"} 記錄撿過雷擊種子的日期。
-	LuckToolCode = "weather_luck"
 )
 
-// LightningMutations 雷擊種子保證的突變（一般農田就有的突變，和賭博相同的三種），平均抽一種。
-var LightningMutations = []string{"giant", "golden", "variant"}
-
 // LuckOrder 顯示順序。
-var LuckOrder = []string{LuckLightning, LuckRainbow, LuckDrought, LuckDrizzle}
+var LuckOrder = []string{LuckRainbow, LuckDrought, LuckDrizzle}
 
 // lookback 判定奇遇需要往前看的天數（含今天）。
 const lookback = DroughtDays
@@ -61,9 +57,6 @@ func LucksFrom(days []string) []string {
 		return c
 	}
 	var out []string
-	if n >= 2 && days[n-2] == Storm {
-		out = append(out, LuckLightning)
-	}
 	if n >= 2 && days[n-2] == Rainy && days[n-1] == Sunny {
 		out = append(out, LuckRainbow)
 	}

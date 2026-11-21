@@ -76,7 +76,6 @@ type FarmStatus struct {
 	Decor             []string             // 庭院擺飾區 1–6 號位置的裝飾代碼（"" = 空；沒有擺任何東西時為 nil，Go 版新增）
 	Theme             string               // 農場外觀主題（"" = 預設，2026-11-19）
 	PetSkins          map[string]pets.Skin // 寵物造型（2026-11-19）
-	LightningReady    bool                 // 天氣奇遇：今天可以撿雷擊種子（暴風隔天、還沒撿過，2026-11-20）
 	Beehive           *HiveInfo            // 蜂箱（沒有時為 nil，2026-11-20）；那一格的 State 是 rules.PlotBeehive
 }
 

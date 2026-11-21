@@ -196,12 +196,6 @@ func (s *GameService) plant(ctx context.Context, t *db.Tx, farm *models.Farm, pl
 // 品質基因、突變基因加到加成，種子本身的突變直接成為作物的突變，產量基因增加收成數量（生長基因在澆水時套用）。
 func (s *GameService) plantWith(ctx context.Context, t *db.Tx, farm *models.Farm, plot *models.FarmPlot, crop *models.CropType,
 	source string, labSeed *models.LabSeed) (string, *int, error) {
-	return s.plantForced(ctx, t, farm, plot, crop, source, labSeed, "")
-}
-
-// plantForced 同 plantWith；forced 不是 "" 時作物的突變固定為 forced（天氣奇遇的雷擊種子，2026-11-20）。
-func (s *GameService) plantForced(ctx context.Context, t *db.Tx, farm *models.Farm, plot *models.FarmPlot, crop *models.CropType,
-	source string, labSeed *models.LabSeed, forced string) (string, *int, error) {
 	now := s.now()
 	// 播種時一次決定整批的品質與主要突變，之後固定不變（收成、偷菜、重啟都不重新抽取）
 	settings, err := s.geneticsSettings(ctx, t)
@@ -246,9 +240,6 @@ func (s *GameService) plantForced(ctx context.Context, t *db.Tx, farm *models.Fa
 	mutation := genetics.RollMutation(settings, s.geneticsRng(), mutationBonus)
 	if labSeed != nil && labSeed.Mutation != "none" {
 		mutation = labSeed.Mutation
-	}
-	if forced != "" {
-		mutation = forced
 	}
 	quantity := genetics.HarvestQuantity(crop.HarvestQuantity, mutation, settings, h.Value)
 	if labSeed != nil {

@@ -47,12 +47,12 @@ func TestBeehive(t *testing.T) {
 	_, err = e.s.PlaceBeehive(e.ctx, pid, 1)
 	wantKind(t, err, gameerr.PlotOccupied) // 只能放在空地
 
-	// 陰天 12 小時：Lv.1 每 6 小時 1 罐
+	// 2026-11-21 起產蜜固定：每 12 小時 2 罐，不分等級、天氣
 	_, err = e.s.CollectHoney(e.ctx, pid)
 	wantMsg(t, err, gameerr.Validation, "還沒有蜂蜜")
 	e.clock.Advance(2 * beehive.IntervalSeconds)
 	e.ok(e.s.CollectHoney(e.ctx, pid))
-	if e.qty(pid, beehive.Honey) != 2 {
+	if e.qty(pid, beehive.Honey) != 2*beehive.HoneyPerInterval {
 		t.Fatal(e.qty(pid, beehive.Honey))
 	}
 
@@ -60,7 +60,7 @@ func TestBeehive(t *testing.T) {
 	if r.GoldDelta != -beehive.Prices[2] {
 		t.Fatal(r.Message)
 	}
-	if v, _ := e.s.Beehive(e.ctx, pid); v.Hive.Level != 2 || v.Capacity != beehive.Capacity[2] {
+	if v, _ := e.s.Beehive(e.ctx, pid); v.Hive.Level != 2 || v.Capacity != beehive.Capacity {
 		t.Fatalf("%+v", v)
 	}
 	e.invariant()
@@ -77,7 +77,7 @@ func TestRemoveBeehive(t *testing.T) {
 
 	e.ok(e.s.PlaceBeehive(e.ctx, pid, 1))
 	e.ok(e.s.UpgradeBeehive(e.ctx, pid))
-	e.clock.Advance(2 * beehive.IntervalSeconds) // 陰天 Lv.2：每次 2 罐，共 4 罐
+	e.clock.Advance(2 * beehive.IntervalSeconds) // 每次 2 罐，共 4 罐
 
 	// 倉庫放不下全部蜂蜜：不拆
 	e.exec("UPDATE farms SET warehouse_capacity = 2 WHERE player_id = $1", pid)

@@ -509,55 +509,6 @@ func TestSecondField(t *testing.T) {
 	}
 }
 
-// 天氣奇遇（2026-11-20）：可以撿雷擊種子時，雷擊點畫在第一格空地；不用預先產生的空地圖。
-func TestLightningSpot(t *testing.T) {
-	wheat := "wheat"
-	st := services.FarmStatus{Now: time.Now(), LightningReady: true, Plots: []services.PlotInfo{
-		{PlotNumber: 1, State: "growing", CropCode: &wheat},
-		{PlotNumber: 2, State: "empty"},
-		{PlotNumber: 3, State: "empty"},
-		{PlotNumber: 4, State: "empty"},
-	}}
-	got := PlotsFromStatus(st)
-	if got[0].Lightning || !got[1].Lightning || got[2].Lightning {
-		t.Fatalf("%+v", got)
-	}
-	st.LightningReady = false
-	for _, p := range PlotsFromStatus(st) {
-		if p.Lightning {
-			t.Fatal("不能撿時不畫雷擊點")
-		}
-	}
-	if _, err := img(LightningSpot); err != nil {
-		t.Fatal(err)
-	}
-	// 全部空地：原本會用預先產生的圖，有雷擊點時改成即時拼，畫面不同
-	empty := repeat(plot("", "empty", 0, "", ""), 4)
-	m, err := getManifest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hit, _ := presetFor(m, empty); hit == nil {
-		t.Fatal("全部空地應有預先產生的圖")
-	}
-	marked := append([]Plot(nil), empty...)
-	marked[0].Lightning = true
-	if hit, _ := presetFor(m, marked); hit != nil {
-		t.Fatal("有雷擊點時不能用預先產生的圖")
-	}
-	plain, err := FarmPNG(empty, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	spot, err := FarmPNG(marked, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Equal(plain, spot) {
-		t.Fatal("雷擊點沒有畫出來")
-	}
-}
-
 // NPC 訂單的頭像與藏寶圖場景（2026-11-20）：素材都在、可以產生。
 func TestPortraitsAndTreasureScenes(t *testing.T) {
 	codes := []string{"baker", "fisher", "girl", "herbalist", "rancher", "critic"}
@@ -583,13 +534,13 @@ func TestPortraitsAndTreasureScenes(t *testing.T) {
 	}
 }
 
-// 蜂箱（2026-11-20）：蜂箱那一格畫蜂箱、不用預先產生的圖；雷擊點跳過蜂箱那一格。
+// 蜂箱（2026-11-20）：蜂箱那一格畫蜂箱、不用預先產生的圖。
 func TestBeehivePlot(t *testing.T) {
-	st := services.FarmStatus{Now: time.Now(), LightningReady: true, Beehive: &services.HiveInfo{Plot: 1, Level: 2},
+	st := services.FarmStatus{Now: time.Now(), Beehive: &services.HiveInfo{Plot: 1, Level: 2},
 		Plots: []services.PlotInfo{{PlotNumber: 1, State: "beehive"}, {PlotNumber: 2, State: "empty"},
 			{PlotNumber: 3, State: "empty"}, {PlotNumber: 4, State: "empty"}}}
 	got := PlotsFromStatus(st)
-	if got[0].Hive != 2 || got[0].Lightning || !got[1].Lightning {
+	if got[0].Hive != 2 || got[1].Hive != 0 {
 		t.Fatalf("%+v", got)
 	}
 	for lv := 1; lv <= 3; lv++ {

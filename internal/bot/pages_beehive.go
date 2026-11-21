@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"farmgm/internal/bot/ui"
+	"farmgm/internal/game/balance"
 	"farmgm/internal/game/beehive"
 	"farmgm/internal/services"
 )
@@ -30,11 +31,15 @@ func (p *Panel) loadBeehive(ctx context.Context) (any, error) {
 	return beehiveData{v, st}, err
 }
 
-// hiveEffects 某個等級的效果說明。
+// hiveEffects 某個等級的效果說明（產蜜不分等級，寫在 honeyRule）。
 func (p *Panel) hiveEffects(level int) string {
-	return p.f("🌸 周圍 8 格種下的作物突變 +%s%%　🍯 每 %d 小時產 %d 罐起（周圍每格花 +1）　🐝 叮小偷 %s%%　📦 存量上限 %d",
-		bpPct(beehive.MutationBP[level]), beehive.IntervalSeconds/3600, beehive.BaseHoney[level], bpPct(beehive.StingBP[level]),
-		beehive.Capacity[level])
+	return p.f("🌸 周圍 8 格種下的作物突變 +%s%%　🐝 叮小偷 %s%%", bpPct(beehive.MutationBP[level]), bpPct(beehive.StingBP[level]))
+}
+
+// honeyRule 產蜜規則（2026-11-21 改成固定，不分等級、天氣）。
+func (p *Panel) honeyRule() string {
+	return p.f("🍯 每 %d 小時產 %d 罐蜂蜜，最多存 %d 罐（每罐賣 %s 金幣）", beehive.IntervalSeconds/3600, beehive.HoneyPerInterval,
+		beehive.Capacity, money(balance.Goods[beehive.Honey].SellPrice))
 }
 
 func (p *Panel) buildBeehive(_ context.Context, data any) (*ui.Embed, error) {
@@ -42,26 +47,24 @@ func (p *Panel) buildBeehive(_ context.Context, data any) (*ui.Embed, error) {
 	v := d.view
 	e := &ui.Embed{Title: p.s("🐝 ✦ 蜂箱 ✦"), Color: Honey}
 	if !v.Unlocked {
-		e.Description = p.f("🔒 蜂箱在農場 **Lv.%d** 開放（目前 Lv.%d）。\n\n蜂箱放在一格空地上，那一格不能種植，但周圍的作物比較容易突變，還會產蜂蜜、幫忙叮跑小偷。\n%s",
-			beehive.UnlockLevel, v.FarmLevel, p.hiveEffects(1))
+		e.Description = p.f("🔒 蜂箱在農場 **Lv.%d** 開放（目前 Lv.%d）。\n\n蜂箱放在一格空地上，那一格不能種植，但周圍的作物比較容易突變，還會產蜂蜜、幫忙叮跑小偷。\n%s\n%s",
+			beehive.UnlockLevel, v.FarmLevel, p.hiveEffects(1), p.honeyRule())
 		p.navBack(0)
 		return e, nil
 	}
 	h := v.Hive
-	weatherNote := p.s("☀️ 晴天產蜜 ×1.5、🌧️ 雨天 ×0.5、⛈️ 暴風當天不產蜜。")
-	flowers := p.s("花類作物：月光花、星夜花、赤月花。")
 	if !h.Placed() {
 		e.Description = sections(
 			p.f("選一格空地放蜂箱（**%s** 金幣）。那一格不能種植，但周圍的作物比較容易突變，還會產蜂蜜、幫忙叮跑小偷。", money(beehive.Prices[1])),
 			Section{Title: p.s("Lv.1 效果"), Lines: []string{p.hiveEffects(1)}},
-			weatherNote+flowers,
+			p.honeyRule(),
 		)
 	} else {
 		var neighbors []string
 		for _, n := range v.Neighbors {
 			neighbors = append(neighbors, fmt.Sprintf("#%d", n))
 		}
-		honey := p.f("🍯 蜂蜜 **%d／%d** 罐　現在的天氣每次產 %d 罐（周圍花 %d 格）", h.Honey, v.Capacity, v.PerNow, v.Flowers)
+		honey := p.f("🍯 蜂蜜 **%d／%d** 罐　每 %d 小時產 %d 罐", h.Honey, v.Capacity, beehive.IntervalSeconds/3600, beehive.HoneyPerInterval)
 		if v.NextAt != nil {
 			honey += p.f("，下一批 %s", tsv(*v.NextAt))
 		} else {
@@ -75,7 +78,7 @@ func (p *Panel) buildBeehive(_ context.Context, data any) (*ui.Embed, error) {
 			parts = append(parts, Section{Title: p.f("升到 Lv.%d（%s 金幣）", h.Level+1, money(beehive.Prices[h.Level+1])),
 				Lines: []string{p.hiveEffects(h.Level + 1)}})
 		}
-		parts = append(parts, weatherNote+flowers, honey) // 蜂蜜存量放最後，貼近按鈕
+		parts = append(parts, honey) // 蜂蜜存量放最後，貼近按鈕
 		e.Description = sections(parts...)
 	}
 	e.Footer = p.f("💰 持有 %s 金幣。蜂蜜可以直接賣，或做成蜂蜜蛋糕（烘焙坊）、蜂蜜牛奶（乳品工坊）。", money(v.Gold))

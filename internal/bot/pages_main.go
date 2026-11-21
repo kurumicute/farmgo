@@ -413,6 +413,15 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 		slots--
 	}
 	for _, g := range goes[:min(len(goes), slots)] {
+		if g.collectHoney {
+			p.button(g.label, func(ctx context.Context, it ui.Interaction) error {
+				p.act(ctx, it, p.call("collect_honey", func(ctx context.Context) (services.ActionResult, error) {
+					return p.svc().CollectHoney(ctx, p.playerID)
+				}), actOpts{})
+				return nil
+			}, btn{emoji: g.emoji, style: ui.Success, row: 4})
+			continue
+		}
 		p.nav(g.label, g.page, btn{emoji: g.emoji, row: 4})
 	}
 	return e, nil
@@ -493,7 +502,11 @@ func (p *Panel) collectEverything(ctx context.Context, plots, animals, crafts bo
 }
 
 // todoGo 待辦區的「前往」按鈕。
-type todoGo struct{ label, page, emoji string }
+// todoGo 待辦的「前往」按鈕；collectHoney 時按下直接收蜂蜜，不換頁（2026-11-21）。
+type todoGo struct {
+	label, page, emoji string
+	collectHoney       bool
+}
 
 // todoHints 農田以外的待辦（2026-11-18 補齊）：動物、加工、魚簍、菇房、種子實驗室、探險（2026-11-19）；
 // 有事要做的項目另外給「前往」按鈕（最多 5 顆，依列出的順序）。
@@ -512,7 +525,7 @@ func todoHints(lang string, d mainData) (hints []string, goes []todoGo) {
 		hints = append(hints, t("animals_hungry", "n", n))
 	}
 	if a.Counts["ready"]+a.Counts["hungry"] > 0 {
-		add(todoGo{t("go_animals"), "animals", "🐔"})
+		add(todoGo{label: t("go_animals"), page: "animals", emoji: "🐔"})
 	}
 	ready := 0
 	for _, o := range d.orders {
@@ -522,25 +535,25 @@ func todoHints(lang string, d mainData) (hints []string, goes []todoGo) {
 	}
 	if ready > 0 {
 		hints = append(hints, t("crafts_ready", "n", ready))
-		add(todoGo{t("go_crafts"), "craft", "🏭"})
+		add(todoGo{label: t("go_crafts"), page: "craft", emoji: "🏭"})
 	}
 	td := d.todo
 	if td.BasketCapacity > 0 && td.BasketCount >= td.BasketCapacity {
 		hints = append(hints, t("basket_full", "n", td.BasketCount, "cap", td.BasketCapacity))
-		add(todoGo{t("go_basket"), "fish_basket", "🎣"})
+		add(todoGo{label: t("go_basket"), page: "fish_basket", emoji: "🎣"})
 	} else if td.BasketCapacity > 0 && td.BasketCount*5 >= td.BasketCapacity*4 {
 		hints = append(hints, t("basket_almost", "n", td.BasketCount, "cap", td.BasketCapacity))
-		add(todoGo{t("go_basket"), "fish_basket", "🎣"})
+		add(todoGo{label: t("go_basket"), page: "fish_basket", emoji: "🎣"})
 	}
 	if td.CellarReady > 0 {
 		hints = append(hints, t("cellar_ready", "n", td.CellarReady))
-		add(todoGo{t("go_cellar"), "cellar", "🍄"})
+		add(todoGo{label: t("go_cellar"), page: "cellar", emoji: "🍄"})
 	} else if td.CellarNextAt != nil {
 		hints = append(hints, t("cellar_next")+ts(td.CellarNextAt))
 	}
 	if td.LabReady > 0 {
 		hints = append(hints, t("lab_ready", "n", td.LabReady))
-		add(todoGo{t("go_lab"), "lab", "🧪"})
+		add(todoGo{label: t("go_lab"), page: "lab", emoji: "🧪"})
 	} else if td.LabNextAt != nil {
 		hints = append(hints, t("lab_next")+ts(td.LabNextAt))
 	} else if td.LabBuilt && td.LabFreeSlots > 0 {
@@ -548,36 +561,33 @@ func todoHints(lang string, d mainData) (hints []string, goes []todoGo) {
 	}
 	if td.TripBack {
 		hints = append(hints, t("trip_back", "area", td.TripArea))
-		add(todoGo{t("go_trip"), "cave", "⛰️"})
+		add(todoGo{label: t("go_trip"), page: "cave", emoji: "⛰️"})
 	} else if td.TripReturnAt != nil {
 		hints = append(hints, t("trip_out", "area", td.TripArea, "time", ts(td.TripReturnAt)))
 	}
 	// 蜂箱、NPC 訂單與藏寶圖（2026-11-20）
-	if h := d.status.Beehive; h != nil && h.Honey >= h.Capacity {
-		hints = append(hints, t("honey_full", "n", h.Honey))
-		add(todoGo{t("go_beehive"), "beehive", "🍯"})
+	// 2026-11-21：有蜂蜜就給「收蜂蜜」按鈕，按一下直接全部收進倉庫（不用進蜂箱頁）
+	if h := d.status.Beehive; h != nil && h.Honey > 0 {
+		if h.Honey >= h.Capacity {
+			hints = append(hints, t("honey_full", "n", h.Honey))
+		} else {
+			hints = append(hints, t("honey_some", "n", h.Honey, "cap", h.Capacity))
+		}
+		add(todoGo{label: t("go_beehive"), page: "beehive", emoji: "🍯", collectHoney: true})
 	}
 	if td.TreasureDone {
 		hints = append(hints, t("treasure_done"))
-		add(todoGo{t("go_treasure"), "treasure", "🗺️"})
+		add(todoGo{label: t("go_treasure"), page: "treasure", emoji: "🗺️"})
 	} else if td.TreasureReturnAt != nil {
 		hints = append(hints, t("treasure_out", "time", ts(td.TreasureReturnAt)))
 	}
 	if td.OrdersOpen > 0 {
 		hints = append(hints, t("orders_open", "n", td.OrdersOpen, "time", ts(td.OrdersNextExpire)))
-		add(todoGo{t("go_orders"), "orders", "🧑‍🌾"})
+		add(todoGo{label: t("go_orders"), page: "orders", emoji: "🧑‍🌾"})
 	}
 	if td.RainbowClaimable { // 限時：放在最後、貼近按鈕
 		hints = append(hints, t("rainbow"))
-		add(todoGo{t("go_treasure"), "treasure", "🌈"})
-	}
-	if d.status.LightningReady { // 天氣奇遇（2026-11-20）：當天有效，放在待辦最後、貼近按鈕
-		if d.status.EmptyPlots() > 0 {
-			hints = append(hints, t("lightning"))
-			add(todoGo{t("go_lightning"), "plots", "⚡"})
-		} else {
-			hints = append(hints, t("lightning_no_plot"))
-		}
+		add(todoGo{label: t("go_treasure"), page: "treasure", emoji: "🌈"})
 	}
 	return hints, goes
 }
@@ -822,9 +832,6 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 	p.attachImage(e, p.farmImage(d.status)) // 圖片在交易外產生
 	if empty := countState(s.Plots, rules.PlotEmpty); empty > 0 {
 		var options []option
-		if s.LightningReady { // 天氣奇遇・雷擊種子（2026-11-20）：放第一項，不會被 25 項上限截掉
-			options = append(options, option{p.t("ui.plots.lightning_option"), lightningValue, p.t("ui.plots.lightning_desc"), "⚡"})
-		}
 		for _, c := range d.crops {
 			if !(c.ShopBuyable || seeds[c.Code] > 0) || !c.InSeason { // 不在季節的不列出
 				continue
@@ -848,12 +855,6 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 				cropEmoji(c.Code)})
 		}
 		p.selectMenu(p.t("ui.plots.plant_placeholder", "n", empty), options, func(ctx context.Context, it ui.Interaction, code string) error {
-			if code == lightningValue {
-				p.act(ctx, it, p.call("pick_lightning", func(ctx context.Context) (services.ActionResult, error) {
-					return p.svc().PickLightningSeed(ctx, p.playerID)
-				}), actOpts{})
-				return nil
-			}
 			p.act(ctx, it, p.call("plant_all", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().PlantAll(ctx, p.playerID, code)
 			}), actOpts{noProgress: true})
@@ -1321,10 +1322,7 @@ func caveHelpText() string {
 		strings.Join(names, "、"), strings.Join(hours, "／"), money(exploration.FakeCoinRate()))
 }
 
-// lightningValue 種植選單裡「撿起雷擊種子」的值（作物代碼都是英數字，不會重複）。
-const lightningValue = "!lightning"
-
-// weatherFooter 今日天氣、後兩天的預報與今天的天氣奇遇（2026-11-20）。雷擊種子要玩家動手，放在待辦區，這裡不重複。
+// weatherFooter 今日天氣、後兩天的預報與今天的天氣奇遇（2026-11-20）。
 func (p *Panel) weatherFooter(now time.Time) string {
 	days := weather.Forecast(now, 3)
 	w := days[0]
