@@ -184,5 +184,5 @@ func BlockerName(code string) string {
 	if code == "beehive" { // beehive.Blocker（蜂箱，2026-11-20；不 import beehive，避免循環）
 		return "蜂箱"
 	}
-	return balance.Defenses[code].Name
+	return balance.DefenseOf(code).Name
 }

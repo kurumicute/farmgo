@@ -5,6 +5,8 @@
 //   - 產蜜：每 IntervalSeconds 產 HoneyPerInterval 罐，存量上限 Capacity，收成後放倉庫（2026-11-21 使用者要求改成固定：
 //     每 12 小時 2 罐、存 10 罐，不分等級，天氣與周圍的花不再影響；原本是每 6 小時 (等級 + 周圍花類作物格數) × 天氣倍率）。
 //   - 叮小偷：別人偷周圍格子時，防守設施與狗狗都沒擋住的話，再有 StingBP 機率被叮跑。
+//   - 2026-11-21 起各級價格、突變加成、叮小偷機率、搬家費、產蜜間隔與數量、存量上限都可在管理網站「設施與道具價格」調整
+//     （game/upgrades），一律經這裡的函式讀取。降低等級數時，已超過的蜂箱以新的最高等級計算。
 //   - 狀態存在 farm_tools（ToolCode）的 settings：不需要 Migration。蜂蜜與蜂蜜料理是新的物品代碼，
 //     和新果醬一樣，有玩家取得後就不能切回 Python 版 Bot。
 package beehive
@@ -12,29 +14,61 @@ package beehive
 import (
 	"slices"
 	"time"
+
+	"farmgm/internal/game/upgrades"
 )
 
 const (
-	ToolCode         = "beehive"
-	UnlockLevel      = 3
-	MaxLevel         = 5 // 2026-11-21 使用者要求從 3 級加到 5 級
-	MoveFee          = 500
-	IntervalSeconds  = 12 * 3600
-	HoneyPerInterval = 2         // 每次產幾罐
-	Capacity         = 10        // 存量上限（每個蜂箱，不分等級）
-	Honey            = "honey"   // 物品代碼（balance.Goods）
-	Blocker          = "beehive" // steal_records.blocked_by（被蜜蜂叮跑時）
-	FieldSlots       = 16        // 一塊農田的格數（4×4）
-	FieldCols        = 4
-	maxIntervals     = 4 * 60 // 結算時最多往回算幾次，避免資料異常時數字溢位
+	ToolCode     = "beehive"
+	UnlockLevel  = 3
+	Honey        = "honey"   // 物品代碼（balance.Goods）
+	Blocker      = "beehive" // steal_records.blocked_by（被蜜蜂叮跑時）
+	FieldSlots   = 16        // 一塊農田的格數（4×4）
+	FieldCols    = 4
+	maxIntervals = 4 * 60 // 結算時最多往回算幾次，避免資料異常時數字溢位
 )
 
-// 各等級的數值（索引 = 等級，0 不使用）。Prices[1] 是放置費，Prices[2..] 是升到該級的費用。
-var (
-	Prices     = [MaxLevel + 1]int{0, 8_000, 20_000, 50_000, 100_000, 200_000}
-	MutationBP = [MaxLevel + 1]int{0, 100, 150, 200, 250, 300}
-	StingBP    = [MaxLevel + 1]int{0, 1500, 2000, 2500, 3000, 3500}
-)
+// MaxLevel 目前的最高等級（預設 5 級）。
+func MaxLevel() int { return len(upgrades.Current().BeehivePrices) }
+
+// Price 放置（level = 1）或升到 level 的價格；超出範圍時是 0。
+func Price(level int) int {
+	p := upgrades.Current().BeehivePrices
+	if level < 1 || level > len(p) {
+		return 0
+	}
+	return p[level-1]
+}
+
+// levelValue 各級的數值（超過目前最高等級時以最高等級計算）。
+func levelValue(list []int, level int) int {
+	level = min(level, len(list))
+	if level < 1 {
+		return 0
+	}
+	return list[level-1]
+}
+
+// MutationBP 周圍作物的突變加成（萬分比）。
+func MutationBP(level int) int { return levelValue(upgrades.Current().BeehiveMutationBP, level) }
+
+// StingBP 叮跑小偷的機率（萬分比）。
+func StingBP(level int) int { return levelValue(upgrades.Current().BeehiveStingBP, level) }
+
+// MoveFee 搬家費。
+func MoveFee() int { return upgrades.Current().BeehiveMoveFee }
+
+// IntervalSeconds 每幾秒產一次蜂蜜。
+func IntervalSeconds() int { return upgrades.Current().BeehiveHours * 3600 }
+
+// HoneyPerInterval 每次產幾罐。
+func HoneyPerInterval() int { return upgrades.Current().BeehiveHoney }
+
+// Capacity 存量上限（每個蜂箱，不分等級）。
+func Capacity() int { return upgrades.Current().BeehiveCapacity }
+
+// EffectiveLevel 計算效果用的等級（不超過目前的最高等級）。
+func EffectiveLevel(level int) int { return min(level, MaxLevel()) }
 
 // Neighbors 周圍 8 格的格子編號（1 起算；同一塊 4×4 農田內，不跨到另一塊）。不檢查格子是否存在。
 func Neighbors(plot int) []int {
@@ -81,7 +115,8 @@ func (s *State) Accrue(now time.Time) int {
 		s.Last = now
 		return 0
 	}
-	step := IntervalSeconds * time.Second
+	step := time.Duration(IntervalSeconds()) * time.Second
+	capacity, per := Capacity(), HoneyPerInterval()
 	n := int(now.Sub(s.Last) / step)
 	if n <= 0 {
 		return 0
@@ -92,8 +127,8 @@ func (s *State) Accrue(now time.Time) int {
 	}
 	before := s.Honey
 	// 舊規則（Lv.2、Lv.3 上限 20、30 罐）存下的超過 Capacity 的蜂蜜保留，收走之前不再增加
-	s.Honey = max(s.Honey, min(Capacity, s.Honey+n*HoneyPerInterval))
-	if s.Honey >= Capacity { // 存滿了：滿的期間不累積
+	s.Honey = max(s.Honey, min(capacity, s.Honey+n*per))
+	if s.Honey >= capacity { // 存滿了：滿的期間不累積
 		s.Last = now
 	} else {
 		s.Last = s.Last.Add(time.Duration(n) * step)
@@ -103,10 +138,10 @@ func (s *State) Accrue(now time.Time) int {
 
 // NextAt 下一次產蜜的時間（存量滿了或沒有蜂箱時為 nil）。
 func (s State) NextAt() *time.Time {
-	if !s.Placed() || s.Honey >= Capacity {
+	if !s.Placed() || s.Honey >= Capacity() {
 		return nil
 	}
-	t := s.Last.Add(IntervalSeconds * time.Second)
+	t := s.Last.Add(time.Duration(IntervalSeconds()) * time.Second)
 	return &t
 }
 
@@ -128,7 +163,7 @@ func Parse(settings map[string]any) State {
 			s.Last = t
 		}
 	}
-	if s.Level < 1 || s.Level > MaxLevel || s.Plot < 1 {
+	if s.Level < 1 || s.Level > upgrades.BeehiveLevelLimit || s.Plot < 1 { // 超過目前最高等級的保留（降低等級數時不會消失）
 		return State{}
 	}
 	return s

@@ -65,3 +65,50 @@ func TestLandAndWarehousePrice(t *testing.T) {
 		t.Fatal("土地上限不能超過 32")
 	}
 }
+
+// 2026-11-21：土地前 16 格、倉庫 300 格以內的價格與倉庫每次擴充格數也可以調整；舊的設定快照沒有這些欄位時用預設值。
+func TestEarlyPricesConfigurable(t *testing.T) {
+	defer featurecfg.Reset()
+	old := featurecfg.Value{"rename_first_free": 1, "rename_base": 1000, "rename_max": 100000, "rename_decay_days": 30,
+		"land_max": 32, "land_base": 300000, "land_growth_pct": 130, "warehouse_max": 600, "warehouse_late_base": 400000,
+		"warehouse_late_growth_pct": 160}
+	v, err := ValidateConfig(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	featurecfg.SetCurrent(ConfigKey, v)
+	if p, _ := LandPrice(4); p != 500 || WarehouseStep() != 50 {
+		t.Fatal(p, WarehouseStep())
+	}
+	if p, _ := WarehousePrice(50); p != 4_000 {
+		t.Fatal(p)
+	}
+	cfg := featurecfg.Value{}
+	for k, x := range old {
+		cfg[k] = x
+	}
+	cfg["land_prices"] = []any{100, 200}
+	cfg["warehouse_prices"] = []any{1_000, 2_000, 3_000}
+	cfg["warehouse_step"] = 100
+	v, err = ValidateConfig(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	featurecfg.SetCurrent(ConfigKey, v)
+	if p, _ := LandPrice(4); p != 100 {
+		t.Fatal(p)
+	}
+	if p, _ := LandPrice(10); p != 200 { // 清單比級數短：之後用最後一項
+		t.Fatal(p)
+	}
+	if p, _ := WarehousePrice(150); p != 2_000 || WarehouseStep() != 100 {
+		t.Fatal(p)
+	}
+	if p, _ := WarehousePrice(300); p != 400_000 { // 後段不受影響
+		t.Fatal(p)
+	}
+	cfg["land_prices"] = []any{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
+	if _, err := ValidateConfig(cfg); err == nil {
+		t.Fatal("土地前段最多 12 個價格")
+	}
+}

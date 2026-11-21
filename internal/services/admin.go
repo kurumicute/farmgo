@@ -1731,7 +1731,7 @@ func (a *AdminService) DeleteBuilding(ctx context.Context, actor string, playerI
 		if building == nil {
 			return gameerr.NotFoundf("找不到這座設施。")
 		}
-		name := balance.Buildings[buildingCode].Name
+		name := balance.BuildingOf(buildingCode).Name
 		count, err := ranch.CountBuildings(ctx, t, farm.ID, buildingCode)
 		if err != nil {
 			return err

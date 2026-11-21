@@ -93,7 +93,7 @@ func (s *GameService) Beehive(ctx context.Context, playerID int64) (BeehiveView,
 		}
 		if h.Placed() {
 			h.Accrue(now)
-			v.Capacity = beehive.Capacity
+			v.Capacity = beehive.Capacity()
 			v.NextAt = h.NextAt()
 			for _, n := range beehive.Neighbors(h.Plot) {
 				if slices.ContainsFunc(plots, func(p farms.PlotWithCrop) bool { return p.PlotNumber == n }) {
@@ -134,10 +134,10 @@ func (s *GameService) PlaceBeehive(ctx context.Context, playerID int64, plotNumb
 			return ActionResult{}, gameerr.New(gameerr.PlotOccupied, "第 %d 格土地已經種植作物，蜂箱只能放在空地。", plotNumber)
 		}
 		now := s.now()
-		fee, desc := beehive.Prices[1], fmt.Sprintf("在第 %d 格放置蜂箱", plotNumber)
+		fee, desc := beehive.Price(1), fmt.Sprintf("在第 %d 格放置蜂箱", plotNumber)
 		if h.Placed() {
 			h.Accrue(now) // 搬家前先結算原本位置的蜂蜜
-			fee, desc = beehive.MoveFee, fmt.Sprintf("蜂箱從第 %d 格搬到第 %d 格", h.Plot, plotNumber)
+			fee, desc = beehive.MoveFee(), fmt.Sprintf("蜂箱從第 %d 格搬到第 %d 格", h.Plot, plotNumber)
 		} else {
 			h = beehive.State{Level: 1, Last: now}
 		}
@@ -157,7 +157,7 @@ func (s *GameService) PlaceBeehive(ctx context.Context, playerID int64, plotNumb
 			return ActionResult{}, err
 		}
 		msg := txf(ctx, "🐝 在第 %d 格放好蜂箱（花費 %d 金幣）！周圍 8 格種下的作物比較容易突變，每 %d 小時產一次蜂蜜。",
-			plotNumber, fee, beehive.IntervalSeconds/3600)
+			plotNumber, fee, beehive.IntervalSeconds()/3600)
 		if old > 0 {
 			msg = txf(ctx, "🐝 蜂箱從第 %d 格搬到第 %d 格（花費 %d 金幣），蜂蜜存量保留。", old, plotNumber, fee)
 		}
@@ -179,10 +179,10 @@ func (s *GameService) UpgradeBeehive(ctx context.Context, playerID int64) (Actio
 		if !h.Placed() {
 			return ActionResult{}, gameerr.Validationf("還沒有蜂箱，先選一格空地放蜂箱。")
 		}
-		if h.Level >= beehive.MaxLevel {
-			return ActionResult{}, gameerr.Validationf("蜂箱已經是最高等級（Lv.%d）。", beehive.MaxLevel)
+		if h.Level >= beehive.MaxLevel() {
+			return ActionResult{}, gameerr.Validationf("蜂箱已經是最高等級（Lv.%d）。", beehive.MaxLevel())
 		}
-		price := beehive.Prices[h.Level+1]
+		price := beehive.Price(h.Level + 1)
 		if farm.Gold < price {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：蜂箱升級需要 %d，目前只有 %d。", price, farm.Gold)
 		}
@@ -201,7 +201,7 @@ func (s *GameService) UpgradeBeehive(ctx context.Context, playerID int64) (Actio
 			return ActionResult{}, err
 		}
 		return result(txf(ctx, "🐝 蜂箱升級到 Lv.%d（花費 %d 金幣）：突變 +%s%%、叮小偷 %s%%。",
-			h.Level, price, bpText(beehive.MutationBP[h.Level]), bpText(beehive.StingBP[h.Level])), farm.Gold, -price, "", 0), nil
+			h.Level, price, bpText(beehive.MutationBP(h.Level)), bpText(beehive.StingBP(h.Level))), farm.Gold, -price, "", 0), nil
 	})
 }
 
@@ -301,7 +301,7 @@ func (s *GameService) RemoveBeehive(ctx context.Context, playerID int64) (Action
 
 func nextText(at *time.Time, now time.Time) string {
 	if at == nil {
-		return rules.FormatDuration(beehive.IntervalSeconds)
+		return rules.FormatDuration(beehive.IntervalSeconds())
 	}
 	return rules.FormatDuration(rules.RemainingSeconds(at, now))
 }

@@ -23,11 +23,11 @@ func TestBeehive(t *testing.T) {
 
 	e.exec("UPDATE farms SET level = 3 WHERE player_id = $1", pid)
 	r := e.ok(e.s.PlaceBeehive(e.ctx, pid, 1))
-	if r.GoldDelta != -beehive.Prices[1] {
+	if r.GoldDelta != -beehive.Price(1) {
 		t.Fatal(r.Message)
 	}
 	r = e.ok(e.s.PlaceBeehive(e.ctx, pid, 2)) // 搬家
-	if r.GoldDelta != -beehive.MoveFee || !strings.Contains(r.Message, "搬到第 2 格") {
+	if r.GoldDelta != -beehive.MoveFee() || !strings.Contains(r.Message, "搬到第 2 格") {
 		t.Fatal(r.Message)
 	}
 	st := e.status(pid)
@@ -50,23 +50,23 @@ func TestBeehive(t *testing.T) {
 	// 2026-11-21 起產蜜固定：每 12 小時 2 罐，不分等級、天氣
 	_, err = e.s.CollectHoney(e.ctx, pid)
 	wantMsg(t, err, gameerr.Validation, "還沒有蜂蜜")
-	e.clock.Advance(2 * beehive.IntervalSeconds)
+	e.clock.Advance(float64(2 * beehive.IntervalSeconds()))
 	e.ok(e.s.CollectHoney(e.ctx, pid))
-	if e.qty(pid, beehive.Honey) != 2*beehive.HoneyPerInterval {
+	if e.qty(pid, beehive.Honey) != 2*beehive.HoneyPerInterval() {
 		t.Fatal(e.qty(pid, beehive.Honey))
 	}
 
 	r = e.ok(e.s.UpgradeBeehive(e.ctx, pid))
-	if r.GoldDelta != -beehive.Prices[2] {
+	if r.GoldDelta != -beehive.Price(2) {
 		t.Fatal(r.Message)
 	}
-	if v, _ := e.s.Beehive(e.ctx, pid); v.Hive.Level != 2 || v.Capacity != beehive.Capacity {
+	if v, _ := e.s.Beehive(e.ctx, pid); v.Hive.Level != 2 || v.Capacity != beehive.Capacity() {
 		t.Fatalf("%+v", v)
 	}
 	// 2026-11-21 起最高 Lv.5
 	e.setGoldRecorded(pid, 400_000)
-	for lv := 3; lv <= beehive.MaxLevel; lv++ {
-		if r := e.ok(e.s.UpgradeBeehive(e.ctx, pid)); r.GoldDelta != -beehive.Prices[lv] {
+	for lv := 3; lv <= beehive.MaxLevel(); lv++ {
+		if r := e.ok(e.s.UpgradeBeehive(e.ctx, pid)); r.GoldDelta != -beehive.Price(lv) {
 			t.Fatal(lv, r.Message)
 		}
 	}
@@ -89,7 +89,7 @@ func TestRemoveBeehive(t *testing.T) {
 
 	e.ok(e.s.PlaceBeehive(e.ctx, pid, 1))
 	e.ok(e.s.UpgradeBeehive(e.ctx, pid))
-	e.clock.Advance(2 * beehive.IntervalSeconds) // 每次 2 罐，共 4 罐
+	e.clock.Advance(float64(2 * beehive.IntervalSeconds())) // 每次 2 罐，共 4 罐
 
 	// 倉庫放不下全部蜂蜜：不拆
 	e.exec("UPDATE farms SET warehouse_capacity = 2 WHERE player_id = $1", pid)
@@ -122,7 +122,7 @@ func TestRemoveBeehive(t *testing.T) {
 
 	// 重新放置要再付放置費，等級從 Lv.1 開始
 	r = e.ok(e.s.PlaceBeehive(e.ctx, pid, 2))
-	if r.GoldDelta != -beehive.Prices[1] {
+	if r.GoldDelta != -beehive.Price(1) {
 		t.Fatal(r.Message)
 	}
 	if v, _ := e.s.Beehive(e.ctx, pid); v.Hive.Level != 1 || v.Hive.Honey != 0 {

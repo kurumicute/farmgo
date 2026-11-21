@@ -229,8 +229,8 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 		}
 	}
 	expandPrice, canExpand := expansion.WarehousePrice(d.capacity)
-	ladder := make([]string, len(balance.WarehouseExpansionPrices))
-	for i, x := range balance.WarehouseExpansionPrices {
+	ladder := make([]string, len(expansion.Current().WarehousePrices))
+	for i, x := range expansion.Current().WarehousePrices {
 		ladder[i] = money(x)
 	}
 	if xc := expansion.Current(); xc.WarehouseMax > balance.WarehouseMaxCapacity {
@@ -242,7 +242,7 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 		priceText = p.f("💰 **%s** 金", money(expandPrice))
 	}
 	warehouse := p.f("%s📦 **倉庫擴大卷**　%s　🎒 倉庫 **%d/%d**\n　📝 立即 +%d 格（最大 %d 格），價格逐次提高：%s",
-		mark("special:warehouse"), priceText, d.used, d.capacity, balance.WarehouseExpansionStep, expansion.WarehouseMax(),
+		mark("special:warehouse"), priceText, d.used, d.capacity, expansion.WarehouseStep(), expansion.WarehouseMax(),
 		strings.Join(ladder, " → "))
 	bagPrice, canBag := expansion.MaterialBagPrice(d.matLevel)
 	bagText := p.s("✅ 已達最高等級")
@@ -387,7 +387,7 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 	default:
 		if canExpand && expandPrice != 0 {
 			options = append(options, option{p.s("倉庫擴大卷"), "special:warehouse",
-				p.f("📦 +%d 格｜💰 %s 金", balance.WarehouseExpansionStep, money(expandPrice)), "📦"})
+				p.f("📦 +%d 格｜💰 %s 金", expansion.WarehouseStep(), money(expandPrice)), "📦"})
 		}
 		if canBag {
 			options = append(options, option{p.s("素材背包擴充"), "special:material_bag",

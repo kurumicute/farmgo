@@ -75,7 +75,7 @@ func itemUsageLines(u usageItem) []string {
 	var uses []string
 	for _, code := range balance.RecipeOrder {
 		rc := balance.Recipes[code]
-		building := balance.Buildings[rc.Building].Name
+		building := balance.BuildingOf(rc.Building).Name
 		if rc.Output == u.code {
 			lines = append(lines, fmt.Sprintf("🏭 做法：在%s用 %s", building, inputs(rc.InputOrder, rc.Inputs)))
 		}

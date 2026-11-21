@@ -1619,7 +1619,7 @@ func (x *ExplorationService) autoProcess(ctx context.Context, t *db.Tx, farm *mo
 		}
 		switch {
 		case n == 0:
-			notes = append(notes, txf(ctx, "自動加工機：需要先建造%s。", balance.Buildings[rc.Building].Name))
+			notes = append(notes, txf(ctx, "自動加工機：需要先建造%s。", balance.BuildingOf(rc.Building).Name))
 		case busy == nil:
 			quantity := balance.CraftMaxQuantity
 			for _, item := range rc.InputOrder {

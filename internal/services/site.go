@@ -242,7 +242,7 @@ func guideStart() map[string]any {
 		"gold": balance.InitialGold, "plots": balance.InitialPlots, "warehouse": balance.InitialWarehouseCapacity,
 		"rename_cost": expansion.Current().RenameBase, "rename_max": expansion.Current().RenameMax,
 		"rename_first_free": expansion.Current().RenameFirstFree, "rename_decay_days": expansion.Current().RenameDecayDays,
-		"upgrade_prices": balance.UpgradePrices,
+		"upgrade_prices": expansion.Current().LandPrices,
 		"upgrade_plots":  balance.UpgradePlotsAdded, "max_plots": expansion.MaxPlots(),
 		"land_base": expansion.Current().LandBase, "land_growth_pct": expansion.Current().LandGrowthPct,
 		"wither_minutes": balance.WitherSeconds / 60, "steal_max": balance.StealMaxPerAction,
@@ -250,7 +250,7 @@ func guideStart() map[string]any {
 		"transfer_cooldown_days": balance.GroupTransferCooldownSeconds / 86400,
 		"max_block_pct":          numfmt.Round(balance.DefenseMaxBlockChance * 100), "patrol_days": balance.PatrolDays,
 		"barn_slots": balance.BarnSlots, "craft_max": balance.CraftMaxQuantity,
-		"warehouse_step": balance.WarehouseExpansionStep, "warehouse_prices": balance.WarehouseExpansionPrices,
+		"warehouse_step": expansion.WarehouseStep(), "warehouse_prices": expansion.Current().WarehousePrices,
 		"warehouse_max": expansion.WarehouseMax(), "warehouse_late_base": expansion.Current().WarehouseLateBase,
 		"warehouse_late_growth_pct": expansion.Current().WarehouseLateGrowthPct,
 		// 所有種子和探險素材一樣放素材背包（Go 版新增）
@@ -329,7 +329,7 @@ var guideKeys = []guideKey{
 	{"defenses", nil, func(e *guideEnv) (any, error) {
 		defenses := []map[string]any{}
 		for _, code := range balance.DefenseOrder {
-			d := balance.Defenses[code]
+			d := balance.DefenseOf(code)
 			defenses = append(defenses, map[string]any{"name": d.Name, "price": d.Price, "max": d.MaxPerFarm,
 				"chance_pct": numfmt.Round(d.BlockChance * 100), "range": d.Range})
 		}
@@ -338,7 +338,7 @@ var guideKeys = []guideKey{
 	{"buildings", nil, func(e *guideEnv) (any, error) {
 		buildings := []map[string]any{}
 		for _, code := range balance.BuildingOrder {
-			b := balance.Buildings[code]
+			b := balance.BuildingOf(code)
 			buildings = append(buildings, map[string]any{"code": code, "name": b.Name, "price": b.Price, "max": b.MaxPerFarm})
 		}
 		return buildings, nil
@@ -371,8 +371,8 @@ var guideKeys = []guideKey{
 			for _, item := range rc.InputOrder {
 				inputs = append(inputs, siteNameQty{nameOr(e.names, item), rc.Inputs[item]})
 			}
-			recipes = append(recipes, map[string]any{"name": rc.Name, "building": balance.Buildings[rc.Building].Name,
-				"building_price": balance.Buildings[rc.Building].Price, "inputs": inputs, "output_quantity": rc.OutputQty,
+			recipes = append(recipes, map[string]any{"name": rc.Name, "building": balance.BuildingOf(rc.Building).Name,
+				"building_price": balance.BuildingOf(rc.Building).Price, "inputs": inputs, "output_quantity": rc.OutputQty,
 				"seconds": rc.Seconds, "sell_price": prices[rc.Output]})
 		}
 		return recipes, nil
@@ -582,7 +582,7 @@ func buildCards(e *guideEnv) (any, error) {
 		"animals":       animalNames,
 		"buildings":     buildings,
 		"recipes":       names(balance.RecipeOrder, func(c string) string { return balance.Recipes[c].Name }),
-		"defenses":      names(balance.DefenseOrder, func(c string) string { return balance.Defenses[c].Name }),
+		"defenses":      names(balance.DefenseOrder, func(c string) string { return balance.DefenseOf(c).Name }),
 		"tools":         tools,
 		"areas":         names(exploration.AreaOrder, func(c string) string { return exploration.AreaOf(c).Name }),
 		"machines":      names(exploration.MachineOrder, func(c string) string { return exploration.Machines[c].Name }),

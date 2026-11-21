@@ -7,17 +7,22 @@
 //     最多 LandMax 格（16～32；農田圖第二塊也是 4×4）。
 //   - 倉庫後段：300 格以內照 balance.WarehouseExpansionPrices；之後每次 +50 格，價格 WarehouseLateBase × (WarehouseLateGrowthPct/100)^k，
 //     最多 WarehouseMax 格。
+//   - 2026-11-21 起前段也可以調整：土地第 5～16 格的價格（LandPrices，預設 balance.UpgradePrices）、
+//     倉庫 300 格以內各次的價格（WarehousePrices，預設 balance.WarehouseExpansionPrices）與每次擴充的格數（WarehouseStep）。
+//     清單比級數短時，之後都用最後一項的價格。
 //   - 素材背包擴充（farms.material_bag_level，Migration 0046）：每級 +MaterialBagStep 格（基本容量見 exploration 設定），
 //     第 1 級 MaterialBagBase，之後每級 ×(MaterialBagGrowthPct/100)，最多 MaterialBagLevels 級（資料庫上限 10）。
 package expansion
 
 import (
 	"math"
+	"slices"
 	"sync"
 	"time"
 
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/featurecfg"
+	"farmgm/internal/numfmt"
 )
 
 const ConfigKey = "expansion"
@@ -40,6 +45,10 @@ type Config struct {
 	WarehouseLateBase      int
 	WarehouseLateGrowthPct int
 
+	LandPrices      []int // 第 5～16 格（初始 4 格之後）每格的價格
+	WarehousePrices []int // 倉庫 300 格以內每次擴充的價格
+	WarehouseStep   int   // 倉庫每次擴充幾格
+
 	MaterialBagLevels    int
 	MaterialBagStep      int
 	MaterialBagBase      int
@@ -54,6 +63,8 @@ func defaults() featurecfg.Value {
 		"rename_first_free": 1, "rename_base": 1_000, "rename_max": 100_000, "rename_decay_days": 30,
 		"land_max": 32, "land_base": 300_000, "land_growth_pct": 130,
 		"warehouse_max": 600, "warehouse_late_base": 400_000, "warehouse_late_growth_pct": 160,
+		"land_prices": slices.Clone(balance.UpgradePrices), "warehouse_prices": slices.Clone(balance.WarehouseExpansionPrices),
+		"warehouse_step":      balance.WarehouseExpansionStep,
 		"material_bag_levels": 10, "material_bag_step": 200, "material_bag_base": 50_000, "material_bag_growth_pct": 180,
 	}
 }
@@ -71,6 +82,7 @@ var fields = []field{
 	{"land_max", "土地上限（格）", balance.MaxPlots, MaxLandLimit, func(c *Config) *int { return &c.LandMax }},
 	{"land_base", "第 17 格的價格", 1, 1_000_000_000, func(c *Config) *int { return &c.LandBase }},
 	{"land_growth_pct", "第 17 格以後每格的倍率（%）", 100, 1000, func(c *Config) *int { return &c.LandGrowthPct }},
+	{"warehouse_step", "倉庫每次擴充幾格", 1, 1_000, func(c *Config) *int { return &c.WarehouseStep }},
 	{"warehouse_max", "倉庫上限（格）", balance.WarehouseMaxCapacity, 5_000, func(c *Config) *int { return &c.WarehouseMax }},
 	{"warehouse_late_base", "倉庫超過 300 格後第 1 次擴充的價格", 1, 1_000_000_000, func(c *Config) *int { return &c.WarehouseLateBase }},
 	{"warehouse_late_growth_pct", "倉庫後段每次的倍率（%）", 100, 1000, func(c *Config) *int { return &c.WarehouseLateGrowthPct }},
@@ -99,11 +111,15 @@ func parse(raw featurecfg.Value) (*Config, error) {
 		}
 		*f.ptr(c) = n
 	}
+	var err2 error
+	if c.LandPrices, err2 = featurecfg.IntList(raw["land_prices"], "土地第 5～16 格的價格", 1, 1_000_000_000, 1, balance.MaxPlots-balance.InitialPlots); err2 != nil {
+		return nil, err2
+	}
+	if c.WarehousePrices, err2 = featurecfg.IntList(raw["warehouse_prices"], "倉庫 300 格以內各次擴充的價格", 1, 1_000_000_000, 1, 50); err2 != nil {
+		return nil, err2
+	}
 	if c.RenameMax < c.RenameBase {
 		c.RenameMax = c.RenameBase
-	}
-	if over := (c.WarehouseMax - balance.WarehouseMaxCapacity) % balance.WarehouseExpansionStep; over != 0 {
-		c.WarehouseMax -= over // 每次 +50 格，上限對齊
 	}
 	return c, nil
 }
@@ -118,7 +134,7 @@ func ValidateConfig(raw featurecfg.Value) (featurecfg.Value, error) {
 	if c.RenameFirstFree {
 		free = 1
 	}
-	out := featurecfg.Value{"rename_first_free": free}
+	out := featurecfg.Value{"rename_first_free": free, "land_prices": c.LandPrices, "warehouse_prices": c.WarehousePrices}
 	for _, f := range fields {
 		out[f.key] = *f.ptr(c)
 	}
@@ -198,7 +214,8 @@ func LandPrice(plots int) (price int, ok bool) {
 		return 0, false
 	}
 	if plots < balance.MaxPlots {
-		return balance.UpgradePrice(plots)
+		tier := max(0, plots-balance.InitialPlots)
+		return c.LandPrices[min(tier, len(c.LandPrices)-1)], true
 	}
 	return grow(c.LandBase, c.LandGrowthPct, plots-balance.MaxPlots), true
 }
@@ -213,11 +230,15 @@ func WarehousePrice(capacity int) (price int, ok bool) {
 		return 0, false
 	}
 	if capacity < balance.WarehouseMaxCapacity {
-		return balance.WarehouseExpansionPrice(capacity)
+		tier := max(0, numfmt.FloorDiv(capacity-balance.InitialWarehouseCapacity, c.WarehouseStep))
+		return c.WarehousePrices[min(tier, len(c.WarehousePrices)-1)], true
 	}
-	k := (capacity - balance.WarehouseMaxCapacity) / balance.WarehouseExpansionStep
+	k := (capacity - balance.WarehouseMaxCapacity) / c.WarehouseStep
 	return grow(c.WarehouseLateBase, c.WarehouseLateGrowthPct, k), true
 }
+
+// WarehouseStep 倉庫每次擴充幾格。
+func WarehouseStep() int { return Current().WarehouseStep }
 
 // MaterialBagCapacity 素材背包容量：base（exploration 設定的基本容量）+ 等級 × 每級格數（等級超過設定時以設定為準）。
 func MaterialBagCapacity(level, base int) int {

@@ -5000,25 +5000,117 @@ if (typeof document !== "undefined") {
     ["rename_decay_days", "幾天沒改名降一級", 1, 365],
     ["land_max", "土地上限（16–32 格）", 16, 32], ["land_base", "第 17 格的價格", 1, 1000000000],
     ["land_growth_pct", "第 17 格以後每格倍率（%，130 = ×1.3）", 100, 1000],
-    ["warehouse_max", "倉庫上限（300 以上，每 50 格一級）", 300, 5000],
+    ["warehouse_step", "倉庫每次擴充 +幾格", 1, 1000],
+    ["warehouse_max", "倉庫上限（300 以上）", 300, 5000],
     ["warehouse_late_base", "倉庫 300 格後第 1 次的價格", 1, 1000000000],
     ["warehouse_late_growth_pct", "倉庫後段每次倍率（%，160 = ×1.6）", 100, 1000],
     ["material_bag_levels", "素材背包可擴充幾級（0–10）", 0, 10], ["material_bag_step", "素材背包每級 +幾格", 1, 10000],
     ["material_bag_base", "素材背包第 1 級的價格", 1, 1000000000],
     ["material_bag_growth_pct", "素材背包每級倍率（%，180 = ×1.8）", 100, 1000],
   ];
+  // 逗號分隔的整數清單（2026-11-21：設施與擴充的各級價格）
+  const listBox = (list, placeholder) => {
+    const x = textInput((list || []).join(", "), 400, placeholder);
+    x.classList.add("reason-input");
+    return x;
+  };
+  const listIn = (input, label, low, high, minLen, maxLen) => {
+    const list = parseIntList(input.value);
+    if (!list || list.length < minLen || list.length > maxLen || list.some((n) => n < low || n > high)) {
+      throw fieldError(`${label}請用逗號分隔 ${minLen}–${maxLen} 個 ${fmtNum(low)}–${fmtNum(high)} 的整數。`, input);
+    }
+    return list;
+  };
+
   function expansionCard() {
     const c = featureKey("expansion").current;
     const inputs = EXPANSION_FIELDS.map(([key, , low, high]) => numInput(null, c[key], low, high));
+    const landPrices = listBox(c.land_prices, "例如 500, 1000, 2000");
+    const whPrices = listBox(c.warehouse_prices, "例如 4000, 20000, 50000");
     const body = el("div", {}, [
       el("div", { className: "controls" }, EXPANSION_FIELDS.map(([, label], i) => el("label", { className: "inline", text: label + " " }, [inputs[i]]))),
-      el("p", { className: "muted small", text: "改名費逐次加價：次數從交易紀錄計算，久沒改名每過設定的天數降一級（最低回到第 2 次的價格）。土地前 16 格與倉庫前 300 格的價格不變；第 17 格以上是第二塊農田，畫在農田圖下方。降低上限不會收回玩家已經擁有的土地或倉庫格數。" }),
+      labeled("土地第 5～16 格每格的價格（依序，最多 12 個）", landPrices),
+      labeled("倉庫 300 格以內每次擴充的價格（依序）", whPrices),
+      el("p", { className: "muted small", text: "改名費逐次加價：次數從交易紀錄計算，久沒改名每過設定的天數降一級（最低回到第 2 次的價格）。價格清單比級數短時，之後都用最後一個價格。第 17 格以上是第二塊農田，畫在農田圖下方。倉庫 300 格以內用上面的價格清單，超過 300 格用後段的價格與倍率。素材背包＝探險素材與所有種子的容量。降低上限不會收回玩家已經擁有的土地、倉庫或背包格數。" }),
     ]);
-    return featureCard("expansion", "✏️ 改名與擴充：改名費、土地第 17 格以上、倉庫後段、素材背包", body, () => {
+    return featureCard("expansion", "✏️ 改名與擴充：改名費、土地、倉庫、素材背包的價格與擴充格數", body, () => {
       const value = {};
       EXPANSION_FIELDS.forEach(([key, label, low, high], i) => { value[key] = intIn(inputs[i], label, low, high); });
       if (value.rename_max < value.rename_base) throw new Error("改名價格上限不能低於第 2 次的價格。");
-      return [value, EXPANSION_FIELDS.map(([key, label]) => diffRow(label, fmtNum(c[key]), fmtNum(value[key]))).filter(Boolean)];
+      value.land_prices = listIn(landPrices, "土地第 5～16 格的價格", 1, 1000000000, 1, 12);
+      value.warehouse_prices = listIn(whPrices, "倉庫 300 格以內的價格", 1, 1000000000, 1, 50);
+      return [value, [...EXPANSION_FIELDS.map(([key, label]) => diffRow(label, fmtNum(c[key]), fmtNum(value[key]))),
+        diffRow("土地第 5～16 格的價格", listText(c.land_prices), listText(value.land_prices)),
+        diffRow("倉庫 300 格以內的價格", listText(c.warehouse_prices), listText(value.warehouse_prices))].filter(Boolean)];
+    });
+  }
+
+  // ----- 設施與道具價格（Go 版新增，2026-11-21）-----
+  const UPGRADES_FIELDS = [
+    ["beehive_move_fee", "蜂箱搬家費", 0, 1000000000], ["beehive_hours", "每幾小時產一次蜂蜜", 1, 168],
+    ["beehive_honey", "每次產幾罐", 1, 100], ["beehive_capacity", "最多存幾罐", 1, 1000],
+  ];
+  function upgradesCard() {
+    const c = featureKey("upgrades").current;
+    const data = features.data;
+    const bPrices = listBox(c.building_prices, "例如 15000, 50000, 100000");
+    const bCut = listBox(c.building_cut_pct, "例如 15, 40, 60");
+    const hPrices = listBox(c.beehive_prices, "例如 8000, 20000, 50000");
+    const hMut = listBox(c.beehive_mutation_bp, "例如 100, 150, 200");
+    const hSting = listBox(c.beehive_sting_bp, "例如 1500, 2000, 2500");
+    const inputs = UPGRADES_FIELDS.map(([key, , low, high]) => numInput(null, c[key], low, high));
+    // 價格表：道具（只列這裡可以調整的）、防守設施、建築
+    const groups = [
+      ["item_prices", "🧪 道具與工具", (data.items || []).filter((it) => c.item_prices && it.code in c.item_prices)],
+      ["defense_prices", "🛡️ 防守設施", data.defenses || []],
+      ["building_build", "🏗️ 建築（建造價格）", data.buildings || []],
+    ].map(([key, title, items]) => ({ key, title, items, inputs: items.map((it) => {
+      const x = numInput(null, (c[key] || {})[it.code] ?? it.price, 1, 1000000000);
+      x.classList.add("wide-num");
+      return x;
+    }) }));
+    const body = el("div", {}, [
+      el("h4", { text: "🏭 加工設施升級（磨坊、烘焙坊、果醬工坊、乳品工坊）" }),
+      labeled("升到 Lv.1、Lv.2…的價格（最多 3 級）", bPrices),
+      labeled("各級縮短的加工時間 %（和價格一樣多級）", bCut),
+      el("h4", { text: "🐝 蜂箱" }),
+      labeled("各級價格（第 1 個是放置費，之後是升到 Lv.2、Lv.3…，最多 10 級）", hPrices),
+      labeled("各級周圍作物的突變加成（萬分比，100 = +1%）", hMut),
+      labeled("各級叮跑小偷的機率（萬分比，1500 = 15%）", hSting),
+      el("div", { className: "controls" }, UPGRADES_FIELDS.map(([, label], i) => labeled(label, inputs[i]))),
+      ...groups.map((g) => [el("h4", { text: g.title }), miniTable(["項目", "價格（金幣）"], g.items.map((it, i) => el("tr", {}, [
+        td(`${it.name}（${it.code}）`), el("td", {}, [g.inputs[i]]),
+      ])), "沒有項目")]).flat(),
+      el("p", { className: "muted small", text: "降低加工設施或蜂箱的等級數時，已經超過的玩家以新的最高等級計算效果，等級不會被收回；已排隊的加工訂單時間不變。蜂箱的價格、突變加成、叮小偷機率要一樣多級。自動釣魚機與加速沙漏的價格在各自的設定區塊。" }),
+    ]);
+    return featureCard("upgrades", "🏭 設施與道具價格：加工設施升級、蜂箱、道具／防守設施／建築的價格", body, () => {
+      const value = {
+        building_prices: listIn(bPrices, "加工設施升級價格", 1, 1000000000, 1, 3),
+        building_cut_pct: listIn(bCut, "加工設施縮短的加工時間", 0, 90, 1, 3),
+        beehive_prices: listIn(hPrices, "蜂箱各級價格", 1, 1000000000, 1, 10),
+        beehive_mutation_bp: listIn(hMut, "蜂箱突變加成", 0, 5000, 1, 10),
+        beehive_sting_bp: listIn(hSting, "蜂箱叮小偷機率", 0, 10000, 1, 10),
+      };
+      if (value.building_cut_pct.length !== value.building_prices.length) throw fieldError("加工設施的升級價格與縮短時間要一樣多級。", bCut);
+      const n = value.beehive_prices.length;
+      if (value.beehive_mutation_bp.length !== n || value.beehive_sting_bp.length !== n) throw fieldError("蜂箱的價格、突變加成、叮小偷機率要一樣多級。", hMut);
+      UPGRADES_FIELDS.forEach(([key, label, low, high], i) => { value[key] = intIn(inputs[i], label, low, high); });
+      const diff = [
+        diffRow("加工設施升級價格", listText(c.building_prices), listText(value.building_prices)),
+        diffRow("加工設施縮短時間 %", listText(c.building_cut_pct), listText(value.building_cut_pct)),
+        diffRow("蜂箱各級價格", listText(c.beehive_prices), listText(value.beehive_prices)),
+        diffRow("蜂箱突變加成", listText(c.beehive_mutation_bp), listText(value.beehive_mutation_bp)),
+        diffRow("蜂箱叮小偷機率", listText(c.beehive_sting_bp), listText(value.beehive_sting_bp)),
+        ...UPGRADES_FIELDS.map(([key, label]) => diffRow(label, fmtNum(c[key]), fmtNum(value[key]))),
+      ];
+      for (const g of groups) {
+        value[g.key] = {};
+        g.items.forEach((it, i) => {
+          value[g.key][it.code] = intIn(g.inputs[i], `${it.name}的價格`, 1, 1000000000);
+          diff.push(diffRow(it.name, fmtNum((c[g.key] || {})[it.code] ?? it.price), fmtNum(value[g.key][it.code])));
+        });
+      }
+      return [value, diff.filter(Boolean)];
     });
   }
 
@@ -5099,7 +5191,7 @@ if (typeof document !== "undefined") {
   const FEATURE_CARDS = [["checkin", checkinCard], ["pets", petsCard], ["special_shop", specialShopCard],
     ["achievements", achievementsCard], ["exploration", explorationCard], ["mushroom", mushroomCard],
     ["seedlab", seedlabCard], ["autofish", autofishCard], ["hourglass", hourglassCard], ["aid", aidCard],
-    ["expansion", expansionCard], ["cosmetics", cosmeticsCard], ["reputation", reputationCard],
+    ["expansion", expansionCard], ["upgrades", upgradesCard], ["cosmetics", cosmeticsCard], ["reputation", reputationCard],
     ["auction", auctionCard]];
 
   function renderFeatureSettings() {

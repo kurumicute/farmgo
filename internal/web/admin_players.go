@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	featureKeyRe = regexp.MustCompile(`^(checkin|pets|special_shop|achievements|exploration|mushroom|seedlab|autofish|hourglass|aid)$`)
+	// 由 services.FeatureKeys 產生（2026-11-21 以前是手寫的清單，漏了 expansion、cosmetics、reputation、auction，管理網站存不了）
+	featureKeyRe = regexp.MustCompile(`^(` + strings.Join(services.FeatureKeys, "|") + `)$`)
 	petCodeRe    = regexp.MustCompile(`^(cat|dog)$`)
 	codexItemRe  = regexp.MustCompile(`^[a-z][a-z0-9_]{1,63}$`)
 )

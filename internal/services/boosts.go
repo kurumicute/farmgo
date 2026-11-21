@@ -51,7 +51,7 @@ func (s *GameService) Boosts(ctx context.Context, playerID int64) ([]BoostView, 
 			if _, ok := balance.Items[code]; ok {
 				v.Price = balance.ItemPrice(code)
 			} else if rc, ok := balance.Recipes[code]; ok {
-				v.Recipe = txf(ctx, "在%s用%s製作", balance.Buildings[rc.Building].Name, recipeInputsText(rc))
+				v.Recipe = txf(ctx, "在%s用%s製作", balance.BuildingOf(rc.Building).Name, recipeInputsText(rc))
 			}
 			e, err := items.GetEffect(ctx, t, farm.ID, code)
 			if err != nil {

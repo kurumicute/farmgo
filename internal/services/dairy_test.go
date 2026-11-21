@@ -7,6 +7,7 @@ import (
 
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/gameerr"
+	"farmgm/internal/game/upgrades"
 )
 
 func TestDairyAndCakeChainCraftAndSell(t *testing.T) {
@@ -101,7 +102,7 @@ func TestDairyIsUpgradableAndListsRecipes(t *testing.T) {
 			continue
 		}
 		n++
-		if !r.Built || r.Seconds != balance.CraftSeconds(balance.Recipes[r.Code].Seconds, 1) {
+		if !r.Built || r.Seconds != upgrades.CraftSeconds(balance.Recipes[r.Code].Seconds, 1) {
 			t.Fatalf("%+v", r)
 		}
 	}

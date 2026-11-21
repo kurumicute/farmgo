@@ -3,8 +3,8 @@ package services
 import (
 	"testing"
 
-	"farmgm/internal/game/balance"
 	"farmgm/internal/game/gameerr"
+	"farmgm/internal/game/upgrades"
 )
 
 // 加工設施升級（2026-11-17）：15,000／50,000／100,000 金，加工時間 -15%／-40%／-60%，最多 3 級；畜舍不能升級。
@@ -41,10 +41,10 @@ func TestUpgradeBuildingCutsCraftTime(t *testing.T) {
 	e.ok(e.r.UpgradeBuilding(e.ctx, f, "mill"))
 	_, err = e.r.UpgradeBuilding(e.ctx, f, "mill")
 	wantKind(t, err, gameerr.AlreadyExists)
-	if got := balance.CraftSeconds(3600, 3); got != 1440 {
+	if got := upgrades.CraftSeconds(3600, 3); got != 1440 {
 		t.Fatal(got)
 	}
-	if got := balance.CraftSeconds(1, 3); got != 1 {
+	if got := upgrades.CraftSeconds(1, 3); got != 1 {
 		t.Fatal(got)
 	}
 }

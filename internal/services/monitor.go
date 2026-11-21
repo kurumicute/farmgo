@@ -410,7 +410,7 @@ func (m *MonitorService) Defenses(ctx context.Context) ([]*FarmDefenses, error) 
 				byFarm[r.Farm.ID] = entry
 				out = append(out, entry)
 			}
-			spec := balance.Defenses[r.Defense.DeviceCode]
+			spec := balance.DefenseOf(r.Defense.DeviceCode)
 			d := MonitorDefenseDevice{r.Defense.DeviceCode, spec.Name, r.Defense.Slot, spec.BlockChance, r.Defense.StartPlot, nil,
 				r.Defense.AcquiredAt}
 			if spec.Range != nil && r.Defense.StartPlot != nil {

@@ -73,7 +73,7 @@ func (m *MonitorService) Ranch(ctx context.Context) ([]RanchRow, error) {
 				Buildings: NewOrderedMap(), Capacity: counts["barn"] * balance.BarnSlots, Animals: []AnimalView{}}
 			for _, code := range balance.BuildingOrder {
 				if n := counts[code]; n != 0 {
-					row.Buildings.Set(balance.Buildings[code].Name, n)
+					row.Buildings.Set(balance.BuildingOf(code).Name, n)
 				}
 			}
 			list, err := ranch.ListAnimals(ctx, t, f.ID, false)
@@ -436,7 +436,7 @@ func (m *MonitorService) Catalog(ctx context.Context) (CatalogView, error) {
 			v.Items = append(v.Items, CatalogItem{code, e.Kind, e.Name})
 		}
 		for _, code := range balance.BuildingOrder {
-			b := balance.Buildings[code]
+			b := balance.BuildingOf(code)
 			v.Buildings = append(v.Buildings, CatalogBuilding{code, b.Name, b.MaxPerFarm})
 		}
 		v.Ranges.Set("grow_seconds", rangeOf(balance.CropGrowSecondsRange)).
@@ -582,7 +582,7 @@ func (m *MonitorService) AdminFarm(ctx context.Context, playerID int64) (*AdminF
 			return nil, err
 		}
 		for _, b := range buildings {
-			v.Buildings = append(v.Buildings, AdminFarmBuilding{b.BuildingCode, balance.Buildings[b.BuildingCode].Name, b.Slot})
+			v.Buildings = append(v.Buildings, AdminFarmBuilding{b.BuildingCode, balance.BuildingOf(b.BuildingCode).Name, b.Slot})
 		}
 		barns, err := ranch.CountBuildings(ctx, t, farm.ID, "barn")
 		if err != nil {

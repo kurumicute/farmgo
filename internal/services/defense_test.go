@@ -18,9 +18,9 @@ import (
 )
 
 var (
-	priceScarecrow = balance.Defenses["scarecrow"].Price
-	priceDog       = balance.Defenses["guard_dog"].Price
-	priceFence     = balance.Defenses["fence"].Price
+	priceScarecrow = balance.DefenseOf("scarecrow").Price
+	priceDog       = balance.DefenseOf("guard_dog").Price
+	priceFence     = balance.DefenseOf("fence").Price
 )
 
 // dice 可控制的亂數：依序回傳 values（用完後重複最後一個），並記錄呼叫次數。

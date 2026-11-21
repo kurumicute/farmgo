@@ -419,7 +419,7 @@ func codexHint(category string, x services.CodexEntry) string {
 	case "goods":
 		for _, code := range balance.RecipeOrder {
 			if rc := balance.Recipes[code]; rc.Output == x.Code {
-				return "在" + balance.Buildings[rc.Building].Name + "加工製作"
+				return "在" + balance.BuildingOf(rc.Building).Name + "加工製作"
 			}
 		}
 		return "加工或活動取得"

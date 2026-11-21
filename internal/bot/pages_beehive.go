@@ -33,13 +33,13 @@ func (p *Panel) loadBeehive(ctx context.Context) (any, error) {
 
 // hiveEffects 某個等級的效果說明（產蜜不分等級，寫在 honeyRule）。
 func (p *Panel) hiveEffects(level int) string {
-	return p.f("🌸 周圍 8 格種下的作物突變 +%s%%　🐝 叮小偷 %s%%", bpPct(beehive.MutationBP[level]), bpPct(beehive.StingBP[level]))
+	return p.f("🌸 周圍 8 格種下的作物突變 +%s%%　🐝 叮小偷 %s%%", bpPct(beehive.MutationBP(level)), bpPct(beehive.StingBP(level)))
 }
 
 // honeyRule 產蜜規則（2026-11-21 改成固定，不分等級、天氣）。
 func (p *Panel) honeyRule() string {
-	return p.f("🍯 每 %d 小時產 %d 罐蜂蜜，最多存 %d 罐（每罐賣 %s 金幣）", beehive.IntervalSeconds/3600, beehive.HoneyPerInterval,
-		beehive.Capacity, money(balance.Goods[beehive.Honey].SellPrice))
+	return p.f("🍯 每 %d 小時產 %d 罐蜂蜜，最多存 %d 罐（每罐賣 %s 金幣）", beehive.IntervalSeconds()/3600, beehive.HoneyPerInterval(),
+		beehive.Capacity(), money(balance.Goods[beehive.Honey].SellPrice))
 }
 
 func (p *Panel) buildBeehive(_ context.Context, data any) (*ui.Embed, error) {
@@ -55,7 +55,7 @@ func (p *Panel) buildBeehive(_ context.Context, data any) (*ui.Embed, error) {
 	h := v.Hive
 	if !h.Placed() {
 		e.Description = sections(
-			p.f("選一格空地放蜂箱（**%s** 金幣）。那一格不能種植，但周圍的作物比較容易突變，還會產蜂蜜、幫忙叮跑小偷。", money(beehive.Prices[1])),
+			p.f("選一格空地放蜂箱（**%s** 金幣）。那一格不能種植，但周圍的作物比較容易突變，還會產蜂蜜、幫忙叮跑小偷。", money(beehive.Price(1))),
 			Section{Title: p.s("Lv.1 效果"), Lines: []string{p.hiveEffects(1)}},
 			p.honeyRule(),
 		)
@@ -64,18 +64,18 @@ func (p *Panel) buildBeehive(_ context.Context, data any) (*ui.Embed, error) {
 		for _, n := range v.Neighbors {
 			neighbors = append(neighbors, fmt.Sprintf("#%d", n))
 		}
-		honey := p.f("🍯 蜂蜜 **%d／%d** 罐　每 %d 小時產 %d 罐", h.Honey, v.Capacity, beehive.IntervalSeconds/3600, beehive.HoneyPerInterval)
+		honey := p.f("🍯 蜂蜜 **%d／%d** 罐　每 %d 小時產 %d 罐", h.Honey, v.Capacity, beehive.IntervalSeconds()/3600, beehive.HoneyPerInterval())
 		if v.NextAt != nil {
 			honey += p.f("，下一批 %s", tsv(*v.NextAt))
 		} else {
 			honey += p.s("，**已經滿了**")
 		}
 		parts := []any{
-			p.f("蜂箱在第 **%d** 格，Lv.**%d**／%d", h.Plot, h.Level, beehive.MaxLevel),
+			p.f("蜂箱在第 **%d** 格，Lv.**%d**／%d", h.Plot, h.Level, beehive.MaxLevel()),
 			Section{Title: p.s("效果"), Lines: []string{p.hiveEffects(h.Level), p.s("授粉的格子：") + strings.Join(neighbors, " ")}},
 		}
-		if h.Level < beehive.MaxLevel {
-			parts = append(parts, Section{Title: p.f("升到 Lv.%d（%s 金幣）", h.Level+1, money(beehive.Prices[h.Level+1])),
+		if h.Level < beehive.MaxLevel() {
+			parts = append(parts, Section{Title: p.f("升到 Lv.%d（%s 金幣）", h.Level+1, money(beehive.Price(h.Level+1))),
 				Lines: []string{p.hiveEffects(h.Level + 1)}})
 		}
 		parts = append(parts, honey) // 蜂蜜存量放最後，貼近按鈕
@@ -91,8 +91,8 @@ func (p *Panel) buildBeehive(_ context.Context, data any) (*ui.Embed, error) {
 			}), actOpts{})
 			return nil
 		}, btn{emoji: "🍯", style: ui.Success, row: 0, disabled: h.Honey == 0})
-		if h.Level < beehive.MaxLevel {
-			price := beehive.Prices[h.Level+1]
+		if h.Level < beehive.MaxLevel() {
+			price := beehive.Price(h.Level + 1)
 			confirming := p.confirm == "beehive_upgrade"
 			label, style := p.f("升級（%s 金幣）", money(price)), ui.Primary
 			if confirming {
@@ -119,7 +119,7 @@ func (p *Panel) buildBeehive(_ context.Context, data any) (*ui.Embed, error) {
 			if p.confirm != "beehive_remove" {
 				p.confirm = "beehive_remove"
 				p.refresh(ctx, it, p.f("⚠️ 拆除後第 %d 格變回空地，蜂箱等級歸零、不退費（之後要重新花 %s 金幣放置）；蜂箱裡的蜂蜜會先收進倉庫。再按一次「確定拆除？」。",
-					h.Plot, money(beehive.Prices[1])), nil, p.s("重繪"), time.Time{})
+					h.Plot, money(beehive.Price(1))), nil, p.s("重繪"), time.Time{})
 				return nil
 			}
 			p.act(ctx, it, p.call("remove_beehive", func(ctx context.Context) (services.ActionResult, error) {
@@ -133,9 +133,9 @@ func (p *Panel) buildBeehive(_ context.Context, data any) (*ui.Embed, error) {
 		return nil
 	}, btn{emoji: "🔄", row: 0})
 
-	fee, verb := beehive.Prices[1], p.s("放在")
+	fee, verb := beehive.Price(1), p.s("放在")
 	if h.Placed() {
-		fee, verb = beehive.MoveFee, p.s("搬到")
+		fee, verb = beehive.MoveFee(), p.s("搬到")
 	}
 	var options []option
 	for _, n := range v.EmptyPlots {

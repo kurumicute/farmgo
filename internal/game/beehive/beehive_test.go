@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"farmgm/internal/game/featurecfg"
+	"farmgm/internal/game/upgrades"
 	"farmgm/internal/game/weather"
 )
 
@@ -48,7 +50,7 @@ func TestAccrue(t *testing.T) {
 	now := start.Add(100 * time.Hour)
 	s := State{Plot: 6, Level: 3, Last: start}
 	s.Accrue(now)
-	if s.Honey != Capacity || !s.Last.Equal(now) || s.NextAt() != nil {
+	if s.Honey != Capacity() || !s.Last.Equal(now) || s.NextAt() != nil {
 		t.Fatalf("%+v", s)
 	}
 	// 舊規則存下超過上限的蜂蜜保留，不會被砍掉
@@ -76,7 +78,35 @@ func TestParseEncode(t *testing.T) {
 	if got := Parse(raw); got != s {
 		t.Fatalf("%+v", got)
 	}
-	if Parse(map[string]any{"plot": 3.0, "level": 9.0}).Placed() || Parse(nil).Placed() {
+	if Parse(map[string]any{"plot": 3.0, "level": 11.0}).Placed() || Parse(nil).Placed() {
 		t.Fatal("壞資料當成沒有蜂箱")
+	}
+}
+
+// 2026-11-21：蜂箱數值可在管理網站調整；降低等級數時超過的蜂箱保留，以新的最高等級計算效果。
+func TestConfigurable(t *testing.T) {
+	defer featurecfg.Reset()
+	if MaxLevel() != 5 || Price(1) != 8_000 || Price(6) != 0 || MutationBP(5) != 300 || StingBP(1) != 1500 || MoveFee() != 500 ||
+		IntervalSeconds() != 12*3600 || HoneyPerInterval() != 2 || Capacity() != 10 {
+		t.Fatal("預設值")
+	}
+	v, err := upgrades.ValidateConfig(featurecfg.Value{"beehive_prices": []any{1, 2}, "beehive_mutation_bp": []any{10, 20},
+		"beehive_sting_bp": []any{30, 40}, "beehive_hours": 1, "beehive_honey": 3, "beehive_capacity": 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	featurecfg.SetCurrent(upgrades.ConfigKey, v)
+	if MaxLevel() != 2 || MutationBP(5) != 20 || StingBP(5) != 40 {
+		t.Fatal(MaxLevel(), MutationBP(5))
+	}
+	s := Parse(State{Plot: 3, Level: 5, Last: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}.Encode())
+	if !s.Placed() || s.Level != 5 {
+		t.Fatalf("降低等級數後蜂箱不能消失：%+v", s)
+	}
+	if got := s.Accrue(s.Last.Add(time.Hour)); got != 3 {
+		t.Fatal(got)
+	}
+	if s.Accrue(s.Last.Add(10*time.Hour)) != 2 || s.Honey != 5 {
+		t.Fatalf("上限 5 罐：%+v", s)
 	}
 }

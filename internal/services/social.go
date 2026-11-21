@@ -726,7 +726,7 @@ func (s *SocialService) StealCrop(ctx context.Context, groupID, thiefPlayerID, v
 			}
 			if hive.Placed() && beehive.IsNeighbor(hive.Plot, plotNumber) {
 				br := s.rng()
-				if c := float64(beehive.StingBP[hive.Level]) / 10_000; br < c {
+				if c := float64(beehive.StingBP(hive.Level)) / 10_000; br < c {
 					blockedBy, chance, roll = beehive.Blocker, &c, &br
 				}
 			}
@@ -890,7 +890,7 @@ func FindDefense(key string) string {
 	key = strings.TrimSpace(key)
 	lower := strings.ToLower(key)
 	for _, code := range balance.DefenseOrder {
-		d := balance.Defenses[code]
+		d := balance.DefenseOf(code)
 		if lower == code || key == d.Name || slices.Contains(d.Aliases, lower) || slices.Contains(d.Aliases, key) {
 			return code
 		}
@@ -906,14 +906,14 @@ func activeDefenses(ctx context.Context, t *db.Tx, farmID int64, plotNumber int)
 	}
 	covering := map[string]bool{}
 	for _, d := range list {
-		if rules.DefenseCovers(balance.Defenses[d.DeviceCode].Range, d.StartPlot, plotNumber) {
+		if rules.DefenseCovers(balance.DefenseOf(d.DeviceCode).Range, d.StartPlot, plotNumber) {
 			covering[d.DeviceCode] = true
 		}
 	}
 	var out []rules.ActiveDefense
 	for _, code := range balance.DefenseOrder {
 		if covering[code] {
-			out = append(out, rules.ActiveDefense{Code: code, Chance: balance.Defenses[code].BlockChance})
+			out = append(out, rules.ActiveDefense{Code: code, Chance: balance.DefenseOf(code).BlockChance})
 		}
 	}
 	return out, nil
@@ -924,7 +924,7 @@ func (s *SocialService) BuyDefense(ctx context.Context, playerID int64, key stri
 	if code == "" {
 		return ActionResult{}, gameerr.NotFoundf("沒有「%s」這種防守設施。可用 defense shop 查看。", key)
 	}
-	d := balance.Defenses[code]
+	d := balance.DefenseOf(code)
 	return inTx(ctx, s.GameService, func(t *db.Tx) (ActionResult, error) {
 		// 鎖定農場後再計算持有數量與分配編號：並行購買不會超過上限，也不會重複扣款
 		farm, err := s.lockedFarm(ctx, t, playerID)
@@ -984,7 +984,7 @@ func (s *SocialService) PlaceDefense(ctx context.Context, playerID int64, key st
 	if code == "" {
 		return ActionResult{}, gameerr.NotFoundf("沒有「%s」這種防守設施。", key)
 	}
-	d := balance.Defenses[code]
+	d := balance.DefenseOf(code)
 	if d.Range == nil {
 		return ActionResult{}, gameerr.Validationf("%s守護全部土地，不需要放置。", d.Name)
 	}
@@ -1063,7 +1063,7 @@ func (s *SocialService) DefenseStatus(ctx context.Context, playerID int64) (Defe
 			st.Owned[code] = 0
 		}
 		for _, d := range list {
-			spec := balance.Defenses[d.DeviceCode]
+			spec := balance.DefenseOf(d.DeviceCode)
 			var end *int
 			if spec.Range != nil && d.StartPlot != nil {
 				end = intPtr(min(*d.StartPlot+*spec.Range-1, total))

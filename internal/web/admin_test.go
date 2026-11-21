@@ -16,9 +16,11 @@ import (
 	"time"
 
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/fishing"
 	"farmgm/internal/game/genetics"
 	"farmgm/internal/game/pets"
+	"farmgm/internal/game/upgrades"
 	"farmgm/internal/services"
 )
 
@@ -547,6 +549,20 @@ func TestAdminProgressAPIRequiresLoginAndWorks(t *testing.T) {
 	}
 	if e.status("DELETE", "/api/admin/feature-settings/pets", nil) != 200 || pets.BuyPrice() != 5_000 {
 		t.Fatal("還原預設", pets.BuyPrice())
+	}
+	// 2026-11-21：以前的 key 清單是手寫的，漏了 expansion 等 4 個，管理網站存不了；現在由 services.FeatureKeys 產生
+	if code, v := e.call("PUT", "/api/admin/feature-settings/upgrades", obj{"building_prices": []int{1, 2}, "building_cut_pct": []int{5, 10}}); code != 200 ||
+		upgrades.BuildingUpgradePrice(1) != 2 {
+		t.Fatal(code, v)
+	}
+	if code, v := e.call("PUT", "/api/admin/feature-settings/expansion", obj{"material_bag_step": 300}); code != 200 ||
+		expansion.Current().MaterialBagStep != 300 {
+		t.Fatal(code, v)
+	}
+	for _, key := range []string{"upgrades", "expansion"} {
+		if e.status("DELETE", "/api/admin/feature-settings/"+key, nil) != 200 {
+			t.Fatal("還原預設", key)
+		}
 	}
 	base := "/api/admin/players/" + itoa(int(pid))
 	for _, c := range []struct {

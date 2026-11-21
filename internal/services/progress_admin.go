@@ -35,6 +35,7 @@ import (
 	"farmgm/internal/game/reputation"
 	"farmgm/internal/game/seedlab"
 	"farmgm/internal/game/specialshop"
+	"farmgm/internal/game/upgrades"
 	"farmgm/internal/repositories/catalog"
 	"farmgm/internal/repositories/crops"
 	"farmgm/internal/repositories/featuresettings"
@@ -45,7 +46,7 @@ import (
 // FeatureKeys 管理網站可調整的規則（顯示順序）。
 var FeatureKeys = []string{checkin.ConfigKey, pets.ConfigKey, specialshop.ConfigKey, achievements.ConfigKey,
 	exploration.ConfigKey, mushroom.ConfigKey, seedlab.ConfigKey, autofish.ConfigKey,
-	hourglass.ConfigKey, aid.ConfigKey, expansion.ConfigKey, cosmetics.ConfigKey, reputation.ConfigKey, auction.ConfigKey}
+	hourglass.ConfigKey, aid.ConfigKey, expansion.ConfigKey, upgrades.ConfigKey, cosmetics.ConfigKey, reputation.ConfigKey, auction.ConfigKey}
 
 // CodexEditable 可在管理網站調整的圖鑑分類（魚類圖鑑來自 farm_fish，不能在這裡改）。
 var CodexEditable = []string{"crop", "animal", "goods", "material"}
@@ -175,6 +176,8 @@ type FeatureSettingsView struct {
 	SeedLab      FeatureSeedLabMeta       `json:"seedlab"`
 	Badges       []FeatureBadgeView       `json:"badges"`    // 名牌（2026-11-19）
 	Cosmetics    []FeatureCosmeticKind    `json:"cosmetics"` // 外觀收藏的各種商品（名牌、主題、帽子、顏色）
+	Defenses     []FeatureItemView        `json:"defenses"`  // 防守設施（設施與道具價格，2026-11-21）
+	Buildings    []FeatureItemView        `json:"buildings"` // 建築（設施與道具價格）
 }
 
 // FeatureCosmeticKind 管理網站「外觀收藏」的一種商品。
@@ -349,6 +352,14 @@ func (a *AdminService) FeatureSettings(ctx context.Context) (FeatureSettingsView
 	for _, code := range balance.ItemOrder {
 		it := balance.ItemOf(code)
 		v.Items = append(v.Items, FeatureItemView{code, it.Name, it.Price})
+	}
+	for _, code := range balance.DefenseOrder {
+		d := balance.DefenseOf(code)
+		v.Defenses = append(v.Defenses, FeatureItemView{code, d.Name, d.Price})
+	}
+	for _, code := range balance.BuildingOrder {
+		b := balance.BuildingOf(code)
+		v.Buildings = append(v.Buildings, FeatureItemView{code, b.Name, b.Price})
 	}
 	for _, b := range cosmetics.Badges {
 		v.Badges = append(v.Badges, FeatureBadgeView{b.Code, b.Emoji, b.Name, b.How})

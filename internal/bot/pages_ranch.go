@@ -16,6 +16,7 @@ import (
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/pets"
+	"farmgm/internal/game/upgrades"
 	"farmgm/internal/repositories/steals"
 	"farmgm/internal/services"
 )
@@ -129,7 +130,7 @@ func (p *Panel) buildAnimals(_ context.Context, data any) (*ui.Embed, error) {
 		lines = append(lines, p.f("%s `#%2d` **%s**　%s", animalEmoji(a.Code), a.AnimalNo, p.s(a.Name), tail))
 	}
 	barns := d.workshop.Counts["barn"]
-	barn := balance.Buildings["barn"]
+	barn := balance.BuildingOf("barn")
 	var shop []string
 	for _, t := range d.types {
 		shop = append(shop, p.f("%s **%s**　💰 **%s** 金\n　🍽️ 餵食 %s 金　⏱️ %s　🥚 產 ×%d %s（%s 金／個）",
@@ -482,7 +483,7 @@ func (p *Panel) buildCraft(_ context.Context, data any) (*ui.Embed, error) {
 		if code == "barn" {
 			continue
 		}
-		b := balance.Buildings[code]
+		b := balance.BuildingOf(code)
 		busy := ws.Busy[code]
 		var state string
 		switch {
@@ -631,16 +632,16 @@ func levelTag(ws services.WorkshopStatus, code string) string {
 	if ws.Counts[code] == 0 || lv == 0 {
 		return ""
 	}
-	return fmt.Sprintf(" Lv.%d（加工時間 -%d%%）", lv, balance.BuildingUpgradeCutPct[lv])
+	return fmt.Sprintf(" Lv.%d（加工時間 -%d%%）", lv, upgrades.BuildingCutPct(lv))
 }
 
 func (p *Panel) buildBuild(_ context.Context, data any) (*ui.Embed, error) {
 	d := data.(craftData)
 	ws := d.workshop
 	var lines []string
-	var options, upgrades []option
+	var options, ups []option
 	for _, code := range balance.BuildingOrder {
-		b := balance.Buildings[code]
+		b := balance.BuildingOf(code)
 		var use string
 		if code == "barn" {
 			use = p.f("安置動物（每座 %d 隻）", balance.BarnSlots)
@@ -662,13 +663,13 @@ func (p *Panel) buildBuild(_ context.Context, data any) (*ui.Embed, error) {
 		}
 		if balance.Upgradable(code) && owned > 0 {
 			lv := ws.Levels[code]
-			if lv >= balance.BuildingMaxLevel() {
-				use += p.f("\n　⬆️ Lv.%d 已滿級：加工時間 -%d%%", lv, balance.BuildingUpgradeCutPct[lv])
+			if lv >= upgrades.BuildingMaxLevel() {
+				use += p.f("\n　⬆️ Lv.%d 已滿級：加工時間 -%d%%", lv, upgrades.BuildingCutPct(lv))
 			} else {
 				use += p.f("\n　⬆️ Lv.%d → Lv.%d：加工時間 -%d%% → -%d%%（%s 金）", lv, lv+1,
-					balance.BuildingUpgradeCutPct[lv], balance.BuildingUpgradeCutPct[lv+1], money(balance.BuildingUpgradePrices[lv]))
-				upgrades = append(upgrades, option{p.f("升級%s到 Lv.%d（%s 金）", p.s(b.Name), lv+1, money(balance.BuildingUpgradePrices[lv])),
-					code, p.f("加工時間 -%d%% → -%d%%", balance.BuildingUpgradeCutPct[lv], balance.BuildingUpgradeCutPct[lv+1]), "⬆️"})
+					upgrades.BuildingCutPct(lv), upgrades.BuildingCutPct(lv+1), money(upgrades.BuildingUpgradePrice(lv)))
+				ups = append(ups, option{p.f("升級%s到 Lv.%d（%s 金）", p.s(b.Name), lv+1, money(upgrades.BuildingUpgradePrice(lv))),
+					code, p.f("加工時間 -%d%% → -%d%%", upgrades.BuildingCutPct(lv), upgrades.BuildingCutPct(lv+1)), "⬆️"})
 			}
 		}
 		lines = append(lines, p.f("🏭 **%s**%s　💰 **%s** 金　%s\n　📝 %s", p.s(b.Name), levelTag(ws, code), money(b.Price), state, use))
@@ -685,22 +686,22 @@ func (p *Panel) buildBuild(_ context.Context, data any) (*ui.Embed, error) {
 	}, 0, "")
 	// 加工設施升級（2026-11-17）：選了先顯示確認按鈕，再按一次才扣錢
 	upgrading := strings.TrimPrefix(p.confirm, "upgrade:")
-	if !strings.HasPrefix(p.confirm, "upgrade:") || !slices.ContainsFunc(upgrades, func(o option) bool { return o.value == upgrading }) {
+	if !strings.HasPrefix(p.confirm, "upgrade:") || !slices.ContainsFunc(ups, func(o option) bool { return o.value == upgrading }) {
 		upgrading = ""
 	}
-	if len(upgrades) > 0 {
-		p.selectMenu(p.s("⬆️ 升級加工設施（縮短加工時間）…"), upgrades, func(ctx context.Context, it ui.Interaction, code string) error {
+	if len(ups) > 0 {
+		p.selectMenu(p.s("⬆️ 升級加工設施（縮短加工時間）…"), ups, func(ctx context.Context, it ui.Interaction, code string) error {
 			p.confirm = "upgrade:" + code
 			lv := ws.Levels[code]
 			p.refresh(ctx, it, p.f("⚠️ %s升到 Lv.%d 需要 %s 金幣，加工時間 -%d%%（已排隊的訂單不變）。按「確認升級」完成。",
-				p.s(balance.Buildings[code].Name), lv+1, money(balance.BuildingUpgradePrices[lv]), balance.BuildingUpgradeCutPct[lv+1]), nil, p.s("重繪"), time.Time{})
+				p.s(balance.BuildingOf(code).Name), lv+1, money(upgrades.BuildingUpgradePrice(lv)), upgrades.BuildingCutPct(lv+1)), nil, p.s("重繪"), time.Time{})
 			return nil
 		}, 1, upgrading)
 	}
 	if upgrading != "" {
 		code, lv := upgrading, ws.Levels[upgrading]
-		price := balance.BuildingUpgradePrices[lv]
-		p.button(p.f("確認升級%s（%s 金）", p.s(balance.Buildings[code].Name), money(price)), func(ctx context.Context, it ui.Interaction) error {
+		price := upgrades.BuildingUpgradePrice(lv)
+		p.button(p.f("確認升級%s（%s 金）", p.s(balance.BuildingOf(code).Name), money(price)), func(ctx context.Context, it ui.Interaction) error {
 			p.act(ctx, it, p.call("upgrade_building", func(ctx context.Context) (services.ActionResult, error) {
 				return p.svc().UpgradeBuilding(ctx, p.playerID, code)
 			}), actOpts{})
@@ -761,7 +762,7 @@ func (p *Panel) buildDefense(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	var shop []string
 	for _, code := range balance.DefenseOrder {
-		x := balance.Defenses[code]
+		x := balance.DefenseOf(code)
 		where := p.s("守護全部農田")
 		if x.Range != nil {
 			where = p.f("守護連續 %d 格（可調整）", *x.Range)
@@ -784,10 +785,10 @@ func (p *Panel) buildDefense(_ context.Context, data any) (*ui.Embed, error) {
 		p.f("🔦 巡查券：**%d** 張（可查看近 %d 天誰來偷過菜）", d.tickets, balance.PatrolDays),
 	)}
 
-	ticket := balance.Items[balance.ItemPatrolTicket]
+	ticket := balance.ItemOf(balance.ItemPatrolTicket)
 	var options []option
 	for _, code := range balance.DefenseOrder {
-		x := balance.Defenses[code]
+		x := balance.DefenseOf(code)
 		options = append(options, option{p.f("%s（%s 金）", p.s(x.Name), money(x.Price)), code, p.f("持有 %d/%d", st.Owned[code], x.MaxPerFarm), "🛡️"})
 	}
 	options = append(options, option{p.f("%s（%s 金）", p.s(ticket.Name), money(ticket.Price)), balance.ItemPatrolTicket, p.s("買 1 張"), "🔦"})

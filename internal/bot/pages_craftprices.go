@@ -62,7 +62,7 @@ func (p *Panel) buildCraftPrices(_ context.Context, data any) (*ui.Embed, error)
 		if len(lines) == 0 {
 			continue
 		}
-		title := "🏭 " + p.s(balance.Buildings[code].Name)
+		title := "🏭 " + p.s(balance.BuildingOf(code).Name)
 		if i := indexRecipeBuilding(recipes, code); i >= 0 && !recipes[i].Built {
 			title += p.s("（🔒 未建造）")
 		}

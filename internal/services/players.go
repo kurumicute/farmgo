@@ -518,7 +518,7 @@ func (s *GameService) status(ctx context.Context, t *db.Tx, farm *models.Farm, p
 		return FarmStatus{}, err
 	} else if hive.Placed() {
 		hive.Accrue(now)
-		hiveInfo = &HiveInfo{Plot: hive.Plot, Level: hive.Level, Honey: hive.Honey, Capacity: beehive.Capacity}
+		hiveInfo = &HiveInfo{Plot: hive.Plot, Level: hive.Level, Honey: hive.Honey, Capacity: beehive.Capacity()}
 		for i := range infos {
 			if infos[i].PlotNumber == hive.Plot && infos[i].State == rules.PlotEmpty {
 				infos[i].State = rules.PlotBeehive

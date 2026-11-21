@@ -233,7 +233,7 @@ func (s *GameService) plantWith(ctx context.Context, t *db.Tx, farm *models.Farm
 			return "", nil, gameerr.New(gameerr.PlotOccupied, "第 %d 格放了蜂箱，不能種植。", plot.PlotNumber)
 		}
 		if beehive.IsNeighbor(hive.Plot, plot.PlotNumber) {
-			mutationBonus += beehive.MutationBP[hive.Level]
+			mutationBonus += beehive.MutationBP(hive.Level)
 		}
 	}
 	quality := genetics.RollQuality(genetics.EffectiveQualityBP(settings, farm.Level, qualityBonus), s.geneticsRng())
@@ -1348,7 +1348,7 @@ func (s *GameService) ExpandWarehouse(ctx context.Context, playerID int64) (Acti
 		}
 		before := farm.WarehouseCapacity
 		farm.Gold -= price
-		farm.WarehouseCapacity = min(before+balance.WarehouseExpansionStep, expansion.WarehouseMax())
+		farm.WarehouseCapacity = min(before+expansion.WarehouseStep(), expansion.WarehouseMax())
 		if err := s.saveFarm(ctx, t, farm, db.C("gold", farm.Gold), db.C("warehouse_capacity", farm.WarehouseCapacity)); err != nil {
 			return ActionResult{}, err
 		}
@@ -1424,7 +1424,7 @@ func (s *GameService) plotGuards(ctx context.Context, t *db.Tx, farmID int64, pl
 	}
 	covering := map[string]bool{}
 	for _, d := range list {
-		if rules.DefenseCovers(balance.Defenses[d.DeviceCode].Range, d.StartPlot, plotNumber) {
+		if rules.DefenseCovers(balance.DefenseOf(d.DeviceCode).Range, d.StartPlot, plotNumber) {
 			covering[d.DeviceCode] = true
 		}
 	}

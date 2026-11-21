@@ -197,7 +197,7 @@ func TestFeatureSettingsView(t *testing.T) {
 			t.Fatal(k.Key)
 		}
 	}
-	if strings.Join(keys, ",") != "checkin,pets,special_shop,achievements,exploration,mushroom,seedlab,autofish,hourglass,aid,expansion,cosmetics,reputation,auction" {
+	if strings.Join(keys, ",") != "checkin,pets,special_shop,achievements,exploration,mushroom,seedlab,autofish,hourglass,aid,expansion,upgrades,cosmetics,reputation,auction" {
 		t.Fatal(keys)
 	}
 	if len(view.Achievements) != len(achievements.BaseAchievements) || len(view.Items) != len(balance.Items) {

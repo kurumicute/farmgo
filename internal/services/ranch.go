@@ -22,6 +22,7 @@ import (
 	"farmgm/internal/game/genetics"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/seasons"
+	"farmgm/internal/game/upgrades"
 	"farmgm/internal/numfmt"
 	"farmgm/internal/repositories/animals"
 	"farmgm/internal/repositories/catalog"
@@ -274,8 +275,8 @@ type PetView struct {
 // ---------- 查詢名稱 ----------
 
 func FindBuilding(key string) string {
-	return findCode(balance.BuildingOrder, func(c string) string { return balance.Buildings[c].Name },
-		func(c string) []string { return balance.Buildings[c].Aliases }, key)
+	return findCode(balance.BuildingOrder, func(c string) string { return balance.BuildingOf(c).Name },
+		func(c string) []string { return balance.BuildingOf(c).Aliases }, key)
 }
 
 func FindRecipe(key string) string {
@@ -328,11 +329,11 @@ func (r *RanchService) Build(ctx context.Context, playerID int64, key string) (A
 	if code == "" {
 		names := make([]string, len(balance.BuildingOrder))
 		for i, c := range balance.BuildingOrder {
-			names[i] = balance.Buildings[c].Name
+			names[i] = balance.BuildingOf(c).Name
 		}
 		return ActionResult{}, gameerr.NotFoundf("沒有「%s」這種設施。可建造：%s", key, strings.Join(names, "、"))
 	}
-	b := balance.Buildings[code]
+	b := balance.BuildingOf(code)
 	return inTx(ctx, r.GameService, func(t *db.Tx) (ActionResult, error) {
 		farm, err := r.lockedFarm(ctx, t, playerID)
 		if err != nil {
@@ -377,13 +378,13 @@ func (r *RanchService) Build(ctx context.Context, playerID int64, key string) (A
 	})
 }
 
-// UpgradeBuilding 加工設施升級（2026-11-17，Go 版新增）：每級縮短加工時間，最多 balance.BuildingMaxLevel() 級。
+// UpgradeBuilding 加工設施升級（2026-11-17，Go 版新增）：每級縮短加工時間，最多 upgrades.BuildingMaxLevel() 級。
 // 已經在排隊的訂單完成時間不變，升級後新開的訂單才縮短。
 func (r *RanchService) UpgradeBuilding(ctx context.Context, playerID int64, code string) (ActionResult, error) {
 	if !balance.Upgradable(code) {
 		return ActionResult{}, gameerr.Validationf("只有磨坊、烘焙坊、果醬工坊可以升級。")
 	}
-	b := balance.Buildings[code]
+	b := balance.BuildingOf(code)
 	return inTx(ctx, r.GameService, func(t *db.Tx) (ActionResult, error) {
 		farm, err := r.lockedFarm(ctx, t, playerID)
 		if err != nil {
@@ -398,10 +399,10 @@ func (r *RanchService) UpgradeBuilding(ctx context.Context, playerID int64, code
 			return ActionResult{}, gameerr.Validationf("還沒有%s，請先建造。", b.Name)
 		}
 		cur := list[i]
-		if cur.Level >= balance.BuildingMaxLevel() {
+		if cur.Level >= upgrades.BuildingMaxLevel() {
 			return ActionResult{}, gameerr.New(gameerr.AlreadyExists, "%s已經升到最高等級 Lv.%d。", b.Name, cur.Level)
 		}
-		price, next := balance.BuildingUpgradePrices[cur.Level], cur.Level+1
+		price, next := upgrades.BuildingUpgradePrice(cur.Level), cur.Level+1
 		if farm.Gold < price {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：%s升到 Lv.%d 需要 %d，目前只有 %d。", b.Name, next, price, farm.Gold)
 		}
@@ -412,7 +413,7 @@ func (r *RanchService) UpgradeBuilding(ctx context.Context, playerID int64, code
 		if err := r.saveFarm(ctx, t, farm, db.C("gold", farm.Gold)); err != nil {
 			return ActionResult{}, err
 		}
-		pct := balance.BuildingUpgradeCutPct[next]
+		pct := upgrades.BuildingCutPct(next)
 		if err := r.record(ctx, t, farm, rules.EvBuild, fmt.Sprintf("升級%s到 Lv.%d（加工時間 -%d%%），金幣 -%d", b.Name, next, pct, price),
 			rec{ItemCode: code, Quantity: 1, GoldDelta: -price}); err != nil {
 			return ActionResult{}, err
@@ -859,9 +860,9 @@ func (r *RanchService) Recipes(ctx context.Context, playerID *int64) ([]RecipeVi
 	rows := make([]RecipeView, 0, len(balance.RecipeOrder))
 	for _, code := range balance.RecipeOrder {
 		rc := balance.Recipes[code]
-		v := RecipeView{Code: code, Name: rc.Name, BuildingCode: rc.Building, BuildingName: balance.Buildings[rc.Building].Name,
+		v := RecipeView{Code: code, Name: rc.Name, BuildingCode: rc.Building, BuildingName: balance.BuildingOf(rc.Building).Name,
 			Built: counts[rc.Building] > 0, Inputs: map[string]int{}, OutputName: ItemName(rc.Output, names),
-			OutputQuantity: rc.OutputQty, Seconds: balance.CraftSeconds(rc.Seconds, levels[rc.Building])}
+			OutputQuantity: rc.OutputQty, Seconds: upgrades.CraftSeconds(rc.Seconds, levels[rc.Building])}
 		for _, item := range rc.InputOrder {
 			n := ItemName(item, names)
 			v.Inputs[n] = rc.Inputs[item]
@@ -903,7 +904,7 @@ func (r *RanchService) StartCraft(ctx context.Context, playerID int64, key strin
 		return ActionResult{}, gameerr.Validationf("單張訂單最多 %d 份。", balance.CraftMaxQuantity)
 	}
 	rc := balance.Recipes[code]
-	buildingName := balance.Buildings[rc.Building].Name
+	buildingName := balance.BuildingOf(rc.Building).Name
 	return inTx(ctx, r.GameService, func(t *db.Tx) (ActionResult, error) {
 		farm, err := r.lockedFarm(ctx, t, playerID)
 		if err != nil {
@@ -1014,7 +1015,7 @@ func (r *RanchService) startOrder(ctx context.Context, t *db.Tx, farm *models.Fa
 	out := sp.OutputQty * quantity
 	order, err := addOrder(ctx, t, ranch.NewOrder{FarmID: farm.ID, RecipeCode: sp.Code, BuildingCode: sp.Building,
 		Quantity: quantity, Inputs: needed, OutputCode: sp.Output, OutputQuantity: out, Status: "in_progress",
-		StartedAt: start, ReadyAt: start.Add(time.Duration(balance.CraftSeconds(sp.Seconds*quantity, levels[sp.Building])) * time.Second)})
+		StartedAt: start, ReadyAt: start.Add(time.Duration(upgrades.CraftSeconds(sp.Seconds*quantity, levels[sp.Building])) * time.Second)})
 	if err != nil {
 		return ActionResult{}, err
 	}
