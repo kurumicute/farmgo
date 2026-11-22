@@ -282,8 +282,7 @@ func TestMaterialsGoToMaterialBagNotWarehouse(t *testing.T) {
 		e.status(pid).WarehouseUsed != 3 {
 		t.Fatalf("%+v", bp)
 	}
-	_, err := e.s.Buy(e.ctx, pid, "fertilizer", 1) // 倉庫本身仍然是滿的
-	wantMsg(t, err, gameerr.WarehouseFull, "倉庫空間不足")
+	e.ok(e.s.Buy(e.ctx, pid, "fertilizer", 1)) // 道具也放素材背包（2026-11-22），倉庫滿了也能買
 	e.ok(e.s.BuySeeds(e.ctx, pid, "wheat", 1)) // 種子放素材背包，倉庫滿了也能買
 	if e.status(pid).WarehouseUsed != 3 {
 		t.Fatal("種子不應佔倉庫")

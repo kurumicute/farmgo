@@ -111,7 +111,7 @@ func (s *GameService) BuyItem(ctx context.Context, playerID int64, itemCode stri
 				return ActionResult{}, err
 			}
 		} else {
-			if err := s.ensureSpace(ctx, t, farm, quantity); err != nil {
+			if err := s.ensureItemSpace(ctx, t, farm, itemCode, quantity); err != nil { // 消耗型道具放素材背包（2026-11-22）
 				return ActionResult{}, err
 			}
 			if err := inventory.Add(ctx, t, farm.ID, itemCode, quantity, "normal", "none"); err != nil {

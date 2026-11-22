@@ -250,7 +250,7 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 		bagText = p.f("💰 **%s** 金", money(bagPrice))
 	}
 	xc := expansion.Current()
-	bag := p.f("%s🎒 **素材背包擴充**（Lv.%d/%d）　%s　🎒 素材背包 **%d/%d**\n　📝 每級 +%d 格（山洞素材、假幣與種子放這裡），價格每級 ×%s",
+	bag := p.f("%s🎒 **素材背包擴充**（Lv.%d/%d）　%s　🎒 素材背包 **%d/%d**\n　📝 每級 +%d 格（山洞素材、假幣、種子與道具放這裡），價格每級 ×%s",
 		mark("special:material_bag"), d.matLevel, xc.MaterialBagLevels, bagText, d.matUsed, d.matCap, xc.MaterialBagStep,
 		pctFactor(xc.MaterialBagGrowthPct))
 	var events []string

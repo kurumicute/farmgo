@@ -8,6 +8,7 @@ import (
 
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
+	"farmgm/internal/game/balance"
 	"farmgm/internal/game/exploration"
 )
 
@@ -20,12 +21,23 @@ const SeedPrefix = "seed_"
 // seedLikeSQL SQL 條件：種子（LIKE 的 \_ 表示底線本身）。
 const seedLikeSQL = `item_code LIKE 'seed\_%'`
 
-// BagCodes 放素材背包的固定物品代碼：山洞素材、假幣與稀有作物種子（其他種子以 SeedPrefix 判斷）。
-func BagCodes() []string {
-	return append(MaterialCodes(), exploration.RareSeedCodes()...)
+// ConsumableCodes 消耗型道具（化肥、沙漏…；2026-11-22 Go 版新增：改放素材背包，方便一次多買）。
+func ConsumableCodes() []string {
+	var codes []string
+	for _, code := range balance.ItemOrder {
+		if balance.Items[code].Kind == "consumable" {
+			codes = append(codes, code)
+		}
+	}
+	return codes
 }
 
-// IsMaterial 是否放素材背包（不佔倉庫）：山洞素材、假幣與所有種子。
+// BagCodes 放素材背包的固定物品代碼：山洞素材、假幣、稀有作物種子與消耗型道具（其他種子以 SeedPrefix 判斷）。
+func BagCodes() []string {
+	return append(append(MaterialCodes(), exploration.RareSeedCodes()...), ConsumableCodes()...)
+}
+
+// IsMaterial 是否放素材背包（不佔倉庫）：山洞素材、假幣、所有種子與消耗型道具。
 func IsMaterial(itemCode string) bool {
 	return strings.HasPrefix(itemCode, SeedPrefix) || slices.Contains(BagCodes(), itemCode)
 }
@@ -67,7 +79,7 @@ func TotalQuantity(ctx context.Context, t *db.Tx, farmID int64) (int, error) {
 	return n, err
 }
 
-// MaterialQuantity 素材背包已使用空間（山洞素材、假幣與所有種子的總數）。
+// MaterialQuantity 素材背包已使用空間（山洞素材、假幣、所有種子與消耗型道具的總數）。
 func MaterialQuantity(ctx context.Context, t *db.Tx, farmID int64) (int, error) {
 	n, _, err := db.QueryValue[int](ctx, t, `
 		SELECT coalesce(sum(quantity), 0) FROM inventory_items WHERE farm_id = $1 AND (item_code = ANY($2) OR `+seedLikeSQL+`)`,

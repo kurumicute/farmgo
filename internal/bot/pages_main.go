@@ -1148,9 +1148,9 @@ func (p *Panel) buildBackpack(_ context.Context, data any) (*ui.Embed, error) {
 	if len(basket.Fish) > 8 {
 		fish = append(fish, p.f("…還有 %d 隻，到「🎣 魚簍」查看", len(basket.Fish)-8))
 	}
-	// 三種容量集中在第一行：倉庫（農產品、動物產品、道具…）、素材背包（素材與種子）、魚簍
+	// 三種容量集中在第一行：倉庫（農產品、動物產品…）、素材背包（素材、種子與消耗型道具）、魚簍
 	e := &ui.Embed{Title: p.s("🎒 ✦ 背包 ✦"), Color: Blue, Description: sections(
-		p.f("📦 倉庫 **%d/%d**　⛰️ 素材背包 **%d/%d**（含種子）　🎣 魚簍 **%d/%d**\n%s",
+		p.f("📦 倉庫 **%d/%d**　⛰️ 素材背包 **%d/%d**（含種子、道具）　🎣 魚簍 **%d/%d**\n%s",
 			bp.Used, bp.Capacity, bp.MaterialUsed, bp.MaterialCapacity, len(basket.Fish), basket.Capacity, bar(bp.Used, bp.Capacity, 16)),
 		Section{Title: p.s("🌰 種子"), Lines: seeds},
 		Section{Title: p.s("🧺 農產品"), Lines: produce},

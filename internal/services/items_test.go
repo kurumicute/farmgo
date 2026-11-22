@@ -299,7 +299,26 @@ func TestBackpackContents(t *testing.T) {
 	if c := bp.Consumables; len(c) != 1 || c[0].Name != "化肥" || c[0].Quantity != 2 || !strings.Contains(c[0].Description, "減少 15%") {
 		t.Fatalf("%+v", c)
 	}
-	if !bp.Tools[0].Owned || !bp.Tools[0].Enabled || bp.Used != 5 || bp.MaterialUsed != 2 { // 種子放素材背包
+	if !bp.Tools[0].Owned || !bp.Tools[0].Enabled || bp.Used != 3 || bp.MaterialUsed != 4 { // 種子與道具放素材背包（2026-11-22）
 		t.Fatalf("%+v %d %d", bp.Tools[0], bp.Used, bp.MaterialUsed)
+	}
+}
+
+// 消耗型道具放素材背包（2026-11-22）：倉庫滿了照樣能買，素材背包滿了才不能買。
+func TestConsumablesGoToMaterialBag(t *testing.T) {
+	e := setup(t)
+	pid := e.player()
+	e.setGold(pid, 100_000)
+	e.setInv(pid, "carrot", "normal", "none", balance.InitialWarehouseCapacity) // 倉庫全滿
+	e.ok(e.s.Buy(e.ctx, pid, "fertilizer", 10))
+	e.ok(e.s.Buy(e.ctx, pid, "hourglass", 2))
+	bp := must[Backpack](t)(e.s.GetBackpack(e.ctx, pid))
+	if bp.Used != balance.InitialWarehouseCapacity || bp.MaterialUsed != 12 {
+		t.Fatalf("倉庫 %d、素材背包 %d", bp.Used, bp.MaterialUsed)
+	}
+	e.setInv(pid, "fertilizer", "normal", "none", bp.MaterialCapacity-2) // 素材背包只剩 0 格（加上 2 個沙漏）
+	_, err := e.s.Buy(e.ctx, pid, "fertilizer", 1)
+	if !gameerr.Is(err, gameerr.WarehouseFull) || !strings.Contains(err.Error(), "素材背包空間不足") {
+		t.Fatal(err)
 	}
 }

@@ -92,7 +92,7 @@ func TestCheckinFullWarehouseConvertsItemsToGold(t *testing.T) {
 	pid := e.player()
 	e.checkin(pid)
 	e.clock.Advance(dayS)
-	e.exec("UPDATE farms SET warehouse_capacity = 1 WHERE player_id = $1", pid)
+	setBag(t, 1) // 道具放素材背包（2026-11-22）
 	before := e.gold(pid)
 	r := e.checkin(pid) // 第 2 天：化肥 ×3 放不下 → 3 × 化肥價格
 	want := 3 * checkin.ItemGoldValue(balance.ItemFertilizer)
@@ -220,7 +220,7 @@ func TestFullWarehouseConvertsAchievementItems(t *testing.T) {
 	e := setup(t)
 	pid := e.achiever(e.group("主群組"))
 	e.harvestWheat(pid, "legendary", 1)
-	e.exec("UPDATE farms SET warehouse_capacity = 1 WHERE player_id = $1", pid)
+	setBag(t, 1) // 道具放素材背包（2026-11-22）
 	before := e.gold(pid)
 	r := e.ok(e.p.ClaimAchievements(e.ctx, pid))
 	gained := 3*balance.Items[balance.ItemPatrolTicket].Price + 100 // 加上新手引導「第一次收成」的 100 金（2026-11-18）

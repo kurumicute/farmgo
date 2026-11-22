@@ -1,4 +1,9 @@
 {
+ "（含商店買的種子）、": " (including shop seeds), ",
+ "化肥、沙漏等消耗道具": "consumable items such as Fertilizer and Hourglasses",
+ "放進獨立的": " go into a separate ",
+ "；素材背包和探險素材、消耗道具共用，上限": "; the Material Bag is shared with expedition materials and consumable items and holds up to",
+ "：道具放進素材背包；素材背包放不下時改發等值金幣（道具商店價格），不會因為放不下而領不到。簽到與成就獎勵不計入排名。": ": Items go to your Material Bag; if it is full, you get their value in Gold instead (Item Shop price), so you never miss out. Check-in and achievement rewards don’t count toward rankings.",
  " → 300 格後 ${num.format(s.warehouse_late_base)} 起每次 ×${s.warehouse_late_growth_pct / 100}": " → after 300 slots, starting at ${num.format(s.warehouse_late_base)}, ×${s.warehouse_late_growth_pct / 100} each time",
  " → 第 17 格起是第二塊農田：${num.format(s.land_base)} 起每格 ×${s.land_growth_pct / 100}": " → from Plot #17 on it's Field 2: starting at ${num.format(s.land_base)}, ×${s.land_growth_pct / 100} per plot",
  " 或前綴 ": " or the prefix ",

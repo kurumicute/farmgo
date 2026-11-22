@@ -424,7 +424,7 @@ func (p *Panel) checkinNote(ctx context.Context) string {
 	// 2026-11-16 縮短成一行：每次換頁都可能出現在畫面上，原本附帶的說明（簽到紀錄在哪裡）移到說明頁
 	note := p.f("📅 每日簽到成功！連續第 **%d** 天 +%s", r.Streak, r.RewardText)
 	if r.Converted {
-		note += p.s("（倉庫滿，改發金幣）")
+		note += p.s("（素材背包滿，改發金幣）")
 	}
 	return note
 }

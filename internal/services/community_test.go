@@ -256,11 +256,11 @@ func TestProportionalRewardsAndItemRewards(t *testing.T) {
 	}
 	qi := e.quest(w.a, func(q *NewQuest) { q.Target, q.RewardType, q.RewardAmount = 2, "fertilizer", 3 })
 	e.harvestIn(w.carol, w.a, 2)
-	used := must[Inventory](t)(e.s.GetInventory(e.ctx, w.carol)).Used
-	e.give(w.carol, "carrot", 48-used) // 背包 48/50
+	bp := must[Backpack](t)(e.s.GetBackpack(e.ctx, w.carol))
+	setBag(t, bp.MaterialUsed+2) // 道具放素材背包（2026-11-22）：只剩 2 格
 	_, err := e.co.ClaimQuest(e.ctx, w.a, w.carol, qi)
-	wantMsg(t, err, gameerr.WarehouseFull, "保留") // 背包不足：獎勵保留
-	e.ok(e.r.Sell(e.ctx, w.carol, "carrot", 10, "normal", "none"))
+	wantMsg(t, err, gameerr.WarehouseFull, "保留") // 空間不足：獎勵保留
+	setBag(t, bp.MaterialUsed+10)
 	if r := e.ok(e.co.ClaimQuest(e.ctx, w.a, w.carol, qi)); !strings.Contains(r.Message, "3 個化肥") ||
 		must[Backpack](t)(e.s.GetBackpack(e.ctx, w.carol)).Consumables[0].Quantity != 3 {
 		t.Fatal(r.Message)

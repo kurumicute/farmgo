@@ -354,7 +354,7 @@ func TestSetInventoryAddEditDelete(t *testing.T) {
 		e.scalar("SELECT count(*) FROM game_transactions WHERE event_type = 'admin_adjust' AND description LIKE '管理員調整%'") != 4 {
 		t.Fatal(qty)
 	}
-	_, err := e.a.SetInventory(e.ctx, actor, pid, "egg", "normal", "none", balance.InitialWarehouseCapacity)
+	_, err := e.a.SetInventory(e.ctx, actor, pid, "egg", "normal", "none", balance.InitialWarehouseCapacity+1)
 	e.adminErr(err, gameerr.WarehouseFull)
 	_, err = e.a.SetInventory(e.ctx, actor, pid, "gold_bar", "normal", "none", 1)
 	e.adminErr(err, gameerr.NotFound)

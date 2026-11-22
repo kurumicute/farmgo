@@ -22,6 +22,7 @@ import (
 	"farmgm/internal/game/achievements"
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/checkin"
+	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/mushroom"
@@ -232,7 +233,7 @@ func (p *ProgressService) InGroupContext(groupID *int64) *ProgressService {
 
 // ---------- 共用：發放獎勵 ----------
 
-// grantReward 發放金幣與道具（呼叫端已鎖農場）；道具放不進倉庫時改發等值金幣（道具商店價格）。
+// grantReward 發放金幣與道具（呼叫端已鎖農場）；道具放不進素材背包（2026-11-22 起道具放素材背包）時改發等值金幣（道具商店價格）。
 // 回傳 (實際金幣, 實際道具, 是否有道具改發金幣)。
 func (p *ProgressService) grantReward(ctx context.Context, t *db.Tx, farm *models.Farm, ev rules.EventType, label string,
 	gold int, items map[string]int) (int, map[string]int, bool, error) {
@@ -241,17 +242,29 @@ func (p *ProgressService) grantReward(ctx context.Context, t *db.Tx, farm *model
 	if err != nil {
 		return 0, nil, false, err
 	}
+	matUsed, err := inventory.MaterialQuantity(ctx, t, farm.ID)
+	if err != nil {
+		return 0, nil, false, err
+	}
+	// 消耗型道具放素材背包（2026-11-22），其他物品放倉庫
 	space := farm.WarehouseCapacity - used
+	matSpace := expansion.MaterialBagCapacity(farm.MaterialBagLevel, exploration.BagCapacity()) - matUsed
+	bagFull := false
 	codes := checkin.SortedItemCodes(items)
 	var order []string
 	for _, code := range codes {
 		qty := items[code]
-		if qty <= space {
+		room := &space
+		if inventory.IsMaterial(code) {
+			room = &matSpace
+		}
+		if qty <= *room {
 			given[code] = qty
 			order = append(order, code)
-			space -= qty
+			*room -= qty
 		} else {
 			converted = true
+			bagFull = bagFull || room == &matSpace
 			gold += balance.Items[code].Price * qty
 		}
 	}
@@ -273,6 +286,9 @@ func (p *ProgressService) grantReward(ctx context.Context, t *db.Tx, farm *model
 		note := ""
 		if converted {
 			note = "（倉庫已滿，道具改發金幣）"
+			if bagFull {
+				note = "（素材背包已滿，道具改發金幣）"
+			}
 		}
 		if err := p.record(ctx, t, farm, ev, truncRunes(fmt.Sprintf("%s：金幣 +%d%s", label, gold, note), 200),
 			rec{GoldDelta: gold}); err != nil {
@@ -967,7 +983,7 @@ func (p *ProgressService) ClaimAchievements(ctx context.Context, playerID int64)
 		}
 		message := txf(ctx, "🏅 領取 %d 個成就獎勵：\n%s", len(ready), strings.Join(lines, "\n"))
 		if convertedAny {
-			message += "\n（倉庫已滿，部分道具改發等值金幣）"
+			message += "\n（素材背包已滿，部分道具改發等值金幣）"
 		}
 		if gotTitle {
 			message += "\n🎖️ 新稱號可以在下方「稱號」設定顯示。"
