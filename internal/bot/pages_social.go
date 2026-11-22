@@ -47,8 +47,8 @@ func stealFooter(glove bool) string {
 	if glove {
 		return per + "🧤 傳說扒手手套：不限人數與次數；對方可能有防守設施。"
 	}
-	return per + fmt.Sprintf("每天只能偷同一位玩家 %d 格田、每人每天最多被 %d 人偷；對方可能有防守設施。",
-		balance.StealPlotsPerVictimPerDay, balance.StealThievesPerVictimPerDay)
+	return per + fmt.Sprintf("每天只能偷同一位玩家 %d 格田、最多試 %d 次（被防守設施擋下也算）、每人每天最多被 %d 人偷；對方可能有防守設施。",
+		balance.StealPlotsPerVictimPerDay, balance.StealAttemptsPerVictimPerDay, balance.StealThievesPerVictimPerDay)
 }
 
 func (p *Panel) requireGuildForSteal() error {
@@ -127,7 +127,7 @@ func (p *Panel) buildSteal(_ context.Context, data any) (*ui.Embed, error) {
 		desc, emoji := p.f("目前沒有可偷的作物｜%s", r.FarmName), "🌱"
 		switch {
 		case r.LimitReached:
-			desc, emoji = p.s("今天已經偷過了｜")+r.FarmName, "✅"
+			desc, emoji = p.f("今天已偷過或試滿 %d 次｜%s", balance.StealAttemptsPerVictimPerDay, r.FarmName), "✅"
 		case r.VictimFull:
 			desc, emoji = p.f("今天已被 %d 人偷過｜%s", balance.StealThievesPerVictimPerDay, r.FarmName), "🔒"
 		case r.Stealable != 0:
@@ -208,6 +208,9 @@ func (p *Panel) buildStealFarm(_ context.Context, data any) (*ui.Embed, error) {
 	switch {
 	case v.LimitReached:
 		status = p.f("✅ 你今天已經偷過 %s 的田了（每天只能偷同一位玩家 %d 格），明天再來。", escapeMD(v.PlayerName), balance.StealPlotsPerVictimPerDay)
+	case v.AttemptsReached:
+		status = p.f("🛡️ 你今天對 %s 下手 %d 次都被擋下了（被擋下也算一次，每天最多試 %d 次），明天再來。", escapeMD(v.PlayerName),
+			v.AttemptsUsed, balance.StealAttemptsPerVictimPerDay)
 	case v.VictimFull:
 		status = p.f("🔒 %s 今天已經被 %d 個人偷過了（每人每天最多被 %d 人偷），明天再來。", escapeMD(v.PlayerName),
 			balance.StealThievesPerVictimPerDay, balance.StealThievesPerVictimPerDay)
@@ -216,7 +219,8 @@ func (p *Panel) buildStealFarm(_ context.Context, data any) (*ui.Embed, error) {
 	case len(v.Targets) > 0 && v.Glove:
 		status = p.f("🧤 傳說扒手手套生效中：有 **%d** 格可以偷，每格都能下手，不限次數。", len(v.Targets))
 	case len(v.Targets) > 0:
-		status = p.f("🥷 有 **%d** 格可以偷，用下方選單選一格；今天只能偷他 %d 格，選好再下手。", len(v.Targets), balance.StealPlotsPerVictimPerDay)
+		status = p.f("🥷 有 **%d** 格可以偷，用下方選單選一格；今天只能偷他 %d 格、最多試 %d 次（被擋下也算，還剩 **%d** 次），選好再下手。",
+			len(v.Targets), balance.StealPlotsPerVictimPerDay, balance.StealAttemptsPerVictimPerDay, v.AttemptsLeft)
 	default:
 		status = p.s("🌱 目前沒有可以偷的成熟作物（偷過的作物不能再偷）。")
 	}

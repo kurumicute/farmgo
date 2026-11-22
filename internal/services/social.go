@@ -371,7 +371,8 @@ func (s *SocialService) stealCandidates(ctx context.Context, t *db.Tx, groupID, 
 	if !glove {
 		plots, thieves = intPtr(balance.StealPlotsPerVictimPerDay), intPtr(balance.StealThievesPerVictimPerDay)
 	}
-	rows, err := steals.CandidatePlots(ctx, t, groupID, playerID, now, witherCutoff(now), taipeiDayStart(now), plots, thieves)
+	rows, err := steals.CandidatePlots(ctx, t, groupID, playerID, now, witherCutoff(now), taipeiDayStart(now), plots,
+		intPtr(balance.StealAttemptsPerVictimPerDay), thieves)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -410,7 +411,7 @@ type StealPlayer struct {
 	PlayerName   string
 	FarmName     string
 	Stealable    int
-	LimitReached bool
+	LimitReached bool // 今天不能再偷這位玩家：已經偷到 1 格，或下手次數（含被擋下）用完（2026-11-22）
 	VictimFull   bool
 }
 
@@ -440,7 +441,7 @@ func (s *SocialService) StealPlayers(ctx context.Context, groupID, playerID int6
 		}
 		var limited, full []int64
 		if !glove {
-			if limited, err = steals.VictimsAtLimit(ctx, t, playerID, day, balance.StealPlotsPerVictimPerDay); err != nil {
+			if limited, err = steals.VictimsAtLimit(ctx, t, playerID, day, balance.StealPlotsPerVictimPerDay, balance.StealAttemptsPerVictimPerDay); err != nil {
 				return nil, err
 			}
 			if full, err = steals.VictimsFull(ctx, t, playerID, day, balance.StealThievesPerVictimPerDay); err != nil {
@@ -527,6 +528,10 @@ func (s *SocialService) StealFarmView(ctx context.Context, groupID, thiefPlayerI
 		if err != nil {
 			return StealFarmView{}, err
 		}
+		attempts, err := steals.AttemptsSince(ctx, t, thiefPlayerID, victimPlayerID, day)
+		if err != nil {
+			return StealFarmView{}, err
+		}
 		others, err := steals.ThievesSince(ctx, t, victimPlayerID, day, &thiefPlayerID)
 		if err != nil {
 			return StealFarmView{}, err
@@ -542,11 +547,14 @@ func (s *SocialService) StealFarmView(ctx context.Context, groupID, thiefPlayerI
 			}
 		}
 		if glove {
-			stolen, others = 0, 0
+			stolen, others, attempts = 0, 0, 0
 		}
+		limit := stolen >= balance.StealPlotsPerVictimPerDay
 		v := StealFarmView{PlayerID: victimPlayerID, PlayerName: st.PlayerName, FarmName: st.Name, Plots: st.Plots, Now: st.Now,
-			Targets: []StealTarget{}, LimitReached: stolen >= balance.StealPlotsPerVictimPerDay, WarehouseFull: free <= 0,
-			VictimFull: stolen < balance.StealPlotsPerVictimPerDay && others >= balance.StealThievesPerVictimPerDay, Glove: glove}
+			Targets: []StealTarget{}, LimitReached: limit, WarehouseFull: free <= 0,
+			AttemptsUsed: attempts, AttemptsLeft: max(0, balance.StealAttemptsPerVictimPerDay-attempts),
+			AttemptsReached: !limit && attempts >= balance.StealAttemptsPerVictimPerDay,
+			VictimFull:      !limit && attempts < balance.StealAttemptsPerVictimPerDay && others >= balance.StealThievesPerVictimPerDay, Glove: glove}
 		for _, tg := range targets {
 			if tg.PlayerID == victimPlayerID {
 				v.Targets = append(v.Targets, tg)
@@ -657,6 +665,16 @@ func (s *SocialService) StealCrop(ctx context.Context, groupID, thiefPlayerID, v
 				p := balance.StealPlotsPerVictimPerDay
 				return ActionResult{}, gameerr.New(gameerr.AlreadyStolen,
 					"你今天已經偷過這位玩家的 %d 格土地了，每天只能偷同一位玩家 %d 格田，明天（台灣時間 0 點後）再來。", p, p)
+			}
+			// 2026-11-22 Go 版新增：被防守設施擋下也算一次下手，每天對同一位玩家最多試 StealAttemptsPerVictimPerDay 次
+			tries, err := steals.AttemptsSince(ctx, t, thiefPlayerID, victimPlayerID, day)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			if tries >= balance.StealAttemptsPerVictimPerDay {
+				a := balance.StealAttemptsPerVictimPerDay
+				return ActionResult{}, gameerr.New(gameerr.AlreadyStolen,
+					"你今天已經對這位玩家下手 %d 次了（被擋下也算），每天對同一位玩家最多試 %d 次，明天（台灣時間 0 點後）再來。", a, a)
 			}
 			// 雙方農場列已鎖定，同一位被偷者的偷菜依序執行，人數上限不會被同時偷菜突破
 			others, err := steals.ThievesSince(ctx, t, victimPlayerID, day, &thiefPlayerID)

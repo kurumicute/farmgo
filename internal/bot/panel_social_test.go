@@ -102,7 +102,7 @@ func TestStealByChoosingPlayerAndPlot(t *testing.T) {
 	}
 	a.click("換一位玩家")
 	first := a.panel.View.Selects()[0].Options
-	if !strings.HasPrefix(first[0].Description, "今天已經偷過了") {
+	if !strings.HasPrefix(first[0].Description, "今天已偷過或試滿") {
 		t.Fatal(first[0].Description)
 	}
 	e.checkLedger()

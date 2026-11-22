@@ -4,6 +4,7 @@ package steals
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -58,11 +59,22 @@ func PlotsStolenSince(ctx context.Context, t *db.Tx, thiefPlayerID, victimPlayer
 	return n, err
 }
 
-// victimsAtLimitSQL 自 since 起偷菜者已達每日土地上限的被偷者 ID（子查詢；參數 thief、since、limit 的編號由 p 指定）。
-func victimsAtLimitSQL(thief, since, limit int) string {
+// AttemptsSince 偷菜者自 since 起對同一位玩家下手的次數（成功與被阻止都算；Go 版新增，2026-11-22）。
+func AttemptsSince(ctx context.Context, t *db.Tx, thiefPlayerID, victimPlayerID int64, since time.Time) (int, error) {
+	n, _, err := db.QueryValue[int](ctx, t, `
+		SELECT count(*) FROM steal_records
+		WHERE thief_player_id = $1 AND victim_player_id = $2 AND created_at >= $3`,
+		thiefPlayerID, victimPlayerID, since)
+	return n, err
+}
+
+// victimsAtLimitSQL 自 since 起偷菜者已達每日上限的被偷者 ID（子查詢；參數的編號由呼叫端指定）：
+// 成功偷到的土地數達 limit，或下手次數（含被阻止）達 attempts（2026-11-22 Go 版新增：被擋下也算一次）。
+func victimsAtLimitSQL(thief, since, limit, attempts int) string {
 	return fmt.Sprintf(`SELECT victim_player_id FROM steal_records
-		WHERE thief_player_id = $%d AND outcome = 'success' AND created_at >= $%d
-		GROUP BY victim_player_id HAVING count(DISTINCT plot_number) >= $%d`, thief, since, limit)
+		WHERE thief_player_id = $%d AND created_at >= $%d
+		GROUP BY victim_player_id
+		HAVING count(DISTINCT plot_number) FILTER (WHERE outcome = 'success') >= $%d OR count(*) >= $%d`, thief, since, limit, attempts)
 }
 
 // victimsFullSQL 自 since 起已被 limit 位其他人成功偷過的被偷者 ID（子查詢；這位偷菜者不能再偷他們）。
@@ -72,9 +84,9 @@ func victimsFullSQL(thief, since, limit int) string {
 		GROUP BY victim_player_id HAVING count(DISTINCT thief_player_id) >= $%d`, thief, since, limit)
 }
 
-// VictimsAtLimit 自 since 起偷菜者已達每日土地上限的被偷者 ID（Python 回傳子查詢，Go 直接執行並回傳 ID）。
-func VictimsAtLimit(ctx context.Context, t *db.Tx, thiefPlayerID int64, since time.Time, limit int) ([]int64, error) {
-	return db.QueryValues[int64](ctx, t, victimsAtLimitSQL(1, 2, 3), thiefPlayerID, since, limit)
+// VictimsAtLimit 自 since 起偷菜者已達每日上限（成功土地數或下手次數）的被偷者 ID（Python 回傳子查詢，Go 直接執行並回傳 ID）。
+func VictimsAtLimit(ctx context.Context, t *db.Tx, thiefPlayerID int64, since time.Time, limit, attempts int) ([]int64, error) {
+	return db.QueryValues[int64](ctx, t, victimsAtLimitSQL(1, 2, 3, 4), thiefPlayerID, since, limit, attempts)
 }
 
 // VictimsFull 自 since 起已被 limit 位其他人成功偷過的被偷者 ID（Python 回傳子查詢，Go 直接執行並回傳 ID）。
@@ -138,7 +150,7 @@ type CandidatePlot struct {
 // 且該玩家今天被其他人偷的人數還沒達上限的土地（上限為 nil 時不限制，例如傳說扒手手套）。
 func CandidatePlots(
 	ctx context.Context, t *db.Tx, groupID, thiefPlayerID int64, now, witherCutoff, dayStart time.Time,
-	plotsPerVictim, thievesPerVictim *int,
+	plotsPerVictim, attemptsPerVictim, thievesPerVictim *int,
 ) ([]CandidatePlot, error) {
 	args := []any{groupID, thiefPlayerID, now, witherCutoff}
 	var limits []string
@@ -146,8 +158,12 @@ func CandidatePlots(
 		args = append(args, dayStart) // $5
 	}
 	if plotsPerVictim != nil {
-		args = append(args, *plotsPerVictim)
-		limits = append(limits, "gm.player_id NOT IN ("+victimsAtLimitSQL(2, 5, len(args))+")")
+		attempts := math.MaxInt32
+		if attemptsPerVictim != nil {
+			attempts = *attemptsPerVictim
+		}
+		args = append(args, *plotsPerVictim, attempts)
+		limits = append(limits, "gm.player_id NOT IN ("+victimsAtLimitSQL(2, 5, len(args)-1, len(args))+")")
 	}
 	if thievesPerVictim != nil {
 		args = append(args, *thievesPerVictim)

@@ -120,6 +120,9 @@ func StealMax(cropCode string) int {
 const (
 	// 每位偷菜者每天（台灣時間）對同一位玩家只能成功偷 1 格土地；被防守設施阻止的不算
 	StealPlotsPerVictimPerDay = 1
+	// 每位偷菜者每天（台灣時間）對同一位玩家最多下手幾次；被防守設施阻止也算一次
+	//（Go 版新增，2026-11-22 使用者要求：原本被擋下不算，可以一格一格試到成功為止）
+	StealAttemptsPerVictimPerDay = 2
 	// 每位玩家每天（台灣時間）最多被幾位不同的人成功偷到；被防守設施阻止的不算
 	StealThievesPerVictimPerDay = 3
 	GroupNameMaxLen             = 40

@@ -113,9 +113,19 @@ func TestCountsAndTaipeiDayBoundary(t *testing.T) {
 		if n != 1 {
 			t.Fatalf("thieves excluding = %d", n)
 		}
-		lim, _ := VictimsAtLimit(ctx, tx, w.players[0], dayStart, 1)
+		lim, _ := VictimsAtLimit(ctx, tx, w.players[0], dayStart, 1, 99)
 		if len(lim) != 1 || lim[0] != w.players[1] {
 			t.Fatal(lim)
+		}
+		// 下手次數（2026-11-22）：被阻止也算一次；丁今天被擋 1 次，上限 2 次時還能偷，上限 1 次時就到頂
+		if n, _ := AttemptsSince(ctx, tx, w.players[3], w.players[1], dayStart); n != 1 {
+			t.Fatalf("attempts = %d", n)
+		}
+		if lim, _ := VictimsAtLimit(ctx, tx, w.players[3], dayStart, 1, 2); len(lim) != 0 {
+			t.Fatal("被擋 1 次、上限 2 次，還能再試", lim)
+		}
+		if lim, _ := VictimsAtLimit(ctx, tx, w.players[3], dayStart, 1, 1); len(lim) != 1 || lim[0] != w.players[1] {
+			t.Fatal("被擋 1 次、上限 1 次，就不能再偷", lim)
 		}
 		full, _ := VictimsFull(ctx, tx, w.players[3], dayStart, 2) // 甲、丙都偷過乙
 		if len(full) != 1 || full[0] != w.players[1] {
@@ -146,7 +156,7 @@ func TestCandidatePlotsAndLimits(t *testing.T) {
 	run(t, d, func(ctx context.Context, tx *db.Tx) error {
 		w := build(ctx, t, tx, "甲", "乙", "丙")
 		cutoff := now.Add(-16 * time.Hour)
-		all, err := CandidatePlots(ctx, tx, w.group, w.players[0], now, cutoff, dayStart, nil, nil)
+		all, err := CandidatePlots(ctx, tx, w.group, w.players[0], now, cutoff, dayStart, nil, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -156,24 +166,24 @@ func TestCandidatePlotsAndLimits(t *testing.T) {
 		}
 		w.steal(ctx, t, tx, 0, 1, 1, now, "")
 		one := 1
-		limited, _ := CandidatePlots(ctx, tx, w.group, w.players[0], now, cutoff, dayStart, &one, nil)
+		limited, _ := CandidatePlots(ctx, tx, w.group, w.players[0], now, cutoff, dayStart, &one, nil, nil)
 		if len(limited) != 2 || limited[0].PlayerID != w.players[2] {
 			t.Fatalf("%+v", limited) // 乙今天已偷滿 1 格
 		}
-		unlimited, _ := CandidatePlots(ctx, tx, w.group, w.players[0], now, cutoff, dayStart, nil, nil)
+		unlimited, _ := CandidatePlots(ctx, tx, w.group, w.players[0], now, cutoff, dayStart, nil, nil, nil)
 		if len(unlimited) != 3 { // 偷過的那格（同一次種植）不能再偷
 			t.Fatalf("%+v", unlimited)
 		}
 		// 丙偷過乙之後，乙被 1 位其他人偷過：上限 1 時甲不能再偷乙
 		w.steal(ctx, t, tx, 2, 1, 2, now, "")
-		full, _ := CandidatePlots(ctx, tx, w.group, w.players[0], now, cutoff, dayStart, nil, &one)
+		full, _ := CandidatePlots(ctx, tx, w.group, w.players[0], now, cutoff, dayStart, nil, nil, &one)
 		for _, c := range full {
 			if c.PlayerID == w.players[1] {
 				t.Fatalf("%+v", full)
 			}
 		}
 		// 已乾枯的不列出
-		withered, _ := CandidatePlots(ctx, tx, w.group, w.players[0], now, now, dayStart, nil, nil)
+		withered, _ := CandidatePlots(ctx, tx, w.group, w.players[0], now, now, dayStart, nil, nil, nil)
 		if len(withered) != 0 {
 			t.Fatalf("%+v", withered)
 		}

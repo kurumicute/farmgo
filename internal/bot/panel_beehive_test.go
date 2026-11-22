@@ -27,21 +27,34 @@ func TestBeehiveRemovePanel(t *testing.T) {
 	}
 }
 
-// 總覽有蜂蜜時直接給「收蜂蜜」按鈕，按一下全部收進倉庫（2026-11-21）。
-func TestOverviewCollectsHoney(t *testing.T) {
+// 蜂箱入口與「收蜂蜜」在農田頁（2026-11-22 從總覽移過來）；總覽只提示有蜂蜜。
+func TestPlotsCollectsHoney(t *testing.T) {
 	e := setup(t)
 	p := e.makePlayer(alice, guildA, "阿明")
 	pid := p.panel.playerID
 	e.setLevel(pid, 3)
 	e.setGold(pid, 100_000)
-	p.goPage("beehive")
+	p.goPage("plots")
+	p.click("蜂箱")
 	p.choose("選一格空地放蜂箱", "3")
-	p.goPage("main")
-	notContains(t, p.Text, "罐蜂蜜，可以收了")
 	e.clock.Advance(2 * 12 * 3600)
 	p.goPage("main")
 	contains(t, p.Text, "蜂箱裡有 4／10 罐蜂蜜")
+	hasLabel := func(s string) bool {
+		return slices.ContainsFunc(p.labels(), func(l string) bool { return strings.Contains(l, s) })
+	}
+	if hasLabel("收蜂蜜") {
+		t.Fatal("總覽不再有收蜂蜜按鈕")
+	}
+	p.goPage("plots")
+	if !hasLabel("收蜂蜜（4 罐）") || !hasLabel("蜂箱") {
+		t.Fatalf("農田頁有蜂蜜時要有收蜂蜜按鈕和蜂箱入口：%v", p.labels())
+	}
 	p.click("收蜂蜜")
 	contains(t, p.Text, "收了 4 罐蜂蜜")
-	notContains(t, p.Text, "罐蜂蜜，可以收了")
+	if !hasLabel("蜂箱") || hasLabel("收蜂蜜") {
+		t.Fatalf("收完蜂蜜後只剩蜂箱入口：%v", p.labels())
+	}
+	p.click("蜂箱")
+	contains(t, p.Text, "蜂箱在第 **3** 格")
 }

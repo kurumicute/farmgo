@@ -261,6 +261,10 @@ type StealFarmView struct {
 	WarehouseFull bool          // 偷菜者的倉庫已滿
 	VictimFull    bool          // 這位玩家今天被偷的人數已達上限（每日人數上限）
 	Glove         bool          // 偷菜者啟用了傳說扒手手套（不受每日土地與人數上限）
+	// 下手次數（2026-11-22 Go 版新增：被擋下也算一次）：今天已經對這位玩家下手幾次、還剩幾次；
+	// AttemptsReached 是還沒偷到、但次數已經用完
+	AttemptsUsed, AttemptsLeft int
+	AttemptsReached            bool
 }
 
 // ExternalContext 外部平台（Discord）一次互動對應的群組與玩家；ID 皆由平台互動來源取得，不接受玩家輸入。

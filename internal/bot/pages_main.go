@@ -17,6 +17,7 @@ import (
 	"farmgm/internal/config"
 	"farmgm/internal/game/achievements"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/beehive"
 	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
@@ -439,15 +440,6 @@ func (p *Panel) buildMain(_ context.Context, data any) (*ui.Embed, error) {
 		slots--
 	}
 	for _, g := range goes[:min(len(goes), slots)] {
-		if g.collectHoney {
-			p.button(g.label, func(ctx context.Context, it ui.Interaction) error {
-				p.act(ctx, it, p.call("collect_honey", func(ctx context.Context) (services.ActionResult, error) {
-					return p.svc().CollectHoney(ctx, p.playerID)
-				}), actOpts{})
-				return nil
-			}, btn{emoji: g.emoji, style: ui.Success, row: 4})
-			continue
-		}
 		p.nav(g.label, g.page, btn{emoji: g.emoji, row: 4})
 	}
 	return e, nil
@@ -527,11 +519,9 @@ func (p *Panel) collectEverything(ctx context.Context, plots, animals, crafts bo
 	return strings.Join(parts, "\n"), nil
 }
 
-// todoGo 待辦區的「前往」按鈕。
-// todoGo 待辦的「前往」按鈕；collectHoney 時按下直接收蜂蜜，不換頁（2026-11-21）。
+// todoGo 待辦區的「前往」按鈕（收蜂蜜 2026-11-22 移到農田頁）。
 type todoGo struct {
 	label, page, emoji string
-	collectHoney       bool
 }
 
 // todoHints 農田以外的待辦（2026-11-18 補齊）：動物、加工、魚簍、菇房、種子實驗室、探險（2026-11-19）；
@@ -592,14 +582,13 @@ func todoHints(lang string, d mainData) (hints []string, goes []todoGo) {
 		hints = append(hints, t("trip_out", "area", td.TripArea, "time", ts(td.TripReturnAt)))
 	}
 	// 蜂箱、NPC 訂單與藏寶圖（2026-11-20）
-	// 2026-11-21：有蜂蜜就給「收蜂蜜」按鈕，按一下直接全部收進倉庫（不用進蜂箱頁）
+	// 2026-11-22 使用者要求：「收蜂蜜」按鈕移到農田頁，總覽只留提示
 	if h := d.status.Beehive; h != nil && h.Honey > 0 {
 		if h.Honey >= h.Capacity {
 			hints = append(hints, t("honey_full", "n", h.Honey))
 		} else {
 			hints = append(hints, t("honey_some", "n", h.Honey, "cap", h.Capacity))
 		}
-		add(todoGo{label: t("go_beehive"), page: "beehive", emoji: "🍯", collectHoney: true})
 	}
 	if td.TreasureDone {
 		hints = append(hints, t("treasure_done"))
@@ -656,7 +645,6 @@ var moreEntries = []struct{ page, label, desc, emoji string }{
 	{"defense", "防守", "【生產】稻草人、警戒犬、巡查券", "🛡️"},
 	{"prices", "作物價格", "【生產】今天的市場價格", "📈"},
 	{"orders", "NPC 訂單", "【生產】客人的限時訂單，報酬比市價高", "🧑‍🌾"}, // 2026-11-20
-	{"beehive", "蜂箱", "【生產】授粉提高突變、產蜂蜜、叮小偷", "🐝"},      // 2026-11-20
 	{"cave", "山洞", "【冒險】探險收集素材、機器", "⛰️"},
 	{"treasure", "藏寶圖", "【冒險】集碎片，每週到不同地點挖寶", "🗺️"}, // 2026-11-20
 	{"fishing", "釣魚", "【冒險】釣魚中心、魚簍、釣具商店", "🎣"},
@@ -1049,13 +1037,41 @@ func (p *Panel) buildPlots(_ context.Context, data any) (*ui.Embed, error) {
 			p.add(multi)
 		}
 	}
+	// 2026-11-22 使用者要求：蜂箱入口與「收蜂蜜」從總覽移到農田頁。
+	// 元件最多 5 列，蚯蚓、化肥選單、特殊種子選單、種子製造機都出現時會放不下，所以依重要程度加入：
+	// 收蜂蜜（第 1 列放不下時自動換列）→ 菇房、實驗室、蜂箱、擺設、回總覽 → 種子製造（還有空位才放，山洞頁也進得去）。
+	// 連收蜂蜜都放不下時，蜂箱按鈕直接改成收蜂蜜（收完蜂蜜歸零，下次就會變回蜂箱入口）。
+	hive := s.Beehive
+	hiveOpen := s.Level >= beehive.UnlockLevel || hive != nil
+	honey := hive != nil && hive.Honey > 0
+	collectHoney := func(ctx context.Context, it ui.Interaction) error {
+		p.act(ctx, it, p.call("collect_honey", func(ctx context.Context) (services.ActionResult, error) {
+			return p.svc().CollectHoney(ctx, p.playerID)
+		}), actOpts{})
+		return nil
+	}
+	honeyLabel := ""
+	if honey {
+		honeyLabel = p.f("收蜂蜜（%d 罐）", hive.Honey)
+	}
+	navs := 3 + btoi(hiveOpen) // 菇房、實驗室、擺設、蜂箱；回總覽另外算
+	honeyAlone := honey && p.freeButtonSlots() >= navs+2
+	if honeyAlone {
+		p.button(honeyLabel, collectHoney, btn{emoji: "🍯", style: ui.Success, row: 1})
+	}
 	p.nav(p.t("ui.btn.cellar"), "cellar", btn{emoji: "🍄", row: 4, style: ui.Primary})
 	p.nav(p.t("ui.btn.lab"), "lab", btn{emoji: "🧪", row: 4, style: ui.Primary})
+	switch {
+	case honey && !honeyAlone:
+		p.button(honeyLabel, collectHoney, btn{emoji: "🍯", style: ui.Success, row: 4})
+	case hiveOpen:
+		p.nav(p.t("ui.more.beehive"), "beehive", btn{emoji: "🐝", row: 4, style: ui.Primary})
+	}
 	p.nav(p.t("ui.btn.decor"), "decor", btn{emoji: "🎨", row: 4})
-	if bp.SeedMaker {
+	p.navBack(4)
+	if bp.SeedMaker && p.freeButtonSlots() > 0 {
 		p.navFirstPage(p.t("ui.btn.seed_maker"), "seedmaker", &p.seedMakerPage, btn{emoji: "🌱", row: 4, style: ui.Primary})
 	}
-	p.navBack(4)
 	return e, nil
 }
 
@@ -1275,10 +1291,10 @@ func HelpEmbed() *ui.Embed {
 		"• 「🐔 動物」→「🐾 寵物」領養：貓咪多收成、狗狗多擋偷菜、兔子多收菇、小鳥釣到好魚、刺蝟讓品質升級\n"+
 		"• 每種寵物的領養價格與每級加成不同，到「🐾 寵物」頁查看", false)
 	e.AddField("🥷 偷菜與防守", fmt.Sprintf("• 「🥷 偷菜」選一位同伺服器玩家 → 打開他的農田 → 選要偷哪一格\n"+
-		"• 每天每位玩家最多偷 %d 格；每人每天最多被 %d 人偷；每次最多偷 %d 個（小麥 1 個）\n"+
+		"• 每天每位玩家最多偷 %d 格、最多試 %d 次（被防守設施擋下也算）；每人每天最多被 %d 人偷；每次最多偷 %d 個（小麥 1 個）\n"+
 		"• 商店的「傳說扒手手套」不受每日限制\n"+
 		"• 「🛡️ 防守」買稻草人、警戒犬、防盜圍欄擋小偷；巡查券可以查是誰偷的",
-		balance.StealPlotsPerVictimPerDay, balance.StealThievesPerVictimPerDay, balance.StealMaxPerAction), false)
+		balance.StealPlotsPerVictimPerDay, balance.StealAttemptsPerVictimPerDay, balance.StealThievesPerVictimPerDay, balance.StealMaxPerAction), false)
 	e.AddField("🍄 地下菇房", fmt.Sprintf("• 農場 Lv.%d 開放：「🌱 農田」→「🍄 地下菇房」，不用建造\n"+
 		"• 長出什麼菇由上方農田種的作物決定；不用種、不用澆水，約 %s長好一批\n"+
 		"• 投入🪵木屑（山洞帶回）提高稀有菇機率，投滿 %d 個保證一半以上是稀有菇\n"+

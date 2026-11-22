@@ -647,6 +647,23 @@ func (p *Panel) button(label string, handler ui.Handler, o btn) *ui.Button {
 
 // add 加入元件。指定的列放不下時（例如之後在已有 5 顆按鈕的列再加一顆），改放到後面第一個放得下的列，
 // 再不行就往前找；都放不下時略過這個元件並記錄警告，不讓整頁變成「⚠️ 無法顯示」（ui.View.Add 放不下會 panic）。
+// freeButtonSlots 目前還能放幾顆按鈕（5 列 × 每列 5 顆，下拉選單獨佔一列）。
+func (p *Panel) freeButtonSlots() int {
+	used := map[int]int{}
+	for _, x := range p.View.Items() {
+		if _, ok := x.(*ui.Select); ok {
+			used[x.ItemRow()] = ui.MaxRowItems
+		} else {
+			used[x.ItemRow()]++
+		}
+	}
+	free := 0
+	for r := range ui.MaxRows {
+		free += max(0, ui.MaxRowItems-used[r])
+	}
+	return free
+}
+
 func (p *Panel) add(it ui.Item) {
 	weight := 1
 	if _, ok := it.(*ui.Select); ok {

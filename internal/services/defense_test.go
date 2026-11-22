@@ -390,6 +390,45 @@ func TestStealTargetsWithDefense(t *testing.T) {
 	}
 }
 
+// 被擋下也算一次下手（2026-11-22 Go 版新增）：每天對同一位玩家最多試 2 次，用完就不能換別格再試。
+func TestBlockedAttemptsCountTowardDailyLimit(t *testing.T) {
+	e := setup(t)
+	w := e.defWorld()
+	e.ok(e.so.BuyDefense(e.ctx, w.owner, "警戒犬"))
+	e.ripe(w.owner, 1, 2, 3)
+	e.withDice(newDice(0)) // 每次都被擋
+	view := must[StealFarmView](t)(e.so.StealFarmView(e.ctx, w.g, w.thief, w.owner))
+	if view.AttemptsLeft != balance.StealAttemptsPerVictimPerDay || view.AttemptsReached {
+		t.Fatalf("%+v", view)
+	}
+	for _, n := range []int{1, 2} {
+		if r := e.steal(w.g, w.thief, w.owner, n, 1); r.Success {
+			t.Fatalf("第 %d 格應該被擋：%+v", n, r)
+		}
+	}
+	e.noRoll()
+	_, err := e.so.StealCrop(e.ctx, w.g, w.thief, w.owner, 3, 1)
+	wantKind(t, err, gameerr.AlreadyStolen)
+	if ts := e.targets(w.g, w.thief); len(ts) != 0 { // 次數用完，不再列出這位玩家的田
+		t.Fatalf("%+v", ts)
+	}
+	view = must[StealFarmView](t)(e.so.StealFarmView(e.ctx, w.g, w.thief, w.owner))
+	if !view.AttemptsReached || view.LimitReached || view.AttemptsLeft != 0 || view.AttemptsUsed != 2 {
+		t.Fatalf("%+v", view)
+	}
+	players := must[[]StealPlayer](t)(e.so.StealPlayers(e.ctx, w.g, w.thief))
+	for _, p := range players {
+		if p.PlayerID == w.owner && p.Stealable > 0 {
+			t.Fatalf("次數用完不該還能偷：%+v", p)
+		}
+	}
+	// 別的小偷不受影響
+	e.withDice(newDice(0.99))
+	if r := e.steal(w.g, w.thief2, w.owner, 3, 1); !r.Success {
+		t.Fatalf("%+v", r)
+	}
+}
+
 // ---------- 防守紀錄與巡查券 ----------
 
 func TestDefenseLogAndPatrol(t *testing.T) {

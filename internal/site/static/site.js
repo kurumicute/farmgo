@@ -137,6 +137,7 @@
     setText("g-upgrade", `每次農田 +${s.upgrade_plots} 格：${s.upgrade_prices.map((p) => num.format(p)).join(" → ")} 金幣${landLate}（最多 ${s.max_plots} 格）`);
     setText("g-steal-max", String(s.steal_max));
     if (s.steal_plots_per_day) setText("g-steal-day", String(s.steal_plots_per_day));
+    if (s.steal_attempts_per_day) setText("g-steal-tries", String(s.steal_attempts_per_day));
     if (s.steal_thieves_per_day) setText("g-steal-thieves", String(s.steal_thieves_per_day));
     setText("g-transfer", `${s.transfer_cooldown_days} 天`);
     setText("g-craft-max", String(s.craft_max));

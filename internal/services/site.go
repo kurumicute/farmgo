@@ -246,7 +246,7 @@ func guideStart() map[string]any {
 		"upgrade_plots":  balance.UpgradePlotsAdded, "max_plots": expansion.MaxPlots(),
 		"land_base": expansion.Current().LandBase, "land_growth_pct": expansion.Current().LandGrowthPct,
 		"wither_minutes": balance.WitherSeconds / 60, "steal_max": balance.StealMaxPerAction,
-		"steal_plots_per_day": balance.StealPlotsPerVictimPerDay, "steal_thieves_per_day": balance.StealThievesPerVictimPerDay,
+		"steal_plots_per_day": balance.StealPlotsPerVictimPerDay, "steal_attempts_per_day": balance.StealAttemptsPerVictimPerDay, "steal_thieves_per_day": balance.StealThievesPerVictimPerDay,
 		"transfer_cooldown_days": balance.GroupTransferCooldownSeconds / 86400,
 		"max_block_pct":          numfmt.Round(balance.DefenseMaxBlockChance * 100), "patrol_days": balance.PatrolDays,
 		"barn_slots": balance.BarnSlots, "craft_max": balance.CraftMaxQuantity,
