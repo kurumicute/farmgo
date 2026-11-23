@@ -700,7 +700,7 @@ func (s *GameService) harvestLocked(ctx context.Context, t *db.Tx, farm *models.
 		if lang := i18n.LangOf(ctx); lang != i18n.Default {
 			shown = ProduceNameLang(lang, crop.Code, crop.Name, crop.VariantCode, crop.VariantName, mutation) + GeneticsLabelLang(lang, quality, mutation)
 		}
-		*details = append(*details, HarvestDetail{shown, quantity, quality, mutation, catBonus, stolen, lost, value, autoSell})
+		*details = append(*details, HarvestDetail{shown, quantity, quality, mutation, catBonus, upgraded, stolen, lost, value, autoSell})
 	}
 	return message, quantity, item, nil
 }
@@ -749,7 +749,7 @@ func (s *GameService) estimateValue(ctx context.Context, t *db.Tx, crop *models.
 	if err != nil {
 		return 0, err
 	}
-	price, _, err := s.sellPrice(ctx, t, nil, crop, genetics.UnitPrice(crop.SellPrice, quality, mutation, settings))
+	price, _, err := s.sellPrice(ctx, t, nil, crop, genetics.UnitPrice(crop.Code, crop.SellPrice, quality, mutation, settings))
 	return price * quantity, err
 }
 
@@ -1197,7 +1197,7 @@ func (s *GameService) sellLocked(ctx context.Context, t *db.Tx, farm *models.Far
 	if err != nil {
 		return 0, 0, err
 	}
-	price, sell, err := s.sellPrice(ctx, t, farm, crop, genetics.UnitPrice(crop.SellPrice, quality, mutation, settings))
+	price, sell, err := s.sellPrice(ctx, t, farm, crop, genetics.UnitPrice(crop.Code, crop.SellPrice, quality, mutation, settings))
 	if err != nil {
 		return 0, 0, err
 	}

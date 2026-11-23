@@ -40,7 +40,7 @@ func (s *GameService) fairClassify(produce map[string]crops.Produce, settings ba
 			cat = fair.CatLab
 		}
 		return fairPiece{cat, fair.Item{Code: code, CropCode: c.Code, Quality: quality, Mutation: mutation},
-			genetics.UnitPrice(c.SellPrice, quality, mutation, settings),
+			genetics.UnitPrice(c.Code, c.SellPrice, quality, mutation, settings),
 			genetics.ProduceName(c.Name, c.VariantName, mutation) + GeneticsLabel(quality, mutation)}, true
 	}
 	if g, ok := balance.Goods[code]; ok && quality == "normal" && mutation == "none" {

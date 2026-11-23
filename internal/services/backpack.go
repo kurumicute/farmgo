@@ -88,7 +88,7 @@ func BuildBackpack(ctx context.Context, t *db.Tx, farm *models.Farm, now time.Ti
 			continue
 		}
 		c := entry.Crop
-		unit := genetics.UnitPrice(c.SellPrice, i.Quality, i.Mutation, settings)
+		unit := genetics.UnitPrice(c.Code, c.SellPrice, i.Quality, i.Mutation, settings)
 		l := line(i.ItemCode, genetics.ProduceName(c.Name, c.VariantName, i.Mutation), i.Quantity,
 			seasons.SellPrice(unit, c.Seasons, now), "")
 		l.Quality, l.Mutation = i.Quality, i.Mutation
@@ -273,7 +273,7 @@ func (s *GameService) CropCatalog(ctx context.Context) ([]CropCatalogEntry, erro
 			for _, q := range balance.QualityOrder {
 				prices[q] = map[string]int{}
 				for _, m := range []string{"none", "golden", "variant"} {
-					prices[q][m] = seasons.SellPrice(genetics.UnitPrice(c.SellPrice, q, m, settings), c.Seasons, now)
+					prices[q][m] = seasons.SellPrice(genetics.UnitPrice(c.Code, c.SellPrice, q, m, settings), c.Seasons, now)
 				}
 			}
 			rows[i] = CropCatalogEntry{
@@ -354,6 +354,9 @@ func (s *GameService) MutationTable(ctx context.Context) ([]MutationRow, error) 
 		"fast": txf(ctx, "生長時間減少 %s（最短 %s，仍需澆水）", rules.FormatDuration(settings.FastReductionSeconds),
 			rules.FormatDuration(balance.MinGrowSeconds)),
 		"variant": txf(ctx, "長成獨立的珍稀變種作物，基本售價 = 原作物 ×%s", pyG(float64(settings.VariantPricePct)/100)),
+	}
+	if v := genetics.VariantPct("crimson_moon_flower", settings); v < settings.VariantPricePct { // 2026-11-23 削弱
+		effects["variant"] += txf(ctx, "（血月花、銀河花 ×%s）", pyG(float64(v)/100))
 	}
 	rows := make([]MutationRow, len(genetics.MutationOrder))
 	for i, m := range genetics.MutationOrder {

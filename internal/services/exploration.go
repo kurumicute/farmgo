@@ -24,6 +24,7 @@ import (
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/genetics"
+	petrules "farmgm/internal/game/pets"
 	"farmgm/internal/game/ruins"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/game/treasure"
@@ -161,6 +162,7 @@ type AreaView struct {
 type ExplorationOverview struct {
 	PlayerName string
 	Level      int
+	DogPct     int // 狗狗縮短探險時間的 %（2026-11-23；沒有狗狗時 0，已套用上限）；Areas 的 DurationSeconds 已扣掉
 	Areas      []AreaView
 	Trip       *TripView
 	Now        time.Time
@@ -372,7 +374,12 @@ func (x *ExplorationService) ExplorationOverview(ctx context.Context, playerID i
 		if err != nil {
 			return ExplorationOverview{}, err
 		}
-		ov := ExplorationOverview{PlayerName: player.DisplayName, Level: farm.Level, Trip: trip, Now: now}
+		dog, err := x.petPct(ctx, t, farm.ID, petrules.Dog)
+		if err != nil {
+			return ExplorationOverview{}, err
+		}
+		ov := ExplorationOverview{PlayerName: player.DisplayName, Level: farm.Level, Trip: trip, Now: now,
+			DogPct: min(dog, petrules.DogExploreMaxPct)}
 		for _, code := range exploration.AreaOrder {
 			area := exploration.AreaOf(code)
 			row, hasRow := counts[code]
@@ -393,6 +400,9 @@ func (x *ExplorationService) ExplorationOverview(ctx context.Context, playerID i
 				Advanced:        exploration.IsAdvanced(area, farm.Level), AdvancedLevel: area.AdvancedLevel,
 				Rolls: area.Rolls, Common: pool("common"), Rare: pool("rare"), Seeds: pool("seed"),
 				LevelNotes: slices.Clone(area.LevelNotes)}
+			if !area.NeedsRuins {
+				v.DurationSeconds = petrules.ExploreSeconds(area.DurationSeconds, dog)
+			}
 			// 一次只能進行一趟探險：有進行中或待領取的探險時，三個一般區域都不能出發；古代遺跡是額外的探索，只看自己的冷卻
 			var rowPtr *models.FarmExploration
 			if hasRow {
@@ -460,7 +470,13 @@ func (x *ExplorationService) Explore(ctx context.Context, playerID int64, areaKe
 		}
 		res := exploration.Explore(code, farm.Level, x.exploreRng, 0)
 		exploration.RollSawdust(res, x.exploreRng) // Go 版新增：每次探險另外帶回木屑
-		until := now.Add(time.Duration(area.DurationSeconds) * time.Second)
+		// 狗狗帶路（2026-11-23）：探險時間 -X%
+		dog, err := x.petPct(ctx, t, farm.ID, petrules.Dog)
+		if err != nil {
+			return ExploreTrip{}, err
+		}
+		seconds := petrules.ExploreSeconds(area.DurationSeconds, dog)
+		until := now.Add(time.Duration(seconds) * time.Second)
 		row, err := explrepo.GetCooldown(ctx, t, farm.ID, code, true)
 		if err != nil {
 			return ExploreTrip{}, err
@@ -474,7 +490,7 @@ func (x *ExplorationService) Explore(ctx context.Context, playerID int64, areaKe
 		if err != nil {
 			return ExploreTrip{}, err
 		}
-		return ExploreTrip{log.ID, code, area.Name, area.Emoji, res.Advanced, farm.Level, now, until, area.DurationSeconds}, nil
+		return ExploreTrip{log.ID, code, area.Name, area.Emoji, res.Advanced, farm.Level, now, until, seconds}, nil
 	})
 	if err != nil {
 		return ExploreOutcome{}, err
@@ -1566,6 +1582,9 @@ func (x *ExplorationService) autoHarvest(ctx context.Context, t *db.Tx, farm *mo
 	text := ""
 	if done > 0 {
 		text = HarvestHighlight(details) + txf(ctx, "🚜 自動收割機收成 %d 格，共 %d 個作物。", done, total)
+		if n := hedgehogCount(details); n != 0 {
+			text += tr(ctx, "svc.harvest.hedgehog", "n", n)
+		}
 	}
 	text += stopped
 	if done > 0 {

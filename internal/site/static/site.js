@@ -356,7 +356,6 @@
     // 2026-11-22 每種寵物分開設定：效果後面附這種寵物的 X 範圍與領養價格
     fillRows("g-pets", p.pets.map((x) => [x.name, x.role, x.max_pct == null ? x.effect
       : `${x.effect}（X：Lv0 ${x.base_pct}% → Lv${x.max_level} ${x.max_pct}%；領養 ${num.format(x.buy_price)} 金幣）`]));
-    if (p.defense_cap_pct != null) setText("g-pet-dogcap", String(p.defense_cap_pct));
     // 貓咪表格的表頭（Lv0～最高級）與舉例都依目前設定
     const head = $("g-cat-head");
     if (head) {

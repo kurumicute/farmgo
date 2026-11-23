@@ -564,7 +564,7 @@ func (s *SocialService) StealFarmView(ctx context.Context, groupID, thiefPlayerI
 	})
 }
 
-// StealCrop 偷菜。被防守設施或狗狗阻止時操作仍會完成並記錄，回傳 Success = false。
+// StealCrop 偷菜。被防守設施或蜂箱阻止時操作仍會完成並記錄，回傳 Success = false。
 func (s *SocialService) StealCrop(ctx context.Context, groupID, thiefPlayerID, victimPlayerID int64, plotNumber, quantity int) (ActionResult, error) {
 	if quantity <= 0 {
 		return ActionResult{}, gameerr.Validationf("偷取數量必須是正整數。")
@@ -722,22 +722,9 @@ func (s *SocialService) StealCrop(ctx context.Context, groupID, thiefPlayerID, v
 			by, c := rules.ResolveDefense(active, r, balance.DefenseMaxBlockChance)
 			blockedBy, chance, roll = by, &c, &r
 		}
+		// 狗狗原本在這裡再擋一次，2026-11-23 起改成縮短探險時間（pets.ExploreSeconds），不再擋偷菜
 		if blockedBy == "" {
-			// 狗狗：設施都沒擋住時再判定一次（不受設施的整體上限限制）
-			dog, err := s.petPct(ctx, t, victimFarm.ID, petrules.Dog) // 主人用了寵物零食時 ×1.5（2026-11-18）
-			if err != nil {
-				return ActionResult{}, err
-			}
-			if dog != 0 {
-				dr := s.rng()
-				if dr < float64(dog)/100 {
-					c := float64(dog) / 100
-					blockedBy, chance, roll = petrules.DogBlocker, &c, &dr
-				}
-			}
-		}
-		if blockedBy == "" {
-			// 蜂箱（2026-11-20）：設施與狗狗都沒擋住時，偷蜂箱周圍的格子還有機率被叮跑
+			// 蜂箱（2026-11-20）：設施都沒擋住時，偷蜂箱周圍的格子還有機率被叮跑
 			hive, err := s.hiveOf(ctx, t, victimFarm)
 			if err != nil {
 				return ActionResult{}, err
@@ -772,10 +759,6 @@ func (s *SocialService) StealCrop(ctx context.Context, groupID, thiefPlayerID, v
 			text := txf(ctx, "🛡️ 偷菜失敗！%s 的%s守住了第 %d 格的%s。", victim.DisplayName, device, plotNumber, label)
 			if blockedBy == beehive.Blocker {
 				text = txf(ctx, "🐝 偷菜失敗！%s 的蜂箱裡飛出一群蜜蜂，叮得你抱頭逃跑，第 %d 格的%s一個也沒偷到。",
-					victim.DisplayName, plotNumber, label)
-			}
-			if blockedBy == petrules.DogBlocker {
-				text = txf(ctx, "🐶 偷菜失敗！%s 的狗狗發現了你，汪汪大叫把你趕跑，第 %d 格的%s一個也沒偷到。",
 					victim.DisplayName, plotNumber, label)
 			}
 			res := result(text+txt(ctx, "這株作物你已無法再偷。"), thiefFarm.Gold, 0, item, 0)

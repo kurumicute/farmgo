@@ -28,6 +28,7 @@ import (
 	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/fishing"
+	geneticsrules "farmgm/internal/game/genetics"
 	"farmgm/internal/game/hourglass"
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/news"
@@ -309,6 +310,9 @@ var guideKeys = []guideKey{
 			"fast": fmt.Sprintf("生長時間減少 %s（最短 %s，仍需澆水）", siteDuration(gs.FastReductionSeconds),
 				siteDuration(balance.MinGrowSeconds)),
 			"variant": fmt.Sprintf("長成獨立的稀有作物，售價 ×%s", pyG(float64(gs.VariantPricePct)/100)),
+		}
+		if v := geneticsrules.VariantPct("crimson_moon_flower", gs); v < gs.VariantPricePct { // 2026-11-23 削弱血月花、銀河花
+			effects["variant"] += fmt.Sprintf("（血月花、銀河花 ×%s）", pyG(float64(v)/100))
 		}
 		mutations := []map[string]any{}
 		for _, code := range []string{"giant", "golden", "fast", "variant"} {
@@ -1039,7 +1043,6 @@ func buildPets(activeCrops []models.CropType) map[string]any {
 	return map[string]any{"cat_odds": odds, "buy_price": cat.BuyPrice, "upgrade_prices": cat.UpgradePrices,
 		"base_pct": cat.BasePct, "pct_per_level": cat.PctPerLevel, "max_level": maxLevel,
 		"max_pct": pets.BonusPct(pets.Cat, &maxLevel), "pets": list,
-		// 狗狗不受防守設施整體阻止機率上限的限制
 		"defense_cap_pct": numfmt.Round(balance.DefenseMaxBlockChance * 100)}
 }
 

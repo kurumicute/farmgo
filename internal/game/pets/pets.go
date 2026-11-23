@@ -3,8 +3,8 @@
 //   - 購買後是 Lv0（出現在農場圖的左上／右上），加成 base_pct%；之後升級，每級再 +pct_per_level%（預設 Lv4 = 25%）。
 //   - 價格與加成可在管理網站調整（featurecfg 的 "pets"，2026-11-22 起每種寵物分開設定），一律經 Of(code)／BuyPrice(code)／BonusPct(code, level) 讀取。
 //   - 貓：趕走偷吃作物的老鼠，主人收成時收成數量 +X%（小數部分依機率多 1 個，見 BonusQuantity）。
-//   - 狗：趕走偷菜的小偷。防守設施（稻草人、警戒犬、防盜圍欄）都沒擋住時，狗再判定一次 X%；
-//     不受防守設施 60% 整體上限限制。擋下時偷菜紀錄的 blocked_by = DogBlocker。
+//   - 狗：2026-11-23 起（Go 版，使用者要求）山洞探險時間 -X%（最多 DogExploreMaxPct%，古代遺跡除外，見 ExploreSeconds）。
+//     原本（同 Python）是防守設施都沒擋住時再判定一次 X% 擋下偷菜（blocked_by = DogBlocker），防守設施與蜂箱夠多後幾乎沒用。
 package pets
 
 import (
@@ -21,11 +21,11 @@ import (
 
 const (
 	Cat        = "cat"
-	Dog        = "dog"
+	Dog        = "dog"      // 2026-11-23 起：山洞探險時間 -X%（原本是防守設施沒擋住時再擋一次偷菜）
 	Rabbit     = "rabbit"   // Go 版新增（2026-11-18，Migration 0045 放寬 pet_code）：菇房收成數量 +X%
 	Bird       = "bird"     // Go 版新增：釣魚稀有魚機率提高
 	Hedgehog   = "hedgehog" // Go 版新增：收成時 X% 機率品質提升一級（2026-11-22 起；原本是清除乾枯作物時救回 X%）
-	DogBlocker = "pet_dog"  // steal_records.blocked_by（狗擋下時）
+	DogBlocker = "pet_dog"  // steal_records.blocked_by（2026-11-22 以前狗擋下的紀錄；之後狗不再擋偷菜）
 	LevelLimit = 10         // farm_pets.level 的 CHECK 上限：升級價格最多 10 個
 	ConfigKey  = "pets"
 )
@@ -170,7 +170,7 @@ var PetOrder = []string{Cat, Dog, Rabbit, Bird, Hedgehog}
 
 var Pets = map[string]Pet{
 	Cat:      {Cat, "貓咪", "🐱", "抓老鼠：趕走偷吃農作物的老鼠", "收成數量 +{pct}%"},
-	Dog:      {Dog, "狗狗", "🐶", "保衛農田：趕走來偷菜的小偷", "防守設施沒擋住時，再有 {pct}% 機率擋下偷菜（所有農田）"},
+	Dog:      {Dog, "狗狗", "🐶", "帶路探險：熟悉山洞裡的路，探險少繞遠路", "山洞探險時間 -{pct}%（最多 -50%，古代遺跡除外）"},
 	Rabbit:   {Rabbit, "兔子", "🐰", "照顧菇床：幫忙翻動木屑、照看地下菇房", "地下菇房每個菇床收成數量 +{pct}%"},
 	Bird:     {Bird, "小鳥", "🐦", "找魚群：在水面上空盤旋，帶你找到好魚", "釣魚（含自動釣魚機）稀有以上的魚機率提高（{pct}% 加成）"},
 	Hedgehog: {Hedgehog, "刺蝟", "🦔", "吃害蟲：把啃食作物的害蟲吃掉，作物長得更好", "收成時每格有 {pct}% 機率品質提升一級（最高傳說）"},
@@ -265,4 +265,13 @@ func BlockerName(code string) string {
 		return "蜂箱"
 	}
 	return balance.DefenseOf(code).Name
+}
+
+// DogExploreMaxPct 狗狗縮短探險時間的上限（%）。
+const DogExploreMaxPct = 50
+
+// ExploreSeconds 狗狗（2026-11-23 使用者要求，取代多擋偷菜）：探險時間 × (100 − pct)%，pct 最多 DogExploreMaxPct，捨去。
+func ExploreSeconds(base, pct int) int {
+	pct = max(0, min(pct, DogExploreMaxPct))
+	return base * (100 - pct) / 100
 }

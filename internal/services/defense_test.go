@@ -471,28 +471,21 @@ func TestDefenseLogAndPatrol(t *testing.T) {
 
 // ---------- 狗狗（Python tests/test_pets.py） ----------
 
-func TestDogBlocksStealAfterDefenses(t *testing.T) {
+func TestDogNoLongerBlocksSteal(t *testing.T) {
+	// 2026-11-23 起狗狗改成縮短探險時間，不再擋偷菜（擲 0.1 原本會被 Lv4 的 25% 擋下）
 	e := setup(t)
 	home := e.group("主群組")
 	e.withDice(newDice(0.1, 0.5))
 	owner := e.farmer("飼主", home)
 	thief := e.farmer("小偷", home)
-	thief2 := e.farmer("小偷二號", home)
-	e.setGoldRecorded(owner, 200_000) // 領養 + 升到 Lv4 共 105,000
+	e.setGoldRecorded(owner, 200_000)
 	e.ok(e.r.BuyPet(e.ctx, owner, petrules.Dog))
 	for range 4 {
-		e.ok(e.r.UpgradePet(e.ctx, owner, petrules.Dog)) // Lv4：25%
+		e.ok(e.r.UpgradePet(e.ctx, owner, petrules.Dog))
 	}
 	e.grow(owner, 1, "strawberry")
 	e.clock.Advance(600)
-	if r := e.steal(home, thief, owner, 1, 1); r.Success || !strings.Contains(r.Message, "狗狗") { // 狗擲 0.1 < 0.25 → 擋下
-		t.Fatal(r.Message)
-	}
-	if r := e.steal(home, thief2, owner, 1, 1); !r.Success || r.Quantity != 1 { // 0.5 ≥ 0.25 → 偷到
+	if r := e.steal(home, thief, owner, 1, 1); !r.Success || r.Quantity != 1 {
 		t.Fatalf("%+v", r)
-	}
-	if e.scalar("SELECT count(*) FROM steal_records WHERE outcome = 'blocked' AND blocked_by = $1 AND abs(block_chance - 0.25) < 1e-9",
-		petrules.DogBlocker) != 1 {
-		t.Fatal("狗擋下的紀錄不對")
 	}
 }

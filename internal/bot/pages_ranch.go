@@ -721,7 +721,6 @@ func (p *Panel) buildBuild(_ context.Context, data any) (*ui.Embed, error) {
 type defenseData struct {
 	status  services.DefenseStatus
 	tickets int
-	dog     services.PetView
 }
 
 func (p *Panel) loadDefense(ctx context.Context) (any, error) {
@@ -730,19 +729,11 @@ func (p *Panel) loadDefense(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	list, err := svc.PetStatus(ctx, pid)
-	if err != nil {
-		return nil, err
-	}
-	i := slices.IndexFunc(list, func(x services.PetView) bool { return x.Code == pets.Dog })
-	if i < 0 {
-		return nil, fmt.Errorf("寵物狀態缺少狗狗")
-	}
 	st, err := svc.DefenseStatus(ctx, pid)
 	if err != nil {
 		return nil, err
 	}
-	return defenseData{st, lineQty(bp.Consumables, balance.ItemPatrolTicket), list[i]}, nil
+	return defenseData{st, lineQty(bp.Consumables, balance.ItemPatrolTicket)}, nil
 }
 
 func (p *Panel) buildDefense(_ context.Context, data any) (*ui.Embed, error) {
@@ -773,14 +764,9 @@ func (p *Panel) buildDefense(_ context.Context, data any) (*ui.Embed, error) {
 	if len(devices) > 0 {
 		installed = Section{Title: p.s("已設置的設施"), Lines: devices}
 	}
-	dog := p.s("還沒有狗狗。到「🐔 動物 → 🐾 寵物」領養，升級後能在設施沒擋住時再擋一次。")
-	if d.dog.Owned {
-		dog = p.f("Lv%d：設施沒擋住時，再有 **%d%%** 機率擋下（所有農田，不受設施整體上限限制）", *d.dog.Level, d.dog.Pct)
-	}
 	e := &ui.Embed{Title: p.s("🛡️ ✦ 防守 ✦"), Color: Blue, Description: sections(
 		installed,
 		Section{Title: p.s("各農田阻止機率"), Lines: []string{strings.Join(chances, p.s("　"))}},
-		Section{Title: p.s("🐶 狗狗"), Lines: []string{dog}},
 		Section{Title: p.s("🛒 防守商店"), Lines: shop, Sep: "\n\n"},
 		p.f("🔦 巡查券：**%d** 張（可查看近 %d 天誰來偷過菜）", d.tickets, balance.PatrolDays),
 	)}

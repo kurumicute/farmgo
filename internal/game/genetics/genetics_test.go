@@ -104,11 +104,16 @@ func TestRollsAndFormulas(t *testing.T) {
 		t.Fatal(ms)
 	}
 	checks := []struct{ got, want int }{
-		{UnitPrice(15, "rare", "none", s), 22},
-		{UnitPrice(15, "legendary", "golden", s), 90},
-		{UnitPrice(15, "normal", "giant", s), 15},
-		{UnitPrice(15, "normal", "fast", s), 15},
-		{UnitPrice(25, "good", "variant", s), 120},
+		{UnitPrice("wheat", 15, "rare", "none", s), 22},
+		{UnitPrice("wheat", 15, "legendary", "golden", s), 90},
+		{UnitPrice("wheat", 15, "normal", "giant", s), 15},
+		{UnitPrice("wheat", 15, "normal", "fast", s), 15},
+		{UnitPrice("wheat", 25, "good", "variant", s), 120},
+		// 血月花、銀河花的變種 ×3（2026-11-23）；全域倍率比較低時用全域倍率
+		{UnitPrice("crimson_moon_flower", 580, "normal", "variant", s), 1740},
+		{UnitPrice("starry_night_flower", 600, "good", "variant", s), 2160},
+		{UnitPrice("crimson_moon_flower", 580, "normal", "none", s), 580},
+		{VariantPct("crimson_moon_flower", balance.GeneticsSettings{VariantPricePct: 250}), 250},
 		{HarvestQuantity(2, "giant", s, 0), 4},
 		{HarvestQuantity(2, "golden", s, 0), 2},
 		{GrowSeconds(7200, "fast", false, s, 0), balance.MinGrowSeconds},

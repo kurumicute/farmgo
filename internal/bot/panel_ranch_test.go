@@ -196,7 +196,10 @@ func TestDefensePageShopPatrolAndLog(t *testing.T) {
 	pid := p.panel.playerID
 	e.setGold(pid, 50_000)
 	p.goPage("defense")
-	contains(t, p.Text, "還沒有防守設施。", "還沒有狗狗", "稻草人", "巡查券：**0** 張")
+	contains(t, p.Text, "還沒有防守設施。", "稻草人", "巡查券：**0** 張")
+	if strings.Contains(p.Text, "狗狗") { // 2026-11-23 起狗狗改成縮短探險時間，防守頁不再列出
+		t.Fatal(p.Text)
+	}
 	if !p.button("巡查（消耗 1 張，持有 0）").Disabled {
 		t.Fatal("沒有巡查券時應停用")
 	}

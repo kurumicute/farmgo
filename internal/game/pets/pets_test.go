@@ -93,7 +93,7 @@ func TestSettings(t *testing.T) {
 	if BuyPrice(Cat) != 9 || BonusPct(Cat, ip(1)) != 50 || BuyPrice(Hedgehog) != 9 || BonusPct(Hedgehog, ip(1)) != 30 {
 		t.Fatal(Of(Cat), Of(Hedgehog))
 	}
-	if got := EffectText(Dog, ip(3)); got != "防守設施沒擋住時，再有 40% 機率擋下偷菜（所有農田）" {
+	if got := EffectText(Dog, ip(3)); got != "山洞探險時間 -40%（最多 -50%，古代遺跡除外）" {
 		t.Fatal(got)
 	}
 	// 每種寵物各自檢查 100% 上限；不認識的寵物拒絕
@@ -101,6 +101,15 @@ func TestSettings(t *testing.T) {
 		v, _ := featurecfg.Decode([]byte(raw))
 		if _, err := featurecfg.Validate(ConfigKey, v); !gameerr.Is(err, gameerr.Validation) {
 			t.Fatal(raw, err)
+		}
+	}
+}
+
+func TestDogExploreSeconds(t *testing.T) {
+	// 2026-11-23 起狗狗縮短探險時間：捨去，最多 -50%
+	for _, c := range []struct{ base, pct, want int }{{57600, 0, 57600}, {57600, 25, 43200}, {1001, 10, 900}, {57600, 80, 28800}, {57600, -5, 57600}} {
+		if got := ExploreSeconds(c.base, c.pct); got != c.want {
+			t.Errorf("ExploreSeconds(%d, %d) = %d，想要 %d", c.base, c.pct, got, c.want)
 		}
 	}
 }

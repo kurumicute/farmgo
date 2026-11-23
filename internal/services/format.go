@@ -131,7 +131,7 @@ func HarvestSummary(details []HarvestDetail) string {
 		shown += fmt.Sprintf(" 等 %d 種", len(groups))
 	}
 	text := HarvestHighlight(details) + fmt.Sprintf("🧺 收成 %d 格，共 %d 個作物。", len(details), total) + "\n" + shown +
-		HarvestValueNote(details)
+		HarvestValueNote(details) + HedgehogNote(details)
 	var losses []string
 	if stolen != 0 {
 		losses = append(losses, fmt.Sprintf("被偷走 %d 個", stolen))
@@ -315,6 +315,9 @@ func HarvestSummaryLang(lang string, details []HarvestDetail) string {
 	if cat != 0 {
 		text += i18n.T(lang, "svc.harvest.cat_bonus", "n", cat)
 	}
+	if n := hedgehogCount(details); n != 0 {
+		text += i18n.T(lang, "svc.harvest.hedgehog", "n", n)
+	}
 	var losses []string
 	if stolen != 0 {
 		losses = append(losses, i18n.T(lang, "svc.harvest.stolen", "n", stolen))
@@ -326,4 +329,23 @@ func HarvestSummaryLang(lang string, details []HarvestDetail) string {
 		text += "\n😢 " + strings.Join(losses, i18n.T(lang, "svc.list_sep"))
 	}
 	return text
+}
+
+// hedgehogCount 刺蝟讓品質提升一級的格數。
+func hedgehogCount(details []HarvestDetail) int {
+	n := 0
+	for _, d := range details {
+		if d.Hedgehog {
+			n++
+		}
+	}
+	return n
+}
+
+// HedgehogNote 一鍵收成、自動收割機的摘要裡刺蝟的效果（2026-11-22；單格收成的訊息已逐格寫出，不用這行）。
+func HedgehogNote(details []HarvestDetail) string {
+	if n := hedgehogCount(details); n != 0 {
+		return fmt.Sprintf("\n🦔 刺蝟吃掉害蟲，%d 格品質提升一級", n)
+	}
+	return ""
 }

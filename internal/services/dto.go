@@ -105,6 +105,7 @@ type HarvestDetail struct {
 	Quality  string
 	Mutation string
 	CatBonus int
+	Hedgehog bool // 刺蝟讓這格品質提升一級（2026-11-22）
 	Stolen   int
 	Lost     int
 	Value    int // 依目前售價估計的價值；自動販售時為實際收入

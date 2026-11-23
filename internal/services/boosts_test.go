@@ -118,6 +118,14 @@ func TestNewPetsAndTreat(t *testing.T) {
 	if r := e.ok(e.s.HarvestCrop(e.ctx, pid, 1)); strings.Contains(r.Message, "刺蝟") {
 		t.Fatal(r.Message)
 	}
+	// 一鍵收成的摘要也要顯示刺蝟的效果（2026-11-22）
+	e.s.PetRng = func() float64 { return 0 }
+	e.grow(pid, 1, "strawberry")
+	e.clock.Advance(28800 + 60)
+	e.exec("UPDATE farm_plots SET quality = 'normal' WHERE plot_number = 1")
+	if r := e.ok(e.s.HarvestAll(e.ctx, pid)); !strings.Contains(r.Message, "🦔 刺蝟吃掉害蟲，1 格品質提升一級") {
+		t.Fatal(r.Message)
+	}
 	e.invariant()
 }
 

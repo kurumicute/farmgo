@@ -674,7 +674,7 @@ func pointsPerUnit(ctx context.Context, t *db.Tx, s wb.Settings, category, code,
 		if err != nil {
 			return 0, err
 		}
-		return wb.PricePoints(genetics.UnitPrice(crop.SellPrice, quality, mutation, gs), s.GoldPerPoint), nil
+		return wb.PricePoints(genetics.UnitPrice(crop.Code, crop.SellPrice, quality, mutation, gs), s.GoldPerPoint), nil
 	}
 	return 0, nil
 }

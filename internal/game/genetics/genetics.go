@@ -267,10 +267,22 @@ func GrowSeconds(baseSeconds int, mutation string, earthwormActive bool, s balan
 	return seconds
 }
 
-// BasePrice 基本售價：珍稀變種是獨立作物，基本售價 = 原作物售價 × 變種倍率（捨去）。
-func BasePrice(cropSellPrice int, mutation string, s balance.GeneticsSettings) int {
+// VariantPricePctCap 個別作物的珍稀變種售價倍率上限（Go 版新增，2026-11-23 使用者要求削弱血月花、銀河花：×4 → ×3）。
+// 只會壓低：全域倍率（管理網站可調）比這裡低時用全域倍率。
+var VariantPricePctCap = map[string]int{"crimson_moon_flower": 300, "starry_night_flower": 300}
+
+// VariantPct 這種作物的珍稀變種售價倍率（%）。
+func VariantPct(cropCode string, s balance.GeneticsSettings) int {
+	if c, ok := VariantPricePctCap[cropCode]; ok && c < s.VariantPricePct {
+		return c
+	}
+	return s.VariantPricePct
+}
+
+// BasePrice 基本售價：珍稀變種是獨立作物，基本售價 = 原作物售價 × 變種倍率（捨去；倍率見 VariantPct）。
+func BasePrice(cropCode string, cropSellPrice int, mutation string, s balance.GeneticsSettings) int {
 	if mutation == "variant" {
-		return numfmt.FloorDiv(cropSellPrice*s.VariantPricePct, 100)
+		return numfmt.FloorDiv(cropSellPrice*VariantPct(cropCode, s), 100)
 	}
 	return cropSellPrice
 }
@@ -288,8 +300,8 @@ func MutationPricePct(mutation string, s balance.GeneticsSettings) int {
 }
 
 // UnitPrice 最終單價 = 基本售價 × 品質倍率 × 突變售價倍率，整數運算後無條件捨去。
-func UnitPrice(cropSellPrice int, quality, mutation string, s balance.GeneticsSettings) int {
-	base := BasePrice(cropSellPrice, mutation, s)
+func UnitPrice(cropCode string, cropSellPrice int, quality, mutation string, s balance.GeneticsSettings) int {
+	base := BasePrice(cropCode, cropSellPrice, mutation, s)
 	return numfmt.FloorDiv(base*s.QualityPricePct[quality]*MutationPricePct(mutation, s), 10_000)
 }
 

@@ -54,7 +54,7 @@ func (s *GameService) GambleOptions(ctx context.Context, playerID int64) ([]Gamb
 			rows = append(rows, GambleOption{
 				ItemCode: i.ItemCode, CropCode: c.Code, Quality: i.Quality, Mutation: i.Mutation, Quantity: i.Quantity,
 				Name:      genetics.ProduceName(c.Name, c.VariantName, i.Mutation) + GeneticsLabel(i.Quality, i.Mutation),
-				UnitPrice: genetics.UnitPrice(c.SellPrice, i.Quality, i.Mutation, settings),
+				UnitPrice: genetics.UnitPrice(c.Code, c.SellPrice, i.Quality, i.Mutation, settings),
 			})
 		}
 		return rows, nil
@@ -132,7 +132,7 @@ func (s *GameService) Gamble(ctx context.Context, playerID int64, itemCode, qual
 		if err != nil {
 			return GambleResult{}, err
 		}
-		unit := genetics.UnitPrice(c.SellPrice, quality, mutation, settings)
+		unit := genetics.UnitPrice(c.Code, c.SellPrice, quality, mutation, settings)
 		message := fmt.Sprintf("🎲 擲出 **%d**… 💀 你輸了，失去 %d 個%s。", roll, quantity, name)
 		if won {
 			message = fmt.Sprintf("🎲 擲出 **%d**！🎉 你贏了！%d 個%s的價值變成 ×%d（每個 %d 金），已存進倉庫的「🏆 賭場獎品」。",
@@ -190,7 +190,7 @@ func (s *GameService) SellPrize(ctx context.Context, playerID, prizeID int64, qu
 		if err != nil {
 			return ActionResult{}, err
 		}
-		base := genetics.UnitPrice(c.SellPrice, prize.Quality, prize.Mutation, settings)
+		base := genetics.UnitPrice(c.Code, c.SellPrice, prize.Quality, prize.Mutation, settings)
 		price, sell, err := s.sellPrice(ctx, t, farm, &c, base*prize.Multiplier)
 		if err != nil {
 			return ActionResult{}, err
@@ -243,7 +243,7 @@ func prizeViews(ctx context.Context, t *db.Tx, farm *models.Farm, settings *bala
 			ID: p.ID, ItemCode: p.ItemCode, CropCode: c.Code, Quality: p.Quality, Mutation: p.Mutation,
 			Multiplier: p.Multiplier, Quantity: p.Quantity,
 			Name:      genetics.ProduceName(c.Name, c.VariantName, p.Mutation) + GeneticsLabel(p.Quality, p.Mutation),
-			UnitPrice: genetics.UnitPrice(c.SellPrice, p.Quality, p.Mutation, *settings) * p.Multiplier,
+			UnitPrice: genetics.UnitPrice(c.Code, c.SellPrice, p.Quality, p.Mutation, *settings) * p.Multiplier,
 		})
 	}
 	return rows, nil

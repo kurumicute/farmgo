@@ -395,7 +395,8 @@
     "harvest.big_head": "🎉 大豐收！",
     "harvest.value_kept": "\n📦 約值 {n} 金（到「販售」賣出）",
     "harvest.value_sold": "\n🏪 自動販售機賣出，金幣 +{n}",
-    "harvest.cat_bonus": "\n🐱 貓咪多收 +{n} 個"
+    "harvest.cat_bonus": "\n🐱 貓咪多收 +{n} 個",
+    "harvest.hedgehog": "\n🦔 刺蝟吃掉害蟲，{n} 格品質提升一級"
   },
   "plot_state": {
     "empty": "空地",

@@ -395,7 +395,8 @@
     "harvest.big_head": "🎉 Bumper crop! ",
     "harvest.value_kept": "\n📦 Worth about {n} Gold (sell it under \"Sell\")",
     "harvest.value_sold": "\n🏪 Sold by the Auto-Seller: +{n} Gold",
-    "harvest.cat_bonus": "\n🐱 Your cat found +{n} extra"
+    "harvest.cat_bonus": "\n🐱 Your cat found +{n} extra",
+    "harvest.hedgehog": "\n🦔 Your hedgehog ate the pests — quality raised one tier on {n} plot(s)"
   },
   "plot_state": {
     "empty": "Empty",

@@ -101,6 +101,9 @@ func (p *Panel) buildCave(_ context.Context, data any) (*ui.Embed, error) {
 	)}
 	for _, a := range d.ov.Areas {
 		when := p.s("探險 ") + p.dur(true, a.DurationSeconds)
+		if d.ov.DogPct > 0 {
+			when += p.f("（🐶 -%d%%）", d.ov.DogPct)
+		}
 		if a.NeedsRuins {
 			when = p.s("每天一次、立即拿到獎勵")
 		}

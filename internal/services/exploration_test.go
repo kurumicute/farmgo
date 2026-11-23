@@ -16,6 +16,7 @@ import (
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/gameerr"
+	petrules "farmgm/internal/game/pets"
 	"farmgm/internal/game/rules"
 )
 
@@ -780,3 +781,26 @@ type (
 	dbTx = db.Tx
 	ctxT = context.Context
 )
+
+// 狗狗（2026-11-23 起）：山洞一般區域的探險時間 -X%，古代遺跡不受影響；山洞頁顯示扣掉後的時間。
+func TestDogShortensExpedition(t *testing.T) {
+	e := setup(t)
+	pid := e.explorer()
+	e.setGoldRecorded(pid, 200_000)
+	e.ok(e.r.BuyPet(e.ctx, pid, petrules.Dog))
+	for range 4 {
+		e.ok(e.r.UpgradePet(e.ctx, pid, petrules.Dog)) // Lv4：25%
+	}
+	ov := e.overview(pid)
+	if ov.DogPct != 25 || ov.Areas[0].Code != "grassland" || ov.Areas[0].DurationSeconds != 6*hour {
+		t.Fatalf("%d %+v", ov.DogPct, ov.Areas[0])
+	}
+	start := e.clock.Now()
+	trip := must[ExploreOutcome](t)(e.x.Explore(e.ctx, pid, "grassland")).Trip
+	if trip.EndsAt.Sub(start) != 6*time.Hour || trip.DurationSeconds != 6*hour {
+		t.Fatalf("%+v", trip)
+	}
+	e.clock.Advance(6 * hour)
+	must[ExploreReward](t)(e.x.ClaimExploration(e.ctx, pid))
+	e.invariant()
+}
