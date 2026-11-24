@@ -96,6 +96,7 @@ func (p *Panel) registerPages() {
 		"fishing":         {p.loadFishing, p.buildFishing},
 		"fish_game":       {p.loadFishGame, p.buildFishGame},
 		"fish_basket":     {p.loadFishBasket, p.buildFishBasket},
+		"pond":            {p.loadPond, p.buildPond}, // 魚塘（2026-11-24）
 		"fish_detail":     {p.loadFishDetail, p.buildFishDetail},
 		"fish_codex":      {p.loadFishCodex, p.buildFishCodex},
 		"fish_rank":       {p.loadFishRank, p.buildFishRank},
@@ -560,6 +561,23 @@ func todoHints(lang string, d mainData) (hints []string, goes []todoGo) {
 	} else if td.BasketCapacity > 0 && td.BasketCount*5 >= td.BasketCapacity*4 {
 		hints = append(hints, t("basket_almost", "n", td.BasketCount, "cap", td.BasketCapacity))
 		add(todoGo{label: t("go_basket"), page: "fish_basket", emoji: "🎣"})
+	}
+	if td.PondBuilt { // 魚塘（2026-11-24）
+		pondGo := false
+		if td.PondPremiums > 0 {
+			hints = append(hints, t("pond_premium", "n", td.PondPremiums))
+			pondGo = true
+		}
+		if td.PondFish > 0 && td.PondFeed == 0 {
+			hints = append(hints, t("pond_feed_out"))
+			pondGo = true
+		} else if td.PondFish > 0 && td.PondFeedHours < 12 {
+			hints = append(hints, t("pond_feed_low", "h", td.PondFeedHours))
+			pondGo = true
+		}
+		if pondGo {
+			add(todoGo{label: t("go_pond"), page: "pond", emoji: "🐟"})
+		}
 	}
 	if td.CellarReady > 0 {
 		hints = append(hints, t("cellar_ready", "n", td.CellarReady))

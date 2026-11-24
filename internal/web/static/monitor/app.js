@@ -5205,11 +5205,84 @@ if (typeof document !== "undefined") {
     });
   }
 
+  // ----- 魚塘、消耗品每日加價（Go 版新增，2026-11-24）-----
+  const POND_FIELDS = [
+    ["unlock_level", "開放的農場等級", 1, 100], ["grow_pct", "每 12 小時成長（佔重量區間 %）", 1, 100],
+    ["epic_share_pct", "史詩魚最多佔容量 %", 0, 100], ["sunny_pct", "晴天成長倍率 %", 0, 500],
+    ["cloudy_pct", "陰天成長倍率 %", 0, 500], ["rainy_pct", "雨天成長倍率 %", 0, 500],
+    ["storm_pct", "暴風成長倍率 %", 0, 500], ["drought_pct", "乾旱（連續晴天）成長倍率 %", 0, 500],
+    ["feed_slots", "飼料槽（容量的幾倍）", 1, 50], ["breed_min", "繁殖需要的同種魚隻數", 2, 100],
+    ["breed_weight", "繁殖的重量門檻 %", 0, 100], ["breed_common_bp", "普通魚繁殖機率（萬分比）", 0, 10000],
+    ["breed_rare_bp", "稀有魚繁殖機率（萬分比）", 0, 10000], ["breed_epic_bp", "史詩魚繁殖機率（萬分比）", 0, 10000],
+    ["breed_per_day", "每天最多繁殖幾隻", 0, 100], ["catchup_days", "最多回推幾天", 1, 60],
+  ];
+  function pondCard() {
+    const c = featureKey("fish_pond").current;
+    const lists = [
+      ["prices", "各級價格（第 1 個是建造費）", 1, 1000000000, "例如 20000, 50000"],
+      ["capacities", "各級容量（隻）", 1, 100, "例如 10, 14"],
+      ["grow_bonus_pct", "各級成長加成 %", 0, 1000, "例如 0, 20"],
+      ["premium_pct", "各級池養極品倍率（最高價的 %）", 100, 500, "例如 170, 190"],
+    ].map(([key, label, min, max, hint]) => ({ key, label, min, max, input: textInput((c[key] || []).join(", "), 200, hint) }));
+    lists.forEach((l) => l.input.classList.add("reason-input"));
+    const inputs = POND_FIELDS.map(([key, , low, high]) => numInput(null, c[key], low, high));
+    const body = el("div", {}, [
+      el("p", { className: "muted small", text: "入口在釣魚中心，不佔農田。等級的數值都要有同樣的個數；降低級數時，已經超過的魚塘以新的最高等級計算。魚飼料的價格在「設施與道具價格」。" }),
+      ...lists.map((l) => el("div", { className: "controls" }, [labeled(l.label, l.input)])),
+      el("div", { className: "controls" }, POND_FIELDS.map(([, label], i) => labeled(label, inputs[i]))),
+    ]);
+    return featureCard("fish_pond", "釣魚中心的「🐟 魚塘」：放魚、加飼料、養大後以池養極品價賣出", body, () => {
+      const value = {};
+      const prices = listIn(lists[0].input, lists[0].label, lists[0].min, lists[0].max, 1, 10);
+      value.prices = prices;
+      lists.slice(1).forEach((l) => { value[l.key] = listIn(l.input, `${l.label}（要和價格一樣 ${prices.length} 級）`, l.min, l.max, prices.length, prices.length); });
+      POND_FIELDS.forEach(([key, label, low, high], i) => { value[key] = intIn(inputs[i], label, low, high); });
+      return [value, [
+        ...lists.map((l) => diffRow(l.label, listText(c[l.key]), listText(value[l.key]))),
+        ...POND_FIELDS.map(([key, label]) => diffRow(label, fmtNum(c[key]), fmtNum(value[key]))),
+      ].filter(Boolean)];
+    });
+  }
+
+  function dailyPriceCard() {
+    const k = featureKey("daily_price");
+    const c = k.current;
+    const codes = [...new Set([...Object.keys(k.defaults.free || {}), ...Object.keys(c.free || {}), "fish_feed"])];
+    const step = numInput(null, c.step_pct, 0, 1000);
+    const cap = numInput(null, c.max_pct, 100, 10000);
+    const rows = codes.map((code) => {
+      const on = el("input");
+      on.type = "checkbox";
+      on.checked = Object.prototype.hasOwnProperty.call(c.free || {}, code);
+      const free = numInput(null, (c.free || {})[code] ?? (k.defaults.free || {})[code] ?? 10, 0, 100000);
+      return { code, on, free };
+    });
+    const body = el("div", {}, [
+      el("div", { className: "controls" }, [labeled("超過後每多買 1 個加原價的 %", step), labeled("單價最多是原價的 %", cap)]),
+      el("div", { className: "table-wrap" }, [el("table", {}, [
+        el("thead", {}, [el("tr", {}, ["道具", "加價", "每天用原價的數量"].map((t) => el("th", { text: t })))]),
+        el("tbody", {}, rows.map((r) => el("tr", {}, [td(itemName(r.code)), el("td", {}, [r.on]), el("td", {}, [r.free])]))),
+      ])]),
+      el("p", { className: "muted small", text: "每座農場每天（台灣時間 00:00 歸零）在道具商店買超過免加價數量後，單價逐個提高。例如原價 500、前 5 個原價、每個 +10%：第 6 個 550、第 7 個 600。" }),
+    ]);
+    return featureCard("daily_price", "道具商店消耗品的當天逐次加價（金幣回收）", body, () => {
+      const value = { step_pct: intIn(step, "每多買 1 個加價", 0, 1000), max_pct: intIn(cap, "單價上限", 100, 10000), free: {} };
+      rows.forEach((r) => { if (r.on.checked) value.free[r.code] = intIn(r.free, `${itemName(r.code)}每天用原價的數量`, 0, 100000); });
+      const freeText = (m) => Object.entries(m || {}).map(([code, n]) => `${itemName(code)} ${fmtNum(n)}`).join("、") || "（不加價）";
+      return [value, [
+        diffRow("每多買 1 個加價", `${c.step_pct}%`, `${value.step_pct}%`),
+        diffRow("單價上限", `${c.max_pct}%`, `${value.max_pct}%`),
+        diffRow("每天用原價的數量", freeText(c.free), freeText(value.free)),
+      ].filter(Boolean)];
+    });
+  }
+
   const FEATURE_CARDS = [["checkin", checkinCard], ["pets", petsCard], ["special_shop", specialShopCard],
     ["achievements", achievementsCard], ["exploration", explorationCard], ["mushroom", mushroomCard],
     ["seedlab", seedlabCard], ["autofish", autofishCard], ["hourglass", hourglassCard], ["aid", aidCard],
     ["expansion", expansionCard], ["upgrades", upgradesCard], ["cosmetics", cosmeticsCard], ["reputation", reputationCard],
-    ["auction", auctionCard]];
+    ["auction", auctionCard],
+    ["fish_pond", pondCard], ["daily_price", dailyPriceCard]];
 
   function renderFeatureSettings() {
     $("fs-body").replaceChildren(...FEATURE_CARDS.map(([, build]) => build()));

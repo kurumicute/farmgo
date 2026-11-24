@@ -25,6 +25,7 @@ import (
 	"farmgm/internal/game/balance"
 	"farmgm/internal/game/checkin"
 	"farmgm/internal/game/cosmetics"
+	"farmgm/internal/game/dailyprice"
 	"farmgm/internal/game/expansion"
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/featurecfg"
@@ -32,6 +33,7 @@ import (
 	"farmgm/internal/game/hourglass"
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/pets"
+	"farmgm/internal/game/pond"
 	"farmgm/internal/game/reputation"
 	"farmgm/internal/game/seedlab"
 	"farmgm/internal/game/specialshop"
@@ -46,7 +48,8 @@ import (
 // FeatureKeys 管理網站可調整的規則（顯示順序）。
 var FeatureKeys = []string{checkin.ConfigKey, pets.ConfigKey, specialshop.ConfigKey, achievements.ConfigKey,
 	exploration.ConfigKey, mushroom.ConfigKey, seedlab.ConfigKey, autofish.ConfigKey,
-	hourglass.ConfigKey, aid.ConfigKey, expansion.ConfigKey, upgrades.ConfigKey, cosmetics.ConfigKey, reputation.ConfigKey, auction.ConfigKey}
+	hourglass.ConfigKey, aid.ConfigKey, expansion.ConfigKey, upgrades.ConfigKey, cosmetics.ConfigKey, reputation.ConfigKey, auction.ConfigKey,
+	pond.ConfigKey, dailyprice.ConfigKey} // 2026-11-24：魚塘、消耗品每日加價
 
 // CodexEditable 可在管理網站調整的圖鑑分類（魚類圖鑑來自 farm_fish，不能在這裡改）。
 var CodexEditable = []string{"crop", "animal", "goods", "material"}

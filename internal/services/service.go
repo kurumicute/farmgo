@@ -77,6 +77,8 @@ type GameService struct {
 	AutoFishRng func() float64
 	// 藏寶圖碎片掉落與寶箱、NPC 訂單的擲骰（Go 版新增，2026-11-20）；測試可直接指定
 	TreasureRng func() float64
+	// 魚塘的繁殖（Go 版新增，2026-11-24）；測試可直接指定
+	PondRng func() float64
 
 	contextGroupID *int64
 }
@@ -97,6 +99,7 @@ func NewGameService(d *db.DB, opt Options) *GameService {
 		LabRng:      rand.Float64,
 		AutoFishRng: rand.Float64,
 		TreasureRng: rand.Float64,
+		PondRng:     rand.Float64,
 	}
 	if s.clock == nil {
 		s.clock = clock.System{}

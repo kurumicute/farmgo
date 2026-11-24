@@ -11,7 +11,7 @@ import (
 )
 
 // AlembicHead Go 版程式對應的 Alembic 版本。
-const AlembicHead = "0048" // 0048：品評會（fair_entries、fair_votes、交易類型 fair_entry／fair_reward，2026-11-20）
+const AlembicHead = "0049" // 0049：魚塘（farm_fish.pond_weight_g、farm_fish.bred，2026-11-24）
 
 // StartupCheckError 啟動檢查失敗。
 type StartupCheckError struct{ Msg string }

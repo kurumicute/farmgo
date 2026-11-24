@@ -22,7 +22,8 @@ const (
 	ownedCols   = "id, farm_id, gear_code, kind, quantity, equipped, acquired_at"
 	sessionCols = "id, farm_id, status, settings_version, settings, gear, fish_code, rarity, weight_g, price, state, turns, " +
 		"started_at, bite_at, react_deadline, action_deadline, ended_at, context_group_id"
-	fishCols  = "id, farm_id, session_id, fish_code, rarity, weight_g, price, caught_at, sold_at, sold_price, donated_at, auto"
+	fishCols = "id, farm_id, session_id, fish_code, rarity, weight_g, price, caught_at, sold_at, sold_price, donated_at, auto, " +
+		"pond_weight_g, bred"
 	guardCols = "farm_id, casts_since_check, check_after, suspicion, challenge, challenge_expires_at, locked_until, " +
 		"consecutive_failures, failed_total, passed_total"
 )
@@ -233,13 +234,30 @@ func PlayerSessionStats(ctx context.Context, t *db.Tx, farmID int64) (SessionSta
 
 // ---------- 魚簍 ----------
 
-// InBasket SQL 條件：還在魚簍中的魚（沒有賣掉，也沒有捐給世界 Boss）。alias 是 farm_fish 的別名（"" 表示不加前綴）。
+// InBasket SQL 條件：還在魚簍中的魚（沒有賣掉、沒有捐給世界 Boss，也不在魚塘裡）。alias 是 farm_fish 的別名（"" 表示不加前綴）。
 func InBasket(alias string) string {
 	p := ""
 	if alias != "" {
 		p = alias + "."
 	}
-	return p + "sold_at IS NULL AND " + p + "donated_at IS NULL"
+	return p + "sold_at IS NULL AND " + p + "donated_at IS NULL AND " + p + "pond_weight_g IS NULL"
+}
+
+// InPond SQL 條件：放在魚塘裡、還沒賣掉的魚（2026-11-24 Go 版新增）。
+func InPond(alias string) string {
+	p := ""
+	if alias != "" {
+		p = alias + "."
+	}
+	return p + "sold_at IS NULL AND " + p + "pond_weight_g IS NOT NULL"
+}
+
+// Caught SQL 條件：釣到的魚（排除魚塘繁殖的魚苗），捕獲數、圖鑑次數、日報用。
+func Caught(alias string) string {
+	if alias != "" {
+		return "NOT " + alias + ".bred"
+	}
+	return "NOT bred"
 }
 
 // FishWithType 魚與其魚種。
@@ -260,7 +278,7 @@ func scanFishWithType(ctx context.Context, t *db.Tx, where string, args ...any) 
 		var x FishWithType
 		f, ft := &x.Fish, &x.Type
 		if err := rows.Scan(&f.ID, &f.FarmID, &f.SessionID, &f.FishCode, &f.Rarity, &f.WeightG, &f.Price, &f.CaughtAt,
-			&f.SoldAt, &f.SoldPrice, &f.DonatedAt, &f.Auto,
+			&f.SoldAt, &f.SoldPrice, &f.DonatedAt, &f.Auto, &f.PondWeightG, &f.Bred,
 			&ft.ID, &ft.Code, &ft.Name, &ft.Emoji, &ft.Rarity, &ft.MinPrice, &ft.MaxPrice, &ft.MinWeightG, &ft.MaxWeightG,
 			&ft.Difficulty, &ft.Description, &ft.SortOrder, &ft.Active, &ft.RequiredBaits, &ft.Seasons, &ft.HourStart,
 			&ft.HourEnd); err != nil {
@@ -279,6 +297,22 @@ func Basket(ctx context.Context, t *db.Tx, farmID int64) ([]FishWithType, error)
 func BasketCount(ctx context.Context, t *db.Tx, farmID int64) (int, error) {
 	v, _, err := db.QueryValue[int](ctx, t, "SELECT count(*) FROM farm_fish WHERE farm_id = $1 AND "+InBasket(""), farmID)
 	return v, err
+}
+
+// PondFish 魚塘裡還沒賣掉的魚（2026-11-24），依 ID 排序。呼叫端要先鎖定農場（魚塘的操作都以農場鎖定排序）。
+func PondFish(ctx context.Context, t *db.Tx, farmID int64) ([]FishWithType, error) {
+	return scanFishWithType(ctx, t, "WHERE f.farm_id = $1 AND "+InPond("f")+" ORDER BY f.id", farmID)
+}
+
+// SetPondWeights 更新魚塘裡的魚的養殖重量（只更新這座農場的魚）。
+func SetPondWeights(ctx context.Context, t *db.Tx, farmID int64, ids []int64, weights []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := t.Exec(ctx, `UPDATE farm_fish f SET pond_weight_g = v.w
+		FROM (SELECT unnest($2::bigint[]) AS id, unnest($3::int[]) AS w) v
+		WHERE f.id = v.id AND f.farm_id = $1 AND `+InPond("f"), farmID, ids, weights)
+	return err
 }
 
 // GetFarmFish 只回傳這座農場自己的魚（防止查詢或操作別人的魚）；沒有時回傳 nil。
@@ -331,7 +365,7 @@ type CodexEntry struct {
 // Codex 魚種代碼 → 圖鑑資料。
 func Codex(ctx context.Context, t *db.Tx, farmID int64) (map[string]CodexEntry, error) {
 	rows, err := t.Query(ctx, "SELECT fish_code, count(*), max(weight_g), max(price), min(caught_at) FROM farm_fish "+
-		"WHERE farm_id = $1 GROUP BY fish_code", farmID)
+		"WHERE farm_id = $1 AND "+Caught("")+" GROUP BY fish_code", farmID)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +430,7 @@ func LeaderboardOf(ctx context.Context, t *db.Tx, groupID *int64, limit int) (Le
 	// 排行榜顯示農場名稱（players.display_name 是註冊時的名稱，不會跟著改名更新）
 	rows, err := t.Query(ctx, "SELECT fa.name, count(f.id), count(f.id) FILTER (WHERE f.rarity = 'legendary') "+
 		"FROM farm_fish f JOIN farms fa ON fa.id = f.farm_id"+scope+
-		" WHERE NOT f.auto GROUP BY fa.player_id, fa.name ORDER BY count(f.id) DESC, fa.player_id LIMIT $1", args...)
+		" WHERE NOT f.auto AND NOT f.bred GROUP BY fa.player_id, fa.name ORDER BY count(f.id) DESC, fa.player_id LIMIT $1", args...)
 	if err != nil {
 		return out, err
 	}
@@ -414,7 +448,7 @@ func LeaderboardOf(ctx context.Context, t *db.Tx, groupID *int64, limit int) (Le
 	}
 	rows, err = t.Query(ctx, "SELECT fa.name, ft.name, ft.emoji, r.rarity, r.weight_g, r.price FROM ("+
 		"SELECT farm_id, fish_code, weight_g, price, rarity, row_number() OVER (PARTITION BY farm_id "+
-		"ORDER BY price DESC, weight_g DESC, id) AS rn FROM farm_fish WHERE NOT auto) r "+
+		"ORDER BY price DESC, weight_g DESC, id) AS rn FROM farm_fish WHERE NOT auto AND NOT bred) r "+
 		"JOIN farms fa ON fa.id = r.farm_id "+
 		"JOIN fish_types ft ON ft.code = r.fish_code"+scope+
 		" WHERE r.rn = 1 ORDER BY r.price DESC, r.weight_g DESC LIMIT $1", args...)

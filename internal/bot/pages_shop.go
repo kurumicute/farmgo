@@ -50,6 +50,7 @@ type shopData struct {
 	image    []byte
 	// 素材背包（2026-11-19 可以擴充）
 	matUsed, matCap, matLevel int
+	daily                     map[string]services.DailyPrice // 消耗品當天逐次加價（2026-11-24）
 }
 
 func (p *Panel) loadShop(ctx context.Context) (any, error) {
@@ -84,6 +85,9 @@ func (p *Panel) loadShop(ctx context.Context) (any, error) {
 		}
 	}
 	if d.events, err = svc.ActiveEvents(ctx); err != nil {
+		return nil, err
+	}
+	if d.daily, err = svc.DailyPrices(ctx, pid); err != nil {
 		return nil, err
 	}
 	d.gold, d.capacity, d.used = status.Gold, status.WarehouseCapacity, status.WarehouseUsed
@@ -167,6 +171,14 @@ func (p *Panel) shopTabs(row int, current string) {
 	}
 }
 
+// dailyLine 消耗品當天逐次加價的說明（2026-11-24）。
+func (p *Panel) dailyLine(dp services.DailyPrice) string {
+	if dp.Raised() {
+		return p.f("📈 今天已買 **%d** 個，已經開始加價（原價 %s 金，台灣時間 00:00 恢復）", dp.Bought, money(dp.Base))
+	}
+	return p.f("📈 每天前 **%d** 個原價，今天已買 **%d** 個", dp.Free, dp.Bought)
+}
+
 // shortOf 金幣不夠買 1 個時的說明（夠買時回傳 ""）。
 func shortOf(gold, price int) string {
 	if gold >= price {
@@ -224,8 +236,13 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 			tools = append(tools, p.f("%s%s **%s**　💰 **%s** 金　%s　%s\n　📝 %s", mark("item:"+code), emoji, p.s(it.Name),
 				money(it.Price), tag, own, p.s(it.Desc)))
 		} else {
-			consumables = append(consumables, p.f("%s%s **%s**　💰 **%s** 金　🎒 持有 **%d**\n　📝 %s", mark("item:"+code), emoji,
-				p.s(it.Name), money(it.Price), have, p.s(it.Desc)))
+			line := p.f("%s%s **%s**　💰 **%s** 金　🎒 持有 **%d**\n　📝 %s", mark("item:"+code), emoji,
+				p.s(it.Name), money(it.Price), have, p.s(it.Desc))
+			if dp, ok := d.daily[code]; ok { // 當天逐次加價（2026-11-24）：顯示下一個的價格與今天買了幾個
+				line = p.f("%s%s **%s**　💰 **%s** 金　🎒 持有 **%d**\n　📝 %s", mark("item:"+code), emoji,
+					p.s(it.Name), money(dp.Next), have, p.s(it.Desc)) + "\n　" + p.dailyLine(dp)
+			}
+			consumables = append(consumables, line)
 		}
 	}
 	expandPrice, canExpand := expansion.WarehousePrice(d.capacity)
@@ -345,6 +362,16 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 					Run: p.buyRun("buy_item", func(ctx context.Context, q int) (services.ActionResult, error) {
 						return p.svc().BuyItem(ctx, p.playerID, code, q)
 					})}
+				if dp, ok := d.daily[code]; ok { // 當天逐次加價：數量按鈕顯示總價，可買數量依加價後計算
+					pk.PriceText = p.f("下一個 %s 金", money(dp.Next))
+					pk.Max, pk.Short = max(1, dp.Affordable(d.gold, balance.MaxTradeQuantity)), shortOf(d.gold, dp.Next)
+					pk.LabelFor = func(q int) string {
+						if total := dp.Total(q); total > dp.Base*q {
+							return p.f("買 %d（%s 金）", q, money(total))
+						}
+						return p.f("買 %d", q)
+					}
+				}
 			}
 		}
 		return pk, nil
@@ -381,7 +408,11 @@ func (p *Panel) buildShop(_ context.Context, data any) (*ui.Embed, error) {
 	case shopTabItems:
 		for _, code := range balance.ItemOrder {
 			if it := balance.ItemOf(code); it.Kind != "tool" {
-				options = append(options, option{p.s(it.Name), "item:" + code, p.f("🧪 道具｜💰 %s 金", money(it.Price)), ItemEmoji[code]})
+				price := it.Price
+				if dp, ok := d.daily[code]; ok {
+					price = dp.Next
+				}
+				options = append(options, option{p.s(it.Name), "item:" + code, p.f("🧪 道具｜💰 %s 金", money(price)), ItemEmoji[code]})
 			}
 		}
 	default:

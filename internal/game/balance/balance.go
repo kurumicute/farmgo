@@ -148,6 +148,7 @@ const (
 	ItemHourglass    = "hourglass"   // 加速沙漏（Go 版新增，2026-11-15），規則在 game/hourglass
 	EffectEarthworm  = "earthworm"
 	ItemPatrolTicket = "patrol_ticket"
+	ItemFishFeed     = "fish_feed" // 魚飼料（Go 版新增，2026-11-24），魚塘用，規則在 game/pond
 )
 
 // FertilizerPct 說明文字用（Python round((1 - FERTILIZER_TIME_FACTOR) * 100)）。
@@ -166,7 +167,7 @@ type Item struct {
 
 // ItemOrder 道具顯示順序（Python ITEMS 的 dict 順序）。
 var ItemOrder = []string{ItemFertilizer, ItemEarthworm, ItemHourglass, ItemStormGuard, ItemSprinkler, ToolAutoWaterer, ToolAutoPlanter,
-	ToolAutoSeller, ToolAutoFisher, ToolThiefGlove, ItemPatrolTicket}
+	ToolAutoSeller, ToolAutoFisher, ToolThiefGlove, ItemPatrolTicket, ItemFishFeed}
 
 // priceOverrides 可在管理網站調整價格的道具（自動釣魚機、加速沙漏，由各規則套件的 init 以 RegisterPrice 登記）。
 var priceOverrides = map[string]func() int{}
@@ -248,6 +249,9 @@ var Items = map[string]Item{
 		[]string{"雨衣稻草人", "雨衣"}},
 	ItemSprinkler: {"灑水器", 400, "consumable", "使用後 24 小時內，不是晴天時澆水的作物也有晴天的生長加速（效果期間再次使用可延長）",
 		[]string{"灑水器"}},
+	// Go 版新增（2026-11-24）：魚塘的飼料，在釣魚中心的「🐟 魚塘」補進飼料槽，每隻魚每 12 小時吃 1 份
+	ItemFishFeed: {"魚飼料", 3, "consumable", "放進魚塘的飼料槽，每隻魚每 12 小時吃 1 份，吃到的魚才會長大（在釣魚中心的「🐟 魚塘」使用）",
+		[]string{"魚飼料", "飼料"}},
 }
 
 // ---------- 賭場 ----------

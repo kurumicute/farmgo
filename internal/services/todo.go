@@ -6,6 +6,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"farmgm/internal/game/exploration"
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/npcorder"
+	"farmgm/internal/game/pond"
 	"farmgm/internal/game/questboard"
 	"farmgm/internal/game/seedlab"
 	"farmgm/internal/game/treasure"
@@ -44,6 +46,12 @@ type TodoSummary struct {
 	TreasureReturnAt *time.Time // 尋寶隊回來的時間（尋寶中）
 	RainbowClaimable bool       // 彩虹日、今天還沒領彩虹碎片
 	BoardBuffs       []string   // 所屬群組生效中的委託增益（難度，依 questboard.Tiers 排序）
+	// 魚塘（2026-11-24）：只在記憶體裡結算（不寫入、不繁殖），農場 Lv.pond.UnlockLevel 以上才查
+	PondBuilt     bool
+	PondFish      int
+	PondFeed      int // 飼料槽裡的飼料
+	PondPremiums  int // 可以用極品價賣出的魚
+	PondFeedHours int // 飼料還能吃幾小時（沒有魚時為 -1）
 }
 
 func (s *GameService) TodoSummary(ctx context.Context, playerID int64) (TodoSummary, error) {
@@ -131,6 +139,11 @@ func (s *GameService) TodoSummary(ctx context.Context, playerID int64) (TodoSumm
 			}
 			v.LabFreeSlots = max(0, seedlab.SlotsFor(*labLevel, deref0(labExtra))-len(jobs))
 		}
+		if farm.Level >= pond.UnlockLevel() {
+			if err := pondTodo(ctx, t, farm.ID, now, &v); err != nil {
+				return v, err
+			}
+		}
 		if v.BasketCount > 0 {
 			_, raw, err := fishrepo.CurrentSettings(ctx, t)
 			if err != nil {
@@ -144,6 +157,49 @@ func (s *GameService) TodoSummary(ctx context.Context, playerID int64) (TodoSumm
 		}
 		return v, nil
 	})
+}
+
+// pondTodo 魚塘的待辦：一條查詢讀出設定與魚塘裡的魚，在記憶體裡結算到現在（不寫回，下次打開魚塘頁才真的結算）。
+func pondTodo(ctx context.Context, t *db.Tx, farmID int64, now time.Time, v *TodoSummary) error {
+	var settings map[string]any
+	var raw []byte
+	if err := t.QueryRow(ctx, `SELECT (SELECT settings FROM farm_tools WHERE farm_id = $1 AND tool_code = $2 ORDER BY id DESC LIMIT 1),
+		(SELECT coalesce(json_agg(json_build_object('id', f.id, 'code', f.fish_code, 'rarity', f.rarity, 'w', f.pond_weight_g,
+			'min_g', ft.min_weight_g, 'max_g', ft.max_weight_g, 'min_p', ft.min_price, 'max_p', ft.max_price)), '[]'::json)
+			FROM farm_fish f JOIN fish_types ft ON ft.code = f.fish_code WHERE f.farm_id = $1 AND `+fishrepo.InPond("f")+`)`,
+		farmID, pond.ToolCode).Scan(&settings, &raw); err != nil {
+		return err
+	}
+	st := pond.Parse(settings)
+	if !st.Built() {
+		return nil
+	}
+	var rows []struct {
+		ID     int64  `json:"id"`
+		Code   string `json:"code"`
+		Rarity string `json:"rarity"`
+		W      int    `json:"w"`
+		MinG   int    `json:"min_g"`
+		MaxG   int    `json:"max_g"`
+		MinP   int    `json:"min_p"`
+		MaxP   int    `json:"max_p"`
+	}
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		return err
+	}
+	list := make([]pond.Fish, len(rows))
+	for i, r := range rows {
+		list[i] = pond.Fish{ID: r.ID, Code: r.Code, Rarity: r.Rarity, WeightG: r.W, MinG: r.MinG, MaxG: r.MaxG, MinPrice: r.MinP, MaxPrice: r.MaxP}
+	}
+	st.Attach(list)
+	pond.Settle(&st, &list, now, func() float64 { return 1 }) // 不擲繁殖
+	v.PondBuilt, v.PondFish, v.PondFeed, v.PondFeedHours = true, len(list), st.Feed, pond.FeedHours(st.Feed, len(list))
+	for _, x := range list {
+		if x.Premium(now) {
+			v.PondPremiums++
+		}
+	}
+	return nil
 }
 
 func deref0(p *int) int {

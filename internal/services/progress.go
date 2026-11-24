@@ -576,7 +576,7 @@ func achievementMetrics(ctx context.Context, t *db.Tx, farm *models.Farm, catego
 		sales, steals, defended, gambles = stats.CropSalesIncome, stats.StealCount, stats.DefendedCount, stats.GambleCount
 	}
 	var fishTotal, fishLegendary, bossJoined, bossWon, explorations, bestStreak int
-	if err := t.QueryRow(ctx, "SELECT count(*), count(*) FILTER (WHERE rarity = 'legendary') FROM farm_fish WHERE farm_id = $1",
+	if err := t.QueryRow(ctx, "SELECT count(*), count(*) FILTER (WHERE rarity = 'legendary') FROM farm_fish WHERE farm_id = $1 AND NOT bred",
 		farm.ID).Scan(&fishTotal, &fishLegendary); err != nil {
 		return nil, err
 	}

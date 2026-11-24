@@ -125,6 +125,8 @@ type Panel struct {
 	fishSelected      *int64
 	fishSellIDs       []int64
 	fishPage          int
+	pondSellIDs       []int64 // 魚塘頁勾選出售的魚（2026-11-24）
+	pondPage          int
 	fishRankGlobal    bool
 	confirm           string
 	helpTopic         string       // 說明頁選取的主題（HelpEmbed 欄位索引；"" = 主題清單）
@@ -473,7 +475,7 @@ func (p *Panel) goTo(ctx context.Context, it ui.Interaction, page, notice string
 }
 
 // resetPageState 換頁時清除的其他頁面狀態（Python goto 中的 fish_sell_ids、sell_keys）。
-func (p *Panel) resetPageState() { p.sellKeys, p.fishSellIDs = nil, nil }
+func (p *Panel) resetPageState() { p.sellKeys, p.fishSellIDs, p.pondSellIDs = nil, nil, nil }
 
 // actOpts act 的選項。
 type actOpts struct {

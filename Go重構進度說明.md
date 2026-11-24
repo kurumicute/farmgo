@@ -279,6 +279,16 @@
     - 測試：`game/genetics` 的價格檢查。
 
 
+- **2026-11-24（使用者要求，Go 版新增）**：**魚塘**與**消耗品當天逐次加價**。
+  - **魚塘**（Migration 0049，`game/pond`、`services/pond.go`、`bot/pages_pond.go`，設計見 `魚塘_流程圖.md`）：農場 Lv.4 開放，入口在釣魚中心與魚簍頁，不佔農田；釣魚結算畫面有「🐟 放進魚塘」。設定存在 `farm_tools`（`fish_pond`）的 settings，魚的養殖重量在 `farm_fish.pond_weight_g`，魚苗是 `farm_fish.bred`。
+    - `fishrepo.InBasket` 加上 `pond_weight_g IS NULL`：魚簍、販售、Boss 捐魚自動排除魚塘裡的魚。排行榜（捕獲數、最有價值的魚）、圖鑑次數、成就的釣魚數、日報的最佳魚都排除魚苗。賣出時只寫 `sold_price`（實際售價），`weight_g`、`price` 保留捕獲時的數值。
+    - 每 12 小時一個週期，打開魚塘頁或操作時結算（鎖定農場後進行，天氣由日期決定，不需要背景排程）；總覽待辦區在記憶體裡結算（不寫入），提示池養極品與飼料不足。
+    - 新道具「魚飼料」（`fish_feed`，3 金，放素材背包，價格在「設施與道具價格」）；「補滿飼料」先用素材背包的，不夠的自動買。磨坊做飼料、介紹網站說明還沒做。
+    - 管理網站「新功能設定 → 魚塘」可以調整各級價格、容量、成長、極品倍率、天氣倍率、繁殖等。建造、升級、補飼料記 `buy_item`，賣魚記 `fish_sell`。
+    - `db.AlembicHead` 改為 0049。降版刪除魚苗，魚塘裡其他魚回到魚簍。**有玩家用過魚塘後不能切回 Python 版 Bot。**
+  - **消耗品當天逐次加價**（`game/dailyprice`、`services/dailyprice.go`，不需要 Migration）：化肥 20、蚯蚓 3、沙漏 5、雨衣稻草人 2、灑水器 2、巡查券 3 個以內原價，之後每個 +10% 原價、最多 300%；「今天買了幾個」從交易紀錄（`buy_item`）算，台灣時間 00:00 歸零。商店頁顯示下一個的價格與今天買了幾個，數量按鈕顯示加價後的總價。魚飼料不加價。管理網站「新功能設定 → 消耗品每日加價」可調整。
+  - 測試：`game/pond`、`game/dailyprice` 的單元測試通過；需要資料庫的完整測試（含 `TestPond`、`TestDailyPriceEscalates`、`TestPanelQueryCounts`）2026-11-24 移植後在本機測試資料庫（已升到 0049，降版也實際跑過）全部通過。移植時修正兩個測試的預期：`TestPond` 賣魚塘裡的魚時回傳既有的「魚簍裡沒有可以賣的魚。」，改成比對「魚簍」；`TestFeatureSettingsView` 的 key 清單補上 `fish_pond`、`daily_price`。`bot/querycount_test.go` 的上限先 +6（商店頁多讀今天的購買數），實測後可以收緊。這次的修改也還沒在 Discord 上實機測試過。
+
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
 
 - **自動販售機販售項目**：「🎒 背包」有自動販售機時多一個複選選單（第 4 列），勾選要自動賣的東西：每種一般作物、「雜交作物（全部）」（不個別列出，避免洩漏還沒發現的配方）、「自動釣魚機的魚」。設定記在 `farm_tools.settings.sell_only`（自動販售機那一列），沒有這個設定或全部勾選時全部都賣；沒勾的作物收成時放進倉庫（倉庫滿了不能收成），沒勾魚時自動釣魚機的魚放進魚簍。改設定前先結算自動釣魚。`services/autoseller.go`（`AutoSeller`、`SetAutoSellerItems`、`autoSells`）。
@@ -676,7 +686,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 
 ## 附錄：檔案清單與 SHA-256
 
-共 428 列（2026-11-22 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
+共 437 列（2026-11-24 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
 
 | 檔案 | SHA-256 |
 | --- | --- |
@@ -684,7 +694,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `.gitattributes` | `63ca547940a6eb8d6d98f5cdaf558d8b1ca507683405a68162bcc98a0399bafc` |
 | `.gitignore` | `ed067cba1c2cd0c55afd8095173c8430273d1ab5645a95e4861da299abfcd289` |
 | `Dockerfile` | `e183be482a0e542f490e216f581bdeda06b5909d1e4c209794b62277fe53bc15` |
-| `README.md` | `4f77fcc43e0221df28d40f3e0a2399908a71db689814b807fbb247caf8c1dd15` |
+| `README.md` | `a9296d369d5a216a24e16e7412065aef1e8acb08838eb04cc8e3f146d78710d3` |
 | `cmd/farmgm-bot/main.go` | `f022462d9640374d3a3aae0fe9114ad23aa368b3dc783e1e14c25f831d6182ba` |
 | `cmd/farmgm-bot/main_test.go` | `857646c725d083c0075aade2272e386f86ac915f61e37c75bb3c9e8849b9ccc6` |
 | `cmd/farmgm-hash-password/echo_linux.go` | `c5bf2bd0fe6941167625dd003fdabf2a4225cbe1b784f00a50dbd6994d0a53a0` |
@@ -703,12 +713,12 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `go.mod` | `67c14ae38330d1f710c4a22724f17e7ebcc2511d70f27f6992bbc75b3f7b16b2` |
 | `go.sum` | `57fff2606d2e1ed7ed9f91d4933e6be9a516a7f713d459f85cf6c3c46153e3ed` |
 | `i18n/README.md` | `5804b3be07f09e59ea5ac2e9a3939e09765eb418d5ed9965ba0b74abd70bfedc` |
-| `i18n/en.json` | `6ae2400095b4114d413e73ca866ef0918348e6627856add28f977e11818efccb` |
-| `i18n/en.text.json` | `2de42d7d170307b854739333628b08252cae2aa708147171d77d50d4aa4d7cd1` |
+| `i18n/en.json` | `2430e2e50d15345f2048bf55d52b20633f6cd489e2dd631d9b77f9cbdee9dfae` |
+| `i18n/en.text.json` | `0256e78848128de9c8f2d80f5712f6d91de7a4d5166155333d697cf60b53df92` |
 | `i18n/i18n.go` | `9607e661181898dfaa80baafd02f6a5863597b1cc00ca34013dea211a3dd23e4` |
 | `i18n/i18n_test.go` | `c30f905a93d9aeab3427254876b1b037a537203ba30088723304fa8c22cb8840` |
 | `i18n/site/en.json` | `d0b77b9c4e220fbcc1c5a6b208725afce5ed513cb18e6f9843f60fb31e5f5063` |
-| `i18n/zh-TW.json` | `ae6b22cf344db72c87b4fe0a68689172910832439c3fb92ef2f64f049659f986` |
+| `i18n/zh-TW.json` | `b26a22e9621d37767ad9e63f63c95dc514d3285392595f767cb8ed015342057d` |
 | `internal/auth/auth.go` | `55bc1edd9db87504cf98860cc91194cee22f0fe6f3a1efcba35e5907c4b88605` |
 | `internal/auth/auth_test.go` | `5fceb18103f2cb1ec8ced5bf79854cccaedbd732fac5de4fb8e0f1bd507c192b` |
 | `internal/bot/commands.go` | `fe4e7df7df236145620dca2b2e2f0f7c4dcf738ad21de9e74f605bd6a5909a46` |
@@ -737,7 +747,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/farmimage/quantize.go` | `d625e299ea9b28c0575da204e2dc58ed0f3fc5f83c878cf69d01fbdae77126f1` |
 | `internal/bot/farmimage/style.go` | `ae5301f6062be8ac7eef512c12d02199dcae72e4cb5657b867c11d1a5a8afdac` |
 | `internal/bot/farmimage/style_preview_test.go` | `4dac620eb95703399930e50ebb4b2f9871b762701f18a29118e7672d56aeda68` |
-| `internal/bot/format.go` | `38341c00364c9dbc9ad0780f489b04f1766fb1ab115e71271d23ec699eda1f7e` |
+| `internal/bot/format.go` | `2b2a5cde940220cbe63b45b85e08831eb11774144ce77aed7a27866b090d3e2e` |
 | `internal/bot/format_md_test.go` | `be55bb6fbe583159b017f98f36b9389a82c88eca9a686df4e5ece22fd021e092` |
 | `internal/bot/itemusage.go` | `e04958458e8759a304eda4af62e0ed0be3a31553299d9cf4d1c68cd0767bcbb5` |
 | `internal/bot/latency/latency.go` | `22b590b542029a0f8ff74b33c71e4fad3ddfa537aa1e1f4fcb6ef77867685b0d` |
@@ -752,17 +762,18 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/pages_craftprices.go` | `b5165f28b38c1a2bea678a24ec9ef50e46a9f22a82363a4614fcb06bd669b6e0` |
 | `internal/bot/pages_decor.go` | `6a9edb218404dd3721287ff3f5de404109a65647c2962df0d40da0e606622e49` |
 | `internal/bot/pages_fair.go` | `b932ca3a597d0000e4609fb71e61889d3e3bdf20921e68ef299845eb8d257154` |
-| `internal/bot/pages_fishing.go` | `6252a0228112bf2ee55556495ddbab44c6fa1bd029d21462cd590088c4bd15e9` |
+| `internal/bot/pages_fishing.go` | `0e0858a58412b6878ecc0ff194dd1f5c5b64fca93a0a9fff2b3407eebf4321dd` |
 | `internal/bot/pages_goldsink.go` | `cd668c59605874f98c71ca4933ca1bc25a1eecd2c04fde9111e553c2c465d125` |
 | `internal/bot/pages_lab.go` | `34b4f61b2766faf4fa8b87471afd49edae9f28c2da9bc009ea158fba87e30237` |
-| `internal/bot/pages_main.go` | `ffd1218e2429d76c2a3c200a225677e668bd89ea2cb8575c3813cbe5b80c233a` |
+| `internal/bot/pages_main.go` | `ceb28b201c4e2c42b781e55024cd8641f3eb04f2b806badc291485b509dfb70c` |
 | `internal/bot/pages_npc.go` | `d0be2eeed78671475994a0f5f6354a175552ae81c431bac81c21be47d10c4d4d` |
+| `internal/bot/pages_pond.go` | `ea12a57c5a7eebca2af633d8d9f7f71ac20af2c264668f63620c9e437d260eec` |
 | `internal/bot/pages_progress.go` | `fadc91f0ab16b968d2c0bc739ebeefa997c0fcbb07775ff748d73d4b5f1f0ba1` |
 | `internal/bot/pages_ranch.go` | `487f7c1bd9ae6ed7bed1126c25f52a424266b807fc4a2e5f84701e5ef37a2ca5` |
 | `internal/bot/pages_seedmaker.go` | `cc7b54eecc2b5987b27529b060185f92957edd1c931685bb683d5539d8d4e341` |
-| `internal/bot/pages_shop.go` | `8e8b0ad619926652cd7d6426cecf459015d7106bdec21559acb0a412c71fc978` |
+| `internal/bot/pages_shop.go` | `62871ce0482ef56a8b1dbfc4fbf393401d9be3a97ef44ae8c3d224fdf052200f` |
 | `internal/bot/pages_social.go` | `5c123abcb93b8a287a6a4d3255a4a819d1ab75f61700768c6a341e44d8b94f40` |
-| `internal/bot/panel.go` | `73fde565749ed0ba014047677a0b4faf7b9880160362a94eee9f435a3d5e1910` |
+| `internal/bot/panel.go` | `19f07302011c982a668f75f4a98f40f2fc270fe9172de44494432ffa5c2401c2` |
 | `internal/bot/panel_aid_test.go` | `1a4c0cd9fe8e99f2a2100d3f2aa1cea070c5db582eb0dad212e12cc51673322d` |
 | `internal/bot/panel_autofish_test.go` | `f8204b17908932e84a9a869f876bd292203f84a7c5ccaa2ad8b1b4bab16ac36d` |
 | `internal/bot/panel_autoseller_test.go` | `236df8d804a3f6b4b1ddcbda368e5c8159b005c1bc591c918592f504a450bdff` |
@@ -779,7 +790,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/panel_test.go` | `297c58f0b48d4ed902faec8f5f423074175efecb3b2346ba6a7a8806c851c7bc` |
 | `internal/bot/panel_upgrade_test.go` | `5dee0df268c9c265b203ac94482d8ab3f8a71598275758eda3ca896cc284d4bd` |
 | `internal/bot/panel_weather_test.go` | `1e1beb4dcb3dad56bfc77798bac6041dfb5b3080857500e91ccb0954b0a8e3b5` |
-| `internal/bot/querycount_test.go` | `d80fda263bd0122e5e91340f017fb0a700a842cdc6d9df9ab7b8ee4485e9931e` |
+| `internal/bot/querycount_test.go` | `a86cf613acfc9d8a927c7d0a98adf7f5aac9cf0242aae524a1a11c55d101d47b` |
 | `internal/bot/render/render.go` | `3ae595db2c272fff5578b2977e68c8a0950f9797c85b4c87ca58a5bc6476a1ca` |
 | `internal/bot/render/render_test.go` | `6ede2961d1547a3b6fe7538bdf6f3c9a41118f5446b9156aa377e2b437871fb8` |
 | `internal/bot/runner.go` | `cdc4ac56fde053cc18a49912202f6b805180e2930059794d810b6361758e4d54` |
@@ -797,7 +808,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/config/config.go` | `13addd779cd625d59d61763b461d55de62fd74afa054e4104d2382029789fcc3` |
 | `internal/config/config_test.go` | `1b6ad60f0ea2703b97ed3afdaf171d4fbbb6c9058e587734a54e4435d3c49989` |
 | `internal/db/catalog.go` | `911a747fb253112b8f2363225e2dad82997330ed40a407edabe39f26a11c5d57` |
-| `internal/db/check.go` | `caab0b34938244ecb0faffdf878fa778cc515226736bb01545443a2f4ca8ad5b` |
+| `internal/db/check.go` | `3f850f28547a4732f215bcfee52105b978701ee654314d9cb1c816d5df0c8fc4` |
 | `internal/db/db.go` | `7498451f242a1afb51dd89051550b69ac7d87205f2f2cb9b700c6b592235a326` |
 | `internal/db/db_test.go` | `bf473f1a9340324c4ba48da4104b59b728bf689c9b7400a81f41fa1f31fd6543` |
 | `internal/db/models/aid.go` | `948a4ef30db3cd35f13cf53441b0d8f07eb8a9e5ce139107050ba694ab4a724a` |
@@ -805,7 +816,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/db/models/constants.go` | `8d08db5c4a42b6d6f2779cb25400099a664ccdc37d29e4cc772a618292440998` |
 | `internal/db/models/fair.go` | `d17535e24c2d781de2bc463a66dc0c779d2316a3bcd2ea8356a5454fbbc41777` |
 | `internal/db/models/farm.go` | `8c4806cea019a1d294a41eada6341810528630bc748e2681a44b7bc3674efb08` |
-| `internal/db/models/fishing.go` | `e267a9ab5c36757a88e05c861b8320060a3be7e08629959d4a3dbfe4010c1c94` |
+| `internal/db/models/fishing.go` | `0ae1349d6ede0cb5ae4cefab1dbed5273debae6c8fcb8fc0f264199b7b065ebe` |
 | `internal/db/models/models_test.go` | `0990560e5427540bd28e77496ac1aa7b8123f9bce305da320490140e02a9669b` |
 | `internal/db/models/progress.go` | `cb00f6be2b603ca016c0aa8249be88bb3e4315e744ef270a76c7a1da1c0f8c68` |
 | `internal/db/models/seedlab.go` | `b9d35f2ef387089396acefd10149bef3c0a923d1afd53ee91f150baffdf2746d` |
@@ -822,7 +833,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/game/auction/auction.go` | `09cc4372d2d16986bc9405fa48f582242ee349aa9d59d12044edc709ff78ba10` |
 | `internal/game/autofish/autofish.go` | `c5225a81ea3dae402bae92b16c266cdfd846acad2b05061136327a2b52955fdb` |
 | `internal/game/autofish/autofish_test.go` | `3638f72d743d34fa270d8a1f46b33334d83051c326b62e04e80881ad37f10dd4` |
-| `internal/game/balance/balance.go` | `90795c82b8ec67c02da72124e45f06d6fcf0efd551624ee2162bacbcc5737324` |
+| `internal/game/balance/balance.go` | `a3ddfb722c7b7d23db440e0656fc06c22757059f729cf1981a1f92d9bc270be4` |
 | `internal/game/balance/boosts.go` | `18df16718981775972e113b633858c6e5d73f58d889b242ceb211d2cd5ccd88c` |
 | `internal/game/beehive/beehive.go` | `2cd447334b92ddb32541c0a223f7cf5f8dc57091057b822a9980fc777f1d6f9b` |
 | `internal/game/beehive/beehive_test.go` | `73db5200e68925e4850738ba3f49319cc077762e1d394e96a1ade6c75f454963` |
@@ -831,6 +842,8 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/game/cosmetics/cosmetics.go` | `5b559c8cc09619d004e14ea52d3a36cd862b74bbd1db951bf94ef2613f528e34` |
 | `internal/game/craftprice/craftprice.go` | `30cac7bce4b2370076e0492cfb6e53d1320dba40189a2159afba6081297b62e7` |
 | `internal/game/craftprice/craftprice_test.go` | `896124957284dc8abd745d7d443f21f7dae1857fd7ceec7e46ec73bfbcba3e30` |
+| `internal/game/dailyprice/dailyprice.go` | `6509383b93eea8b408de94d28678d73e1e5bb6c2d9292bcb52831b63d7742a36` |
+| `internal/game/dailyprice/dailyprice_test.go` | `1b714ebffa403b99c7ac8ceec85c40ed84271ff775430abe61cf98c1a35433e7` |
 | `internal/game/decor/decor.go` | `2b5ee814ab630f996e95bda377ad0f0050b4317d85982c92406470b7355153b1` |
 | `internal/game/events/events.go` | `74a1ec9ec051beee22911273766377de756dbe22ccf64e9a687d3c3d7647a870` |
 | `internal/game/events/events_test.go` | `06a236f059e6ed8c5896225e683fabf0865d738f7ae7afcaef752d7b1ac6ee70` |
@@ -863,6 +876,8 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/game/npcorder/npcorder_test.go` | `e16cbc910cfadf27fc31112f15d4c5f2771d430e280e02e56306f03f96acfd3e` |
 | `internal/game/pets/pets.go` | `1a9428e69b8405ce183d5583fefa24157516516afa540e340155f17d3c68b184` |
 | `internal/game/pets/pets_test.go` | `9c5346c072056a7e1445ec050a28d755df7f6acce04f54738f11b5315efd3ba4` |
+| `internal/game/pond/pond.go` | `5454139487899a261fdc7efc702f451f7d6a71b7be194933ddcb3ad309b5706b` |
+| `internal/game/pond/pond_test.go` | `2dba637d09742c6495967a0bfb7c4f3af0cfd87a9a2fbf5f2b2d7b80f039c827` |
 | `internal/game/questboard/questboard.go` | `b7cbea8647d564385368ff4a0db2a8cdddbb1328aad72c7473136421ad85f59b` |
 | `internal/game/questboard/questboard_test.go` | `55d468cf0eb399957180b6ab8c8f809e2aa907882031666afc7eae2407419240` |
 | `internal/game/ranking/ranking.go` | `13beb5e7fa09d66d0aea9ca2b6add07557068472e7d4be65eeec5cf95d36e59e` |
@@ -929,7 +944,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/repositories/feedback/feedback.go` | `8bb36741b37c675fef9baca0ba7ab6f0b8f7d6352dee8f20206712c5d7803731` |
 | `internal/repositories/feedback/feedback_test.go` | `f01231153814146d916e7e7bef0087293c81ccea02f52620a81c7a2dc3ea108d` |
 | `internal/repositories/feedback/helpers_test.go` | `c933b0883ca1d868383c0178069d7edf113ccdc4493e4302f13a88a5a1e3e576` |
-| `internal/repositories/fishing/fishing.go` | `c28f204e92c6380a20d1912c0980d2193e3ca87269521649a3ba0c1991191efd` |
+| `internal/repositories/fishing/fishing.go` | `1639b3b81a14c194c24bdb3e0fae42281c7d428308e41a9f1d6a3cb5aebe7a93` |
 | `internal/repositories/fishing/fishing_test.go` | `468ebd9680ceeed64a0ed6628784c342a1ceca96cbb67539c5526b3ff6f9a5df` |
 | `internal/repositories/fishing/helpers_test.go` | `5b57f1575ebac144edca42fe126c61025a96de2c12b418a63a51b8aa59f275c5` |
 | `internal/repositories/genetics/genetics.go` | `de17b8d1184a90ad58cf25f664bb47d793fb6ec30fcd22564b8d6a9ddac9de2b` |
@@ -945,7 +960,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/repositories/monitor/monitor.go` | `b72f1114115ced43aff8f530199b5dd29a5df04d3fb31068d63dc5b121c949f3` |
 | `internal/repositories/monitor/monitor_test.go` | `0a1baaa2eebc6459cea72a7baaadfa51d2000d81b038a03ce4fdc8eefd3db4c0` |
 | `internal/repositories/news/helpers_test.go` | `db70a30e5f2ea20619b4e414c76a42f81569bd8a006eb2812ff11a7db5541f6b` |
-| `internal/repositories/news/news.go` | `b239a07621fb612c4c7851927e0d8780d0f272bf25fa4abbebff0986acd5060d` |
+| `internal/repositories/news/news.go` | `918c6e558c998bfa7e12597e469095354e5bb4dd957873f0a21f7e5b8fb72c42` |
 | `internal/repositories/news/news_test.go` | `1d94f2df16795e90e363305c80b52597e85265879ea7129eb422ce7659a252e2` |
 | `internal/repositories/pets/helpers_test.go` | `7f355d682814405a7e0163b489b525f2ac870c641d9da50f98ccfcc149ed8a7b` |
 | `internal/repositories/pets/pets.go` | `3269fb6f66f13d7b14f299b3db245b8f6a9f851ac60535f92ea0b94b4d6e41f6` |
@@ -998,6 +1013,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/craftprice_test.go` | `9da8799ec1702f914c9fd9fd223bf8e8e494f3656b00ca90b587c365985a5a35` |
 | `internal/services/crops.go` | `3ccb7148e2a2305af78f47fe8e3289b31d06054fd8fcd451d43ce852ca2e6baf` |
 | `internal/services/crops_grow_test.go` | `ef34a6cae2f8a31df2b005d6e5e194e52868dfd01dbadc9aeeacd413820837fc` |
+| `internal/services/dailyprice.go` | `8c4ba837f287ad936fee7df71fff8659b887f992aef50e8bec1624667a92b60a` |
 | `internal/services/dairy_test.go` | `3c6d950f72daa794a01b11a83843fd0f8cf950d3bfb2cad786d0babeb9eeb524` |
 | `internal/services/database_test.go` | `7f9087209119e70b912f4ac1a70e43014276d3a8b211db9b6645982d201f83c3` |
 | `internal/services/decor.go` | `d3b91e298de58f960935da20175512e2253f09d0c485eeeda53da446ae3e3e73` |
@@ -1025,7 +1041,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/group_test.go` | `d3ef99ebc8ac4ec2929755c137f76a8f2d2840e9765861badb2e06107acb3f3a` |
 | `internal/services/helpers_test.go` | `51bdcba9ae26e2bffc8ac309dadcdc8f4ae05880bb4ad7a8565227c87888165c` |
 | `internal/services/hourglass.go` | `a739b997c9a74ee7a0494dc0473497836a511844e228a49edfce9f19a5673e18` |
-| `internal/services/items.go` | `cca7e68b19fca1bd063dd7578ced0ef13e208b919b3e8d07e1f0d850c411a0d0` |
+| `internal/services/items.go` | `153ba51895e3df9230d4fcf9fae29ea599893db1d70d9f241d099e65d8cf68fa` |
 | `internal/services/items_test.go` | `f484c8e88b191bf9064c720bb7c834eca0292282967ef1ea322c0e03ff273179` |
 | `internal/services/jam_test.go` | `067d5b83180d9dcc95c3cd0488eaf7f1404ac332f794b8e71a1ca1197ec8dd2a` |
 | `internal/services/lang.go` | `10111be3a61cc1936aeb94241f6d6127221bf97870aeaaab57a5764895d174fb` |
@@ -1044,9 +1060,11 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/perf_test.go` | `9c6939c77bc3728f3d14f7b1527ebb7b50376f3c670d2d1aea97e5cf66c76852` |
 | `internal/services/pets_test.go` | `b8fa8572788a4d58814d78993e75b584a87fcbbe28542029eeedae3d4042ff60` |
 | `internal/services/players.go` | `a465c8946be5e97bf2dc0c95892be3ee9ce5be7db62001518ee9d46dfc999579` |
-| `internal/services/progress.go` | `ff66777bd6f0e6f047e31767d494fd59a7ad05abf81fbe15aec0b244aa9405a1` |
-| `internal/services/progress_admin.go` | `44bcee418257af80d45cde22e483a132b60d140a8d85a54b35656c95155d1019` |
-| `internal/services/progress_admin_test.go` | `138a9d64d4f29863044d9d9318832d1eb54849fe3036330411e976060eccc8a9` |
+| `internal/services/pond.go` | `d2d22f864def8dd6b6bb4add95144324d8515b869f9c79aa64f3c7136dbc1e6d` |
+| `internal/services/pond_test.go` | `96856883fcc1f333dc744b06423c6b6c03ac50cb6d56feceec8ee6b651b47cb9` |
+| `internal/services/progress.go` | `c8a03cbf1a01fbc7279e8424d836c7b4d025b97afde2a67604c698252d8d7aea` |
+| `internal/services/progress_admin.go` | `68209c8d3226ccf273b38f066d68f5e01f483740319681407e64abf9b0fd88eb` |
+| `internal/services/progress_admin_test.go` | `2dfe592b599a3e8fc4a1e0de4ed30bb18e53ac6508769d69e0f0e978ad93b449` |
 | `internal/services/progress_test.go` | `dfcc76cc616b3618654e0091f3175b4fe13d4f367412617852301ee4ef08ed74` |
 | `internal/services/questboard.go` | `810c97be1d021b00fb27751caf33e69d7f1f72d26f349eeafa2dedc25366b1d3` |
 | `internal/services/questboard_test.go` | `f1e640205e6d659345aa6d81daf19ec1195f4f202257d8f1a5511184beaa0624` |
@@ -1058,13 +1076,13 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/ruins_test.go` | `80565e5b64a40c7d283bb7ecfaad5cafd3c4a1ac34853a216d38d609618d40d6` |
 | `internal/services/seedlab.go` | `0548d953e51b78d6336e0a7ab9c3156bde24d7e1d0943f19cf8752ba1cbb13c9` |
 | `internal/services/seedlab_test.go` | `52625b90459e861daf0f40189c9e96e41d43816d9f764adfb7d527effff3a55b` |
-| `internal/services/service.go` | `47553473911be31669390a5ad062b60d32e882b239c40eca76cb6ddc4e1724c5` |
+| `internal/services/service.go` | `515c25c4de34de75e7f7a17012d46c2cb42d58f81c7c7b6c78ab911d03cae97a` |
 | `internal/services/site.go` | `4eaba029b14c5d2240c7678a2c9c86745107d50042a499283df4abaf3f037025` |
 | `internal/services/social.go` | `831e3980bd679ee10ab924ad495d629c637b64330fe87deba2d02da764c0b7ae` |
 | `internal/services/social_test.go` | `4121c18ce6bdf8ceaa0fbae387f73a3190ee2bbc544cf81091b836a93012a51a` |
 | `internal/services/stress_test.go` | `a4aa847f169673c1d8af3656a9508f25c226415f50f465f141f546e025ec2e8f` |
 | `internal/services/svctest/svctest.go` | `8f67dba5c5a8ac1022ab1bc24cc6feed1e7a636a9d5c7f2cc3f23e607f3a2a1b` |
-| `internal/services/todo.go` | `1fac408e274a7a4278f9a1852181e410ffb3721015a64aca36308b6c88cd7c43` |
+| `internal/services/todo.go` | `c307aab8605ac006ec48ab9731eecd21cc59da53b283685163b1143d247805a7` |
 | `internal/services/treasure.go` | `1b34acddf14a55cfad82eab19d322bb4d3438f48eb7c3e39884e2565809ff754` |
 | `internal/services/treasure_test.go` | `cdcca57827a0a620e5d0d84be4f545856fa564f68bcc7a141edd33a7f1079325` |
 | `internal/services/weather_test.go` | `ca98ebbc02be0aab4b3f63ab790f467fe397b9a3465eb7d016d95f30b6ede8db` |
@@ -1097,7 +1115,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/web/respond.go` | `869011e0448845d1d9106ff5d2ecaaf8c815d043a9b5e84b51c24f33d364d67b` |
 | `internal/web/schema.go` | `f0b0107ada37ebd88f1b71f73c1d9f3c2c48afcc69eae25203c24bffaf41b6a3` |
 | `internal/web/static/monitor/app.css` | `7b14f1ca62408340284c3b895d69b6d4dbbf6aaf2720d2da313f5906e1101664` |
-| `internal/web/static/monitor/app.js` | `d1b3c6a84d84492ecddcecaa044e4e53eb927e6dee881c5759f40e6343a07fb4` |
+| `internal/web/static/monitor/app.js` | `6ff89a5b307130cfd8ebe7904759af0c8575dce29cd342900fd8029f51424513` |
 | `internal/web/static/monitor/index.html` | `bca83af5db8644fcbb83f03b857cb7c19699959023985770fef70fa10e9c9e58` |
 | `internal/web/web.go` | `2eaef4fc10ef26c31b7a977e5b1d411cbc6edb4c0c753e1215f028a95fadfd22` |
 | `internal/web/ws.go` | `dda2e1fd64b2f7f6adb5d31c531feebfb0e0956b3ea5a2ed7e93863c39bd8b9c` |
@@ -1108,3 +1126,4 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `種子實驗室流程圖.md` | `f569ca792e01927818396db4d4a710f1bfd7b7a20a6649a879c1b0548c8b02b8` |
 | `英文翻譯用語表_已填寫.md` | `fb6d67284a5a5ad70be2a0b2e152f22a2e51bd9db6b9cce8843edf055e9a4aa5` |
 | `金幣回收_外觀與擴充流程圖.md` | `642c2b938bb6205f2b745c5632d42ab92ebbc919ddababab53ebc32646424537` |
+| `魚塘_流程圖.md` | `b1f3fba7a414bd469e7f6fc66d130409b9174b79204f3d23d04d72cb176429d7` |

@@ -66,7 +66,7 @@ func BestFishOf(ctx context.Context, t *db.Tx, groupID int64, start, end time.Ti
 	return db.QueryStruct[BestFish](ctx, t,
 		"SELECT ff.farm_id, ft.name, ff.rarity, ff.weight_g FROM farm_fish ff JOIN farms f ON f.id = ff.farm_id "+
 			"JOIN fish_types ft ON ft.code = ff.fish_code WHERE f.home_group_id = $1 AND ff.caught_at >= $2 "+
-			"AND ff.caught_at < $3 AND ff.rarity = ANY($4) ORDER BY ff.price DESC, ff.weight_g DESC, ff.id LIMIT 1",
+			"AND ff.caught_at < $3 AND ff.rarity = ANY($4) AND NOT ff.bred ORDER BY ff.price DESC, ff.weight_g DESC, ff.id LIMIT 1",
 		groupID, start, end, NewsFishRarities)
 }
 

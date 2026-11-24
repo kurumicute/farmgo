@@ -41,7 +41,7 @@ var (
 	MaterialEmoji = map[string]string{"wood": "🪵", "stone": "🪨", "copper_ore": "🟠", "iron_ore": "⛓️", "resin": "🍯",
 		"herb": "🌿", "gear": "⚙️", "crystal": "💎", "ancient_core": "🌳", "machine_core": "🔩", "fake_coin": "🪙"}
 	ItemEmoji = map[string]string{"auto_fisher": "🤖", "hourglass": "⏳", "fertilizer": "🧪", "earthworm": "🪱", "auto_waterer": "🚿", "patrol_ticket": "🔦",
-		"auto_planter": "🤖", "auto_seller": "🏧", "thief_glove": "🧤"}
+		"auto_planter": "🤖", "auto_seller": "🏧", "thief_glove": "🧤", "fish_feed": "🌾"}
 	PlotEmoji = map[rules.PlotState]string{rules.PlotEmpty: "⬜", rules.PlotWaitingWater: "💧", rules.PlotGrowing: "🌱",
 		rules.PlotReady: "✅", rules.PlotWithered: "🥀", rules.PlotBeehive: "🐝"}
 	// plotStateOrder Python PlotState 列舉的順序

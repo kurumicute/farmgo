@@ -133,7 +133,8 @@ func (FishingSession) TableName() string { return TableFishingSession }
 //
 // 約束：uq_farm_fish_session_id、ck_farm_fish_rarity_valid、ck_farm_fish_price_non_negative（Migration 0021）、
 // ck_farm_fish_weight_positive、ck_farm_fish_sold_consistent（sold_at 與 sold_price 同時為 NULL）、
-// ck_farm_fish_sold_or_donated、ix_farm_fish_farm_unsold（farm_id WHERE sold_at IS NULL）、ix_farm_fish_farm_caught。
+// ck_farm_fish_sold_or_donated、ix_farm_fish_farm_unsold（farm_id WHERE sold_at IS NULL）、ix_farm_fish_farm_caught、
+// ck_farm_fish_pond_weight_positive、ix_farm_fish_farm_pond（Migration 0049）。
 // 外鍵：fish_code → fish_types.code。
 type FarmFish struct {
 	ID        int64      `db:"id"`
@@ -150,6 +151,10 @@ type FarmFish struct {
 	DonatedAt *time.Time `db:"donated_at"`
 	// 自動釣魚機釣到的魚（Migration 0041，Go 版新增）：不算進釣魚排行榜
 	Auto bool `db:"auto"`
+	// 魚塘（Migration 0049，Go 版新增）：有值表示放在魚塘裡，數值是養殖後的重量（WeightG、Price 仍是捕獲時的數值）
+	PondWeightG *int `db:"pond_weight_g"`
+	// 魚塘繁殖出來的魚苗（Migration 0049）：不算進釣魚排行榜、捕獲數與日報
+	Bred bool `db:"bred"`
 }
 
 func (FarmFish) TableName() string { return TableFarmFish }

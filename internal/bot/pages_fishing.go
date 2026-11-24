@@ -191,6 +191,7 @@ func (p *Panel) buildFishing(_ context.Context, data any) (*ui.Embed, error) {
 	}
 	p.nav(p.s("我的魚簍"), "fish_basket", btn{emoji: "🎒", row: 0})
 	p.nav(p.s("魚類圖鑑"), "fish_codex", btn{emoji: "📖", row: 0})
+	p.nav(p.s("魚塘"), "pond", btn{emoji: "🐟", row: 0}) // 2026-11-24
 	p.nav(p.s("釣具商店"), "fish_shop", btn{emoji: "🛒", row: 1})
 	p.nav(p.s("釣魚排行榜"), "fish_rank", btn{emoji: "🏆", row: 1})
 	p.nav(p.s("回總覽"), "main", btn{emoji: "🏠", row: 1})
@@ -439,6 +440,14 @@ func (p *Panel) buildFishResult(v services.FishingView) *ui.Embed {
 			p.shareFish(ctx, it, id, false)
 			return nil
 		}, btn{emoji: "📢", row: 0, disabled: p.groupID == nil})
+		if fish.Rarity != "legendary" { // 魚塘（2026-11-24）：剛釣到的魚直接放進去（深海魚、沒有魚塘時由服務層說明原因）
+			p.button(p.s("放進魚塘"), func(ctx context.Context, it ui.Interaction) error {
+				p.act(ctx, it, p.call("put_fish_in_pond", func(ctx context.Context) (services.ActionResult, error) {
+					return p.svc().PutFishInPond(ctx, p.playerID, []int64{id})
+				}), actOpts{page: "pond"})
+				return nil
+			}, btn{emoji: "🐟", row: 1})
+		}
 	} else {
 		e = &ui.Embed{Title: "😢 " + v.StatusName, Color: Grey, Description: p.f(
 			"%s\n\n%s\n這次的對手是 **%s** 級的魚。\n💡 拉扯時看 💬 提示：魚衝刺時先放線或等待，竄向一邊就壓同方向，平靜、累了的時候收線；別連續收線，張力會越來越高。",
@@ -591,6 +600,7 @@ func (p *Panel) buildFishBasket(_ context.Context, data any) (*ui.Embed, error) 
 	}
 	p.nav(p.s("回釣魚中心"), "fishing", btn{emoji: "🎣", row: 4})
 	p.nav(p.s("回總覽"), "main", btn{emoji: "🏠", row: 4})
+	p.nav(p.s("魚塘"), "pond", btn{emoji: "🐟", row: 4}) // 2026-11-24
 	// 魚簍升級（2026-11-15）：價格高，按兩次確認
 	if d.NextCapacity > 0 {
 		label, style := p.f("升級魚簍（%d 格，%s 金）", d.NextCapacity, money(d.NextPrice)), ui.Primary

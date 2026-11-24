@@ -12,6 +12,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/dailyprice"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/rules"
 	"farmgm/internal/repositories/crops"
@@ -103,6 +104,18 @@ func (s *GameService) BuyItem(ctx context.Context, playerID int64, itemCode stri
 			}
 		}
 		cost := it.Price * quantity
+		raised := "" // 消耗品當天逐次加價（2026-11-24 Go 版新增，game/dailyprice）
+		if it.Kind != "tool" && dailyprice.Applies(itemCode) {
+			bought, err := boughtToday(ctx, t, farm.ID, itemCode, now)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			cost = dailyprice.Total(itemCode, it.Price, bought, quantity)
+			if cost > it.Price*quantity {
+				raised = txf(ctx, "（今天第 %d 個起加價，下一個 %d 金幣，台灣時間 00:00 恢復原價）",
+					dailyprice.FreeOf(itemCode)+1, dailyprice.Next(itemCode, it.Price, bought+quantity))
+			}
+		}
 		if farm.Gold < cost {
 			return ActionResult{}, gameerr.New(gameerr.InsufficientGold, "金幣不足：需要 %d，目前只有 %d。", cost, farm.Gold)
 		}
@@ -133,7 +146,7 @@ func (s *GameService) BuyItem(ctx context.Context, playerID int64, itemCode stri
 				return ActionResult{}, err
 			}
 		}
-		return result(txf(ctx, "已購買 %d 個%s，花費 %d 金幣。%s", quantity, it.Name, cost, auto), farm.Gold, -cost, itemCode, quantity), nil
+		return result(txf(ctx, "已購買 %d 個%s，花費 %d 金幣。%s", quantity, it.Name, cost, auto)+raised, farm.Gold, -cost, itemCode, quantity), nil
 	})
 }
 
