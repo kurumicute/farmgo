@@ -156,6 +156,55 @@ func TestAutoFisherWithAutoSellerAndToggle(t *testing.T) {
 	e.invariant()
 }
 
+// TestAutoFisherKeepsRareFish 自動販售機依稀有度保留自動釣魚機的魚（2026-11-25）：保留的放進魚簍，魚簍滿了照常賣出；
+// 魚不套用「所有作物」的保留條件。
+func TestAutoFisherKeepsRareFish(t *testing.T) {
+	e := setup(t)
+	pid := e.player()
+	e.s.AutoFishRng = func() float64 { return 0.85 } // 稀有以上
+	e.autoBait(pid, 1000)
+	e.setGoldRecorded(pid, 300_000)
+	e.ok(e.s.BuyItem(e.ctx, pid, balance.ToolAutoFisher, 1))
+	e.ok(e.s.BuyItem(e.ctx, pid, balance.ToolAutoSeller, 1))
+	e.ok(e.s.SetAutoSellerKeep(e.ctx, pid, AutoSellKeepAll, []string{"q:legendary"}))
+	e.clock.Advance((10 * time.Minute).Seconds())
+	if st := e.autoFish(pid); st.Caught != 2 || st.Sold != 2 || st.Kept != 0 || e.basketCount(pid) != 0 {
+		t.Fatalf("所有作物的條件不套用到魚：%+v", st)
+	}
+	r := e.ok(e.s.SetAutoSellerKeep(e.ctx, pid, AutoSellFish, []string{"r:rare", "r:epic", "r:legendary", "bogus"}))
+	if !strings.Contains(r.Message, "稀有魚、史詩魚、傳說魚") {
+		t.Fatal(r.Message)
+	}
+	if v := must[AutoSellerView](t)(e.s.AutoSeller(e.ctx, pid)); len(v.Keep[AutoSellFish]) != 3 {
+		t.Fatalf("%+v", v.Keep)
+	}
+	e.clock.Advance((15 * time.Minute).Seconds())
+	st := e.autoFish(pid)
+	if st.Caught != 3 || st.Kept != 3 || st.Sold != 0 || e.basketCount(pid) != 3 || !strings.Contains(st.Note(), "放進魚簍") {
+		t.Fatalf("%+v %s", st, st.Note())
+	}
+	// 魚簍只剩 1 格：保留 1 條，其他照常賣出，不會暫停
+	capacity := must[FishBasket](t)(e.f.FishBasket(e.ctx, pid)).Capacity
+	for e.basketCount(pid) < capacity-1 {
+		e.clock.Advance((5 * time.Minute).Seconds())
+		e.autoFish(pid)
+	}
+	e.clock.Advance((15 * time.Minute).Seconds())
+	st = e.autoFish(pid)
+	if st.Caught != 3 || st.Kept != 1 || st.Sold != 2 || st.Paused || e.basketCount(pid) != capacity ||
+		!strings.Contains(st.Note(), "保留 1 條放進魚簍") {
+		t.Fatalf("%+v %s", st, st.Note())
+	}
+	// 改回不保留：全部賣出
+	if r := e.ok(e.s.SetAutoSellerKeep(e.ctx, pid, AutoSellFish, []string{KeepNone})); !strings.Contains(r.Message, "不保留") {
+		t.Fatal(r.Message)
+	}
+	if v := must[AutoSellerView](t)(e.s.AutoSeller(e.ctx, pid)); len(v.Keep[AutoSellFish]) != 0 {
+		t.Fatalf("%+v", v.Keep)
+	}
+	e.invariant()
+}
+
 // TestAutoFisherBaitAndSpeed 魚餌用完就暫停、不累積；加速後間隔變短（每級的間隔與價格可在管理網站調整）。
 func TestAutoFisherBaitAndSpeed(t *testing.T) {
 	e := setup(t)

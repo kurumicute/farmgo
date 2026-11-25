@@ -107,8 +107,11 @@ func TestAutoSellerKeep(t *testing.T) {
 	e.ok(e.s.BuyItem(e.ctx, pid, balance.ToolAutoSeller, 1))
 	_, err := e.s.SetAutoSellerKeep(e.ctx, pid, "ufo", []string{KeepCraftable})
 	wantMsg(t, err, gameerr.Validation, "沒有這個作物")
-	_, err = e.s.SetAutoSellerKeep(e.ctx, pid, AutoSellFish, []string{KeepCraftable})
-	wantMsg(t, err, gameerr.Validation, "沒有這個作物")
+	// 魚只能依稀有度保留：作物的條件不算數
+	if r := e.ok(e.s.SetAutoSellerKeep(e.ctx, pid, AutoSellFish, []string{KeepCraftable})); !strings.Contains(r.Message, "不保留") {
+		t.Fatal(r.Message)
+	}
+	e.ok(e.s.SetAutoSellerKeep(e.ctx, pid, AutoSellFish, []string{KeepNone}))
 
 	r := e.ok(e.s.SetAutoSellerKeep(e.ctx, pid, "wheat", []string{KeepCraftable, "bogus"}))
 	if !strings.Contains(r.Message, "小麥收成時保留：可以加工的（普通品質）") {

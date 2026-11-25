@@ -33,6 +33,7 @@ import (
 	"farmgm/internal/game/mushroom"
 	"farmgm/internal/game/news"
 	"farmgm/internal/game/pets"
+	"farmgm/internal/game/pond"
 	"farmgm/internal/game/ranking"
 	"farmgm/internal/game/ruins"
 	"farmgm/internal/game/seasons"
@@ -432,6 +433,7 @@ var guideKeys = []guideKey{
 	// ---------- Go 版新增 ----------
 	{"craft", nil, func(e *guideEnv) (any, error) { return guideOK(buildCraft()) }},
 	{"groups", nil, func(e *guideEnv) (any, error) { return guideOK(buildGroups()) }},
+	{"pond", nil, func(e *guideEnv) (any, error) { return guideOK(buildPond()) }},
 	{"cards", []func(*guideEnv) error{needCrops}, buildCards},
 }
 
@@ -458,6 +460,7 @@ var GuideParts = map[string][]string{
 	"special_shop": {"special_shop"},
 	"progress":     {"progress"},
 	"rankings":     {"rankings"},
+	"pond":         {"pond"},
 }
 
 // buildGuide keys 為 nil 時建立全部欄位（完整 /api/guide），否則只建立指定的欄位（依 guideKeys 的順序）。
@@ -738,6 +741,26 @@ func buildRuins(itemNames map[string]string) map[string]any {
 			"hp_per_member": ruins.GuardianHPPerMember, "hp_max": ruins.GuardianHPMax, "damage": damage,
 			"expedition_damage": ruins.ExpeditionDamage, "bonus_rolls": ruins.DefeatBonusRolls},
 	}
+}
+
+// buildPond 魚塘（Go 版新增，2026-11-25）：各級價格、容量與倍率、成長、天氣、繁殖與魚飼料（管理網站可調整）。
+func buildPond() map[string]any {
+	c := pond.Current()
+	levels := []map[string]any{}
+	for lv := 1; lv <= pond.MaxLevel(); lv++ {
+		levels = append(levels, map[string]any{"level": lv, "price": pond.Price(lv), "capacity": pond.Capacity(lv),
+			"epic_limit": pond.EpicLimit(lv), "grow_bonus_pct": pond.GrowBonusPct(lv), "premium_pct": pond.PremiumPct(lv),
+			"feed_capacity": pond.FeedCapacity(lv)})
+	}
+	breed := []map[string]any{}
+	for _, r := range pond.Rarities {
+		breed = append(breed, map[string]any{"rarity": fishing.RarityEmoji[r] + " " + fishing.RarityNames[r], "pct": float64(c.BreedBP[r]) / 100})
+	}
+	return map[string]any{"unlock_level": c.UnlockLevel, "period_hours": pond.PeriodHours, "levels": levels,
+		"grow_pct": c.GrowPct, "epic_share_pct": c.EpicSharePct, "feed_price": balance.ItemPrice(pond.FeedItem),
+		"weather_pct": map[string]int{"sunny": c.SunnyPct, "cloudy": c.CloudyPct, "rainy": c.RainyPct, "storm": c.StormPct,
+			"drought": c.DroughtPct},
+		"breed_min": c.BreedMin, "breed_weight_pct": c.BreedWeight, "breed_pct": breed, "breed_per_day": c.BreedPerDay}
 }
 
 // buildNews 總覽的農場日報與傳聞挖寶規則。

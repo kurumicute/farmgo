@@ -250,6 +250,7 @@
     [["ruins"], (g) => renderRuins(g.ruins)],
     [["news"], (g) => renderNews(g.news)],
     [["fishing"], (g) => renderFishing(g.fishing)],
+    [["pond"], (g) => renderPond(g.pond)],
     [["cards"], (g) => renderCards(g.cards)],
   ];
 
@@ -499,6 +500,22 @@
       `在修復遺跡頁選素材攻擊：${dmg} 傷害（假幣不行）；每次探索遺跡也會自動造成 ${gd.expedition_damage} 傷害。`,
       `打倒後當週每次探索遺跡多 ${gd.bonus_rolls} 份獎勵；整週都沒打倒，遺跡崩塌回第三階段，要重新捐核心素材才能再進去。`,
     ].map((t) => { const li = document.createElement("li"); li.textContent = t; return li; }));
+  }
+
+  // 魚塘（Go 版新增，2026-11-25）：各級價格與倍率、成長、天氣、繁殖與魚飼料（管理網站可調整）
+  function renderPond(p) {
+    const mult = (pct) => `×${pct / 100}`;
+    setText("g-pond-level", `Lv.${p.unlock_level}`);
+    setText("g-pond-period", p.period_hours);
+    setText("g-pond-feed", `${num.format(p.feed_price)} 金幣`);
+    setText("g-pond-grow", `${p.grow_pct}%`);
+    setText("g-pond-epic", `${p.epic_share_pct}%`);
+    const w = p.weather_pct;
+    setText("g-pond-weather", `☀️ 晴天 ${mult(w.sunny)}、☁️ 陰天 ${mult(w.cloudy)}、🌧️ 雨天 ${mult(w.rainy)}、⛈️ 暴風 ${mult(w.storm)}、乾旱 ${mult(w.drought)}`);
+    const chances = p.breed_pct.map((b) => `${b.rarity} ${b.pct}%`).join("、");
+    setText("g-pond-breed", `同種魚 ${p.breed_min} 隻以上、這個週期都吃到飼料、重量都在區間的 ${p.breed_weight_pct}% 以上，每天有機率生魚苗（${chances}），每天最多 ${p.breed_per_day} 隻`);
+    fillRows("g-pond-levels", p.levels.map((l) => [`Lv.${l.level}`, num.format(l.price), `${l.capacity} 隻`, `${l.epic_limit} 隻`,
+      `+${l.grow_bonus_pct}%`, mult(l.premium_pct), `${num.format(l.feed_capacity)} 份`]));
   }
 
   // 農場日報與傳聞寶藏（固定規則）

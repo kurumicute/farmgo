@@ -12,6 +12,7 @@ import (
 	"farmgm/internal/db"
 	"farmgm/internal/db/models"
 	"farmgm/internal/game/balance"
+	"farmgm/internal/game/fishing"
 	"farmgm/internal/game/gameerr"
 	"farmgm/internal/game/seedlab"
 	"farmgm/internal/repositories/crops"
@@ -180,6 +181,8 @@ func (s *GameService) SetAutoSellerItems(ctx context.Context, playerID int64, co
 // 販售項目有勾的作物，收成時符合保留條件（任一條件）就放進倉庫，不自動賣出。例如小麥只保留可以加工的，其他品質、突變的都賣掉。
 // 設定記在 farm_tools.settings 的 keep：{"作物代碼或 hybrid": ["craftable", "q:rare", "m:golden", …]}；
 // 代碼 AutoSellKeepAll（"*"）是「所有作物」的預設條件，作物有自己的條件時用自己的。
+// 魚（AutoSellFish，2026-11-25 使用者要求，想把高稀有度的魚留下來放魚塘）：依稀有度保留（"r:rare"…），
+// 符合的魚放進魚簍，魚簍滿了照常賣出；魚不套用「所有作物」的條件。
 
 const (
 	autoSellKeepKey = "keep"
@@ -205,9 +208,26 @@ func KeepChoices() []AutoSellOption {
 	return out
 }
 
+// KeepFishChoices 魚的保留條件選單：稀有、史詩、傳說。
+func KeepFishChoices() []AutoSellOption {
+	var out []AutoSellOption
+	for _, r := range fishing.Rarities[1:] {
+		out = append(out, AutoSellOption{Code: "r:" + r, Name: fishing.RarityNames[r] + "魚"})
+	}
+	return out
+}
+
+// keepChoicesFor 這個販售項目可以選的保留條件。
+func keepChoicesFor(key string) []AutoSellOption {
+	if key == AutoSellFish {
+		return KeepFishChoices()
+	}
+	return KeepChoices()
+}
+
 // KeepName 保留條件的名稱（未知的代碼原樣回傳）。
 func KeepName(code string) string {
-	for _, c := range KeepChoices() {
+	for _, c := range append(KeepChoices(), KeepFishChoices()...) {
 		if c.Code == code {
 			return c.Name
 		}
@@ -236,10 +256,28 @@ func keepRules(tool *models.FarmTool) map[string][]string {
 
 // keepFor 這種作物套用的保留條件（自己的，沒有時用「所有作物」的）。
 func keepFor(keep map[string][]string, key string) []string {
-	if conds, ok := keep[key]; ok {
+	if conds, ok := keep[key]; ok || key == AutoSellFish {
 		return conds
 	}
 	return keep[AutoSellKeepAll]
+}
+
+// autoSellFishKeep 自動釣魚機的魚要保留的稀有度（沒有自動販售機或沒設定時是 nil）。
+func (s *GameService) autoSellFishKeep(ctx context.Context, t *db.Tx, farmID int64) (map[string]bool, error) {
+	tool, err := items.GetTool(ctx, t, farmID, balance.ToolAutoSeller)
+	if err != nil || tool == nil {
+		return nil, err
+	}
+	var out map[string]bool
+	for _, c := range keepFor(keepRules(tool), AutoSellFish) {
+		if r, ok := strings.CutPrefix(c, "r:"); ok {
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[r] = true
+		}
+	}
+	return out, nil
 }
 
 // keepMatches 這批收成（品質、突變）是否符合任一保留條件。
@@ -299,7 +337,7 @@ func (s *GameService) SetAutoSellerKeep(ctx context.Context, playerID int64, key
 			}
 			found := false
 			for _, c := range autoSellChoices(all) {
-				if c.Code == key && c.Code != AutoSellFish {
+				if c.Code == key {
 					found, name = true, txt(ctx, c.Name)
 				}
 			}
@@ -309,7 +347,7 @@ func (s *GameService) SetAutoSellerKeep(ctx context.Context, playerID int64, key
 		}
 		var picked []any
 		var shown []string
-		for _, c := range KeepChoices() {
+		for _, c := range keepChoicesFor(key) {
 			if slices.Contains(conds, c.Code) {
 				picked = append(picked, c.Code)
 				shown = append(shown, txt(ctx, c.Name))
@@ -326,16 +364,25 @@ func (s *GameService) SetAutoSellerKeep(ctx context.Context, playerID int64, key
 			}
 		}
 		msg := txf(ctx, "🏧 %s不設保留條件：有勾選販售的都自動賣出。", name)
-		if key != AutoSellKeepAll {
+		if key != AutoSellKeepAll && key != AutoSellFish {
 			msg = txf(ctx, "🏧 %s改用「所有作物」的保留條件。", name)
 		}
-		inherit := len(conds) == 0 || slices.Contains(conds, KeepInherit) || (key == AutoSellKeepAll && slices.Contains(conds, KeepNone))
+		// 「所有作物」與魚沒有可以跟著的設定：不保留就直接刪除
+		noParent := key == AutoSellKeepAll || key == AutoSellFish
+		inherit := len(conds) == 0 || slices.Contains(conds, KeepInherit) || (noParent && slices.Contains(conds, KeepNone))
+		if key == AutoSellFish && inherit {
+			msg = txf(ctx, "🏧 %s不保留：全部自動賣出。", name)
+		}
 		switch {
 		case inherit:
 			delete(keep, key)
 		case slices.Contains(conds, KeepNone) || len(picked) == 0:
 			keep[key] = []any{}
 			msg = txf(ctx, "🏧 %s不保留：有勾選販售的都自動賣出。", name)
+		case key == AutoSellFish:
+			keep[key] = picked
+			msg = txf(ctx, "🏧 %s保留：%s，放進魚簍（可以再放進魚塘），其他的自動賣出；魚簍滿了照常賣出。", name,
+				strings.Join(shown, txt(ctx, "、")))
 		default:
 			keep[key] = picked
 			msg = txf(ctx, "🏧 %s收成時保留：%s，其他的自動賣出。", name, strings.Join(shown, txt(ctx, "、")))

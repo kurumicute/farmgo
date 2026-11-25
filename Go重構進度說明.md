@@ -283,11 +283,17 @@
   - **魚塘**（Migration 0049，`game/pond`、`services/pond.go`、`bot/pages_pond.go`，設計見 `魚塘_流程圖.md`）：農場 Lv.4 開放，入口在釣魚中心與魚簍頁，不佔農田；釣魚結算畫面有「🐟 放進魚塘」。設定存在 `farm_tools`（`fish_pond`）的 settings，魚的養殖重量在 `farm_fish.pond_weight_g`，魚苗是 `farm_fish.bred`。
     - `fishrepo.InBasket` 加上 `pond_weight_g IS NULL`：魚簍、販售、Boss 捐魚自動排除魚塘裡的魚。排行榜（捕獲數、最有價值的魚）、圖鑑次數、成就的釣魚數、日報的最佳魚都排除魚苗。賣出時只寫 `sold_price`（實際售價），`weight_g`、`price` 保留捕獲時的數值。
     - 每 12 小時一個週期，打開魚塘頁或操作時結算（鎖定農場後進行，天氣由日期決定，不需要背景排程）；總覽待辦區在記憶體裡結算（不寫入），提示池養極品與飼料不足。
-    - 新道具「魚飼料」（`fish_feed`，3 金，放素材背包，價格在「設施與道具價格」）；「補滿飼料」先用素材背包的，不夠的自動買。磨坊做飼料、介紹網站說明還沒做。
+    - 新道具「魚飼料」（`fish_feed`，3 金，放素材背包，價格在「設施與道具價格」）；「補滿飼料」先用素材背包的，不夠的自動買。磨坊做飼料還沒做（介紹網站的說明 2026-11-25 已補）。
     - 管理網站「新功能設定 → 魚塘」可以調整各級價格、容量、成長、極品倍率、天氣倍率、繁殖等。建造、升級、補飼料記 `buy_item`，賣魚記 `fish_sell`。
     - `db.AlembicHead` 改為 0049。降版刪除魚苗，魚塘裡其他魚回到魚簍。**有玩家用過魚塘後不能切回 Python 版 Bot。**
   - **消耗品當天逐次加價**（`game/dailyprice`、`services/dailyprice.go`，不需要 Migration）：化肥 20、蚯蚓 3、沙漏 5、雨衣稻草人 2、灑水器 2、巡查券 3 個以內原價，之後每個 +10% 原價、最多 300%；「今天買了幾個」從交易紀錄（`buy_item`）算，台灣時間 00:00 歸零。商店頁顯示下一個的價格與今天買了幾個，數量按鈕顯示加價後的總價。魚飼料不加價。管理網站「新功能設定 → 消耗品每日加價」可調整。
   - 測試：`game/pond`、`game/dailyprice` 的單元測試通過；需要資料庫的完整測試（含 `TestPond`、`TestDailyPriceEscalates`、`TestPanelQueryCounts`）2026-11-24 移植後在本機測試資料庫（已升到 0049，降版也實際跑過）全部通過。移植時修正兩個測試的預期：`TestPond` 賣魚塘裡的魚時回傳既有的「魚簍裡沒有可以賣的魚。」，改成比對「魚簍」；`TestFeatureSettingsView` 的 key 清單補上 `fish_pond`、`daily_price`。`bot/querycount_test.go` 的上限先 +6（商店頁多讀今天的購買數），實測後可以收緊。這次的修改也還沒在 Discord 上實機測試過。
+- **2026-11-25（使用者要求，Go 版新增）**：**自動販售機依稀有度保留自動釣魚機的魚**、**介紹網站加魚塘說明**。
+  - 保留條件（`farm_tools.settings.keep`）多一個代碼 `fish`，條件是 `r:rare`／`r:epic`／`r:legendary`（`services.KeepFishChoices`）。自動釣魚機在自動販售時，符合的魚放進魚簍（之後可以放進魚塘），其他照常賣出；**魚簍滿了照常賣出**，不會因此暫停。魚不套用「所有作物」的條件，也沒有「跟著所有作物」選項。
+  - `AutoFishStatus.Kept`：這次結算保留的條數；提示改成「自動販售機賣出 N 條，獲得 … 金幣；保留 M 條放進魚簍」。
+  - 自動販售機設定頁：第 2 個選單多「自動釣魚機的魚」（放在第 2 項，作物太多時不會被截掉），選了之後第 3 個選單是稀有度。
+  - 介紹網站：`/api/guide` 新增 `pond`（`GuideParts` 的 `pond` 部分，數值即時讀 `pond.Current()`），手冊新增「🐟 魚塘」一節、首頁新增魚塘卡片，釣魚一節補上保留稀有度的說明；英文翻譯在 `i18n/site/en.json`。
+  - 測試：新增 `TestAutoFisherKeepsRareFish`，`TestAutoSellerKeep`、`TestAutoSellerItemsFromBackpack` 補上魚的情況；完整測試在本機通過。
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
 
@@ -686,7 +692,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 
 ## 附錄：檔案清單與 SHA-256
 
-共 437 列（2026-11-24 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
+共 437 列（2026-11-25 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
 
 | 檔案 | SHA-256 |
 | --- | --- |
@@ -694,7 +700,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `.gitattributes` | `63ca547940a6eb8d6d98f5cdaf558d8b1ca507683405a68162bcc98a0399bafc` |
 | `.gitignore` | `ed067cba1c2cd0c55afd8095173c8430273d1ab5645a95e4861da299abfcd289` |
 | `Dockerfile` | `e183be482a0e542f490e216f581bdeda06b5909d1e4c209794b62277fe53bc15` |
-| `README.md` | `a9296d369d5a216a24e16e7412065aef1e8acb08838eb04cc8e3f146d78710d3` |
+| `README.md` | `d9c18b13b7d8c01c0648b77b3d3b4b2f85adf7ce00001f41eaef620d6238539b` |
 | `cmd/farmgm-bot/main.go` | `f022462d9640374d3a3aae0fe9114ad23aa368b3dc783e1e14c25f831d6182ba` |
 | `cmd/farmgm-bot/main_test.go` | `857646c725d083c0075aade2272e386f86ac915f61e37c75bb3c9e8849b9ccc6` |
 | `cmd/farmgm-hash-password/echo_linux.go` | `c5bf2bd0fe6941167625dd003fdabf2a4225cbe1b784f00a50dbd6994d0a53a0` |
@@ -714,10 +720,10 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `go.sum` | `57fff2606d2e1ed7ed9f91d4933e6be9a516a7f713d459f85cf6c3c46153e3ed` |
 | `i18n/README.md` | `5804b3be07f09e59ea5ac2e9a3939e09765eb418d5ed9965ba0b74abd70bfedc` |
 | `i18n/en.json` | `2430e2e50d15345f2048bf55d52b20633f6cd489e2dd631d9b77f9cbdee9dfae` |
-| `i18n/en.text.json` | `0256e78848128de9c8f2d80f5712f6d91de7a4d5166155333d697cf60b53df92` |
+| `i18n/en.text.json` | `ca664e6ec513a9ce6e34f0c08988136141d99e1edd579eb4a8766c3cfc262445` |
 | `i18n/i18n.go` | `9607e661181898dfaa80baafd02f6a5863597b1cc00ca34013dea211a3dd23e4` |
 | `i18n/i18n_test.go` | `c30f905a93d9aeab3427254876b1b037a537203ba30088723304fa8c22cb8840` |
-| `i18n/site/en.json` | `d0b77b9c4e220fbcc1c5a6b208725afce5ed513cb18e6f9843f60fb31e5f5063` |
+| `i18n/site/en.json` | `5d976e007b35418d27b7da4be9738c8c9ceb6444a28b4c1661aef2f3288f31f7` |
 | `i18n/zh-TW.json` | `b26a22e9621d37767ad9e63f63c95dc514d3285392595f767cb8ed015342057d` |
 | `internal/auth/auth.go` | `55bc1edd9db87504cf98860cc91194cee22f0fe6f3a1efcba35e5907c4b88605` |
 | `internal/auth/auth_test.go` | `5fceb18103f2cb1ec8ced5bf79854cccaedbd732fac5de4fb8e0f1bd507c192b` |
@@ -753,7 +759,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/latency/latency.go` | `22b590b542029a0f8ff74b33c71e4fad3ddfa537aa1e1f4fcb6ef77867685b0d` |
 | `internal/bot/latency/latency_test.go` | `dd8f6b4595bcbd3a147f84410d74893bb1a87d39b16472a0e717ec8f002dd78a` |
 | `internal/bot/pages_aid.go` | `e6e8b1a04f74c0d9a0d4ffa9c73aba24e2081252d3748a2edad7cb406cbfcb2d` |
-| `internal/bot/pages_autoseller.go` | `ccb6546fa2d0b9e89d9bfcd702a2c88237377d50786a0aa6850280a70e26b60b` |
+| `internal/bot/pages_autoseller.go` | `bc178ad5e63bc9b742a3dfebffb4ef8da4e0a37ce71a50521dff56fdec4801f3` |
 | `internal/bot/pages_beehive.go` | `064697566c679eac2eb529da41b53e0d713c3184432ca6eb77b13c931b83b5c2` |
 | `internal/bot/pages_boosts.go` | `ebb856b3100491679fa00b3cbab0a79e104668cb355d2e45df67af5fca1b02b3` |
 | `internal/bot/pages_boss.go` | `c5a5a8909d2c0404e7492fbe50ecf97c20419623d58c3df4a230b064d8db899a` |
@@ -776,7 +782,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/panel.go` | `19f07302011c982a668f75f4a98f40f2fc270fe9172de44494432ffa5c2401c2` |
 | `internal/bot/panel_aid_test.go` | `1a4c0cd9fe8e99f2a2100d3f2aa1cea070c5db582eb0dad212e12cc51673322d` |
 | `internal/bot/panel_autofish_test.go` | `f8204b17908932e84a9a869f876bd292203f84a7c5ccaa2ad8b1b4bab16ac36d` |
-| `internal/bot/panel_autoseller_test.go` | `236df8d804a3f6b4b1ddcbda368e5c8159b005c1bc591c918592f504a450bdff` |
+| `internal/bot/panel_autoseller_test.go` | `90c14fa477fa16074c63dc7b4ecdf1cc0392c94d8ec8143206b078a307e09c1b` |
 | `internal/bot/panel_beehive_test.go` | `8bfe36432b153c4587ea267008bc92a8944e551a388f2362c2fd76c9c597b09c` |
 | `internal/bot/panel_boss_test.go` | `d94aac119d7868055d446b6070b25871c8924e818c91381cf9165029d5d30e26` |
 | `internal/bot/panel_expansions_test.go` | `c468078d50a3681d34cc5ca3c88c3377f2629fb532bc679ca6d182f63ec2ea50` |
@@ -993,10 +999,10 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/aid_test.go` | `26a6cee0247a04c7522e8fbb0ea7065e22464d13dca49f15c0d29d4623a1e9d1` |
 | `internal/services/auction.go` | `c1c2a3895dfdd5a7aee83486c7ad2bc3303bda0777ad02cd5a0aca2bce71f766` |
 | `internal/services/auction_test.go` | `f37fda488b71eebf7220be038898f09b4b14267a8c588070a0a2dc933d24799e` |
-| `internal/services/autofish.go` | `cefffbfe3fa24d580e017658a3c5445798bdddb69e5c3f32160378f42d53f956` |
-| `internal/services/autofish_test.go` | `7f5e2cf847542b32bd3b1a938a089db9be5d20bd8510b09ee8d864dfaa8b6012` |
-| `internal/services/autoseller.go` | `4c7d595e903068d5fbf2c96fdfc57ebd6e29eff21c06bd18ac0b3502dd4e0f46` |
-| `internal/services/autoseller_test.go` | `373575f04615104d46c7e8cc0bf07e6ab1e1eca583f98f1f617f16dec191706c` |
+| `internal/services/autofish.go` | `d15cfe628ee85ea681748cf68a90556083d8138673dfb8063e1a9ae24264da9a` |
+| `internal/services/autofish_test.go` | `8e6edb0992c97f7d453beda5ccab71dff33609f810ad60f6e7b99c153f6ddff5` |
+| `internal/services/autoseller.go` | `569f639d7f029391a3d966847722ebe4043c85111a9f51697a46822169e56c51` |
+| `internal/services/autoseller_test.go` | `f500ecb3b54ba9082b54f687251b7b3d42e56891647d6a894090463ae112f350` |
 | `internal/services/away_test.go` | `35ab2172ea393d71579dc438506697abcb850324c264316c157cb00ce6e0ee40` |
 | `internal/services/backpack.go` | `d6e04b72f59f3cb2e5218e7b2808efc7b3f3d022b72e020e574c06e81b99849c` |
 | `internal/services/batch_test.go` | `9e04362497997f348edce7bade3a8d600e5f4a8521e2f34322bf6ff343b1bd49` |
@@ -1077,7 +1083,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/seedlab.go` | `0548d953e51b78d6336e0a7ab9c3156bde24d7e1d0943f19cf8752ba1cbb13c9` |
 | `internal/services/seedlab_test.go` | `52625b90459e861daf0f40189c9e96e41d43816d9f764adfb7d527effff3a55b` |
 | `internal/services/service.go` | `515c25c4de34de75e7f7a17012d46c2cb42d58f81c7c7b6c78ab911d03cae97a` |
-| `internal/services/site.go` | `4eaba029b14c5d2240c7678a2c9c86745107d50042a499283df4abaf3f037025` |
+| `internal/services/site.go` | `0da71be448747fa481c07003f461acbe44918d65d8b74552e7c7f06a918a0f89` |
 | `internal/services/social.go` | `831e3980bd679ee10ab924ad495d629c637b64330fe87deba2d02da764c0b7ae` |
 | `internal/services/social_test.go` | `4121c18ce6bdf8ceaa0fbae387f73a3190ee2bbc544cf81091b836a93012a51a` |
 | `internal/services/stress_test.go` | `a4aa847f169673c1d8af3656a9508f25c226415f50f465f141f546e025ec2e8f` |
@@ -1093,9 +1099,9 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/site/site.go` | `dbbdf1a341fcc084c9b3e59b9232ff04f6af68d913a5d55779503f232ca1acaf` |
 | `internal/site/site_test.go` | `c13aff426e7a1db3596832ff69592456761dfcd6c1a561415b5d9895668c706e` |
 | `internal/site/static/favicon.svg` | `bba4123b033483f9ca309a1031c36a6459679843def75245bca83d74575bc292` |
-| `internal/site/static/index.html` | `44890fadc2c9f11a03cc185cad599f73db6d6e320570464a62b8476b9edf13f9` |
+| `internal/site/static/index.html` | `d0f56f2c93577c756ac2fbc22848ebbf0651bfa13c718a633ba0f1be1f9f12ae` |
 | `internal/site/static/site.css` | `129120fa179426847b9a31930fe991eef0a7bf538f110c9e8a0363548e3b1729` |
-| `internal/site/static/site.js` | `0bcefecdf6a732c98c58f729c68d3bdfea7022b4933059bb764881eba3c6a8e3` |
+| `internal/site/static/site.js` | `971e0796f6f10dc4b8b701458088df07b003c15a995dacdd3458a905bde80295` |
 | `internal/site/stress_test.go` | `25fccaf291acf0f92aa6fbeffecca0353e06f4cec62a57d27df104bd922050c6` |
 | `internal/web/admin.go` | `8179879a5db82198ab600bac39e9d5aacc3be855ae61b4bb1cfaa176ea924080` |
 | `internal/web/admin_boss.go` | `a588cb805d2739bcaa5fefc6cb5c5abc7d066d70bc6abdb14ba94efa2513924f` |
@@ -1126,4 +1132,4 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `種子實驗室流程圖.md` | `f569ca792e01927818396db4d4a710f1bfd7b7a20a6649a879c1b0548c8b02b8` |
 | `英文翻譯用語表_已填寫.md` | `fb6d67284a5a5ad70be2a0b2e152f22a2e51bd9db6b9cce8843edf055e9a4aa5` |
 | `金幣回收_外觀與擴充流程圖.md` | `642c2b938bb6205f2b745c5632d42ab92ebbc919ddababab53ebc32646424537` |
-| `魚塘_流程圖.md` | `b1f3fba7a414bd469e7f6fc66d130409b9174b79204f3d23d04d72cb176429d7` |
+| `魚塘_流程圖.md` | `ccf4d1ed76e53a222460ca721662026e0eb21cfc61d6d33032b3aa17fcfd5ea8` |

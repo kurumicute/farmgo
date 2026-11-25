@@ -180,6 +180,12 @@
           <a class="card-more" href="#fishing">看手冊說明 →</a>
         </article>
         <article class="card">
+          <span class="card-icon" aria-hidden="true">🐟</span>
+          <h3>魚塘</h3>
+          <p>把釣到的魚放進魚塘餵飼料養大，長滿就是售價翻倍的池養極品；同種的魚湊一對，還有機會生出魚苗。</p>
+          <a class="card-more" href="#pond">看手冊說明 →</a>
+        </article>
+        <article class="card">
           <span class="card-icon" aria-hidden="true">🐉</span>
           <h3>世界 Boss</h3>
           <p>所有伺服器的玩家一起當農場後勤！<span id="c-boss">深淵魔龍每 2 天晚上 9 點出現</span>，捐獻作物、漁獲與素材補給前線，前線自動作戰扣 Boss 血量；打倒後依貢獻領金幣、稀有種子與稱號。</p>
@@ -494,12 +500,44 @@
               <li>分享<b>不會消耗或轉移</b>魚，也沒有額外獎勵；沒有分享的魚只有自己看得到，其他伺服器也看不到。</li>
               <li>「🏆 釣魚排行榜」可以看本伺服器或全部玩家的捕獲數與最有價值的一隻魚。</li>
               <li><b>🧺 魚簍升級</b>：「🎒 我的魚簍」的「升級魚簍」，<span id="g-fish-basket-upgrades">40 格 30,000、60 格 50,000、80 格 100,000、100 格 200,000 金幣</span>（一級一級升）。</li>
-              <li><b>🤖 自動釣魚機</b>（商店的工具，<span id="g-autofish-price">100,000</span> 金幣）：啟用時每 <span id="g-autofish-interval">5</span> 分鐘自動釣 1 條魚放進魚簍，<span id="g-autofish-bait">每釣 1 條消耗 1 個裝備中的魚餌</span>；魚簍滿了或魚餌用完就暫停（不會累積）。<span id="g-autofish-sell">同時啟用自動販售機時，釣到的魚直接賣掉（最多補算 24 小時）。</span>釣到的魚跟手動釣魚一樣依魚餌決定，不算進釣魚排行榜，但會記進魚類圖鑑。</li>
+              <li><b>🤖 自動釣魚機</b>（商店的工具，<span id="g-autofish-price">100,000</span> 金幣）：啟用時每 <span id="g-autofish-interval">5</span> 分鐘自動釣 1 條魚放進魚簍，<span id="g-autofish-bait">每釣 1 條消耗 1 個裝備中的魚餌</span>；魚簍滿了或魚餌用完就暫停（不會累積）。<span id="g-autofish-sell">同時啟用自動販售機時，釣到的魚直接賣掉（最多補算 24 小時）。</span>釣到的魚跟手動釣魚一樣依魚餌決定，不算進釣魚排行榜，但會記進魚類圖鑑。
+                自動販售機的設定頁可以<b>依稀有度保留</b>自動釣魚機的魚（稀有、史詩、傳說），保留的魚放進魚簍，方便再放進魚塘；魚簍滿了照常賣出。</li>
               <li><b>⚡ 自動釣魚機加速</b>（釣魚中心）：<span id="g-autofish-speed">每 4 分鐘 50,000、每 3 分鐘 120,000 金幣</span>（一級一級升，魚餌也會用得比較快）。</li>
             </ul>
           </div>
         </details>
 
+        <details class="guide" data-part="pond" id="pond">
+          <summary>🐟 魚塘</summary>
+          <div class="guide-body">
+            <p>農場 <b id="g-pond-level">Lv.4</b> 開放，入口在「🎣 釣魚中心」與「🎒 我的魚簍」的「🐟 魚塘」，<b>不佔農田</b>。每座農場 1 個，第一次按下去是建造說明。</p>
+            <ol>
+              <li><b>放魚</b>：在魚塘頁按「🐟 放魚」從魚簍勾選，或在釣魚結算畫面按「🐟 放進魚塘」直接放剛釣到的魚。
+                可以放<b>普通、稀有、史詩</b>魚；<b>傳說魚</b>和<b>要用指定魚餌才釣得到的深海魚</b>不能放。
+                史詩魚最多佔容量的 <span id="g-pond-epic">25%</span>（見下表）。</li>
+              <li><b>餵飼料</b>：每 <span id="g-pond-period">12</span> 小時一個週期，每隻魚吃 1 份<b>🌾 魚飼料</b>（<span id="g-pond-feed">3 金幣</span>一個，道具商店買，放素材背包）。
+                「補滿飼料」會先用素材背包裡的，不夠的自動買。飼料不夠時先餵售價高的魚，<b>沒吃到的魚只是暫停成長，不會死</b>。</li>
+              <li><b>成長</b>：吃到飼料的魚每個週期變重「重量區間 × <span id="g-pond-grow">30%</span> ×（1 + 等級加成）× 天氣倍率」，最多長到這種魚的最大重量。
+                天氣倍率：<span id="g-pond-weather">☀️ 晴天 ×1、☁️ 陰天 ×1、🌧️ 雨天 ×1.5、⛈️ 暴風 ×0、乾旱 ×0.5</span>。不用一直盯著，打開魚塘時會自動補算。</li>
+              <li><b>池養極品</b>：長到最大重量、而且在魚塘裡待滿 1 個週期的魚，售價 = <b>這種魚的最高價 × 魚塘等級倍率</b>（以賣出時的等級計算，所以升級後已經長滿的魚也會變值錢）。還沒長滿的魚依目前重量計價。</li>
+              <li><b>繁殖</b>：<span id="g-pond-breed">同種魚 2 隻以上、這個週期都吃到飼料、重量都在區間的 60% 以上，每天有機率生 1 隻魚苗（⚪ 普通 20%、🔵 稀有 10%、🟣 史詩 4%）</span>。魚苗從最小重量開始養；魚塘滿了或史詩魚名額滿了就不會生。</li>
+              <li><b>賣出</b>：魚放進魚塘後會空出魚簍的位置，但<b>回不了魚簍，只能從魚塘賣出</b>。捕獲時的重量照舊算進排行榜與圖鑑；魚苗不算進釣魚排行榜。</li>
+            </ol>
+            <div class="table-scroll">
+              <table class="guide-table">
+                <thead><tr><th>等級</th><th>建造／升級費用</th><th>容量</th><th>史詩魚最多</th><th>成長加成</th><th>池養極品倍率</th><th>飼料槽</th></tr></thead>
+                <tbody id="g-pond-levels">
+                  <tr><td>Lv.1</td><td>20,000</td><td>10 隻</td><td>2 隻</td><td>+0%</td><td>×1.7</td><td>40 份</td></tr>
+                  <tr><td>Lv.2</td><td>50,000</td><td>14 隻</td><td>3 隻</td><td>+20%</td><td>×1.9</td><td>56 份</td></tr>
+                  <tr><td>Lv.3</td><td>100,000</td><td>18 隻</td><td>4 隻</td><td>+40%</td><td>×2.2</td><td>72 份</td></tr>
+                  <tr><td>Lv.4</td><td>200,000</td><td>24 隻</td><td>6 隻</td><td>+60%</td><td>×2.6</td><td>96 份</td></tr>
+                  <tr><td>Lv.5</td><td>400,000</td><td>30 隻</td><td>7 隻</td><td>+80%</td><td>×3</td><td>120 份</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">💡 想讓自動釣魚機的好魚留下來養？到「🎒 背包」→「🏧 自動販售機設定」，第 2 個選單選「自動釣魚機的魚」，再勾選要保留的稀有度。</p>
+          </div>
+        </details>
         <details class="guide" data-part="exploration" id="cave">
           <summary>⛰️ 山洞冒險</summary>
           <div class="guide-body">

@@ -45,6 +45,7 @@ type AutoFishStatus struct {
 	BaitName                         string // 裝備中的魚餌（沒有時為 ""）
 	BaitLeft                         int    // 魚餌還能釣幾條（不消耗魚餌時為 -1）
 	Caught, Sold                     int    // 這次結算釣到的魚、其中直接賣掉的
+	Kept                             int    // 自動販售時依保留條件放進魚簍的（Caught 的一部分）
 	SoldGold                         int
 	BaitUsed                         int // 這次結算用掉的魚餌
 }
@@ -56,6 +57,9 @@ func (a AutoFishStatus) Note() string {
 		bait = fmt.Sprintf("（用掉 %d 個魚餌）", a.BaitUsed)
 	}
 	switch {
+	case a.Sold > 0 && a.Kept > 0:
+		return fmt.Sprintf("🤖 自動釣魚機釣到 %d 條魚%s，自動販售機賣出 %d 條，獲得 %s 金幣；保留 %d 條放進魚簍。",
+			a.Caught, bait, a.Sold, numfmt.Comma(a.SoldGold), a.Kept)
 	case a.Sold > 0:
 		return fmt.Sprintf("🤖 自動釣魚機釣到 %d 條魚%s，自動販售機賣出，獲得 %s 金幣。", a.Sold, bait, numfmt.Comma(a.SoldGold))
 	case a.Caught > 0:
@@ -196,7 +200,14 @@ func (s *GameService) settleAutoFish(ctx context.Context, t *db.Tx, farm *models
 		if hasBait {
 			baitCode, effects = bait.Gear.Code, bait.Gear.Effects
 		}
-		if err := s.autoCatch(ctx, t, farm, last, interval, catches, baitCode, effects, st.AutoSell, now, &st); err != nil {
+		var keep map[string]bool // 自動販售時依保留條件放進魚簍的稀有度
+		if st.AutoSell {
+			if keep, err = s.autoSellFishKeep(ctx, t, farm.ID); err != nil {
+				return st, err
+			}
+		}
+		space := max(0, capacity-inBasket)
+		if err := s.autoCatch(ctx, t, farm, last, interval, catches, baitCode, effects, st.AutoSell, keep, space, now, &st); err != nil {
 			return st, err
 		}
 		if cfg.ConsumeBait && hasBait && st.Caught > 0 {
@@ -222,10 +233,11 @@ func (s *GameService) settleAutoFish(ctx context.Context, t *db.Tx, farm *models
 	return st, nil
 }
 
-// autoCatch 新增 n 條自動釣到的魚（第 i 條的釣到時間 = last + i × interval）；sell 時直接賣掉並入帳。
+// autoCatch 新增 n 條自動釣到的魚（第 i 條的釣到時間 = last + i × interval）；sell 時直接賣掉並入帳，
+// 但稀有度在 keep 裡的魚放進魚簍（最多 space 條，魚簍滿了照常賣出）。
 // 魚種依魚餌決定（baitCode 為 "" 時只有不需要特定魚餌的魚），稀有度套用魚餌的加成。
 func (s *GameService) autoCatch(ctx context.Context, t *db.Tx, farm *models.Farm, last time.Time, interval time.Duration, n int,
-	baitCode string, effects fishing.Effects, sell bool, now time.Time, st *AutoFishStatus) error {
+	baitCode string, effects fishing.Effects, sell bool, keep map[string]bool, space int, now time.Time, st *AutoFishStatus) error {
 	_, raw, err := fishrepo.CurrentSettings(ctx, t)
 	if err != nil {
 		return err
@@ -265,7 +277,9 @@ func (s *GameService) autoCatch(ctx context.Context, t *db.Tx, farm *models.Farm
 		price := fishing.FishPrice(ftype.MinPrice, ftype.MaxPrice, ftype.MinWeightG, ftype.MaxWeightG, weight)
 		cols := []db.Col{db.C("farm_id", farm.ID), db.C("fish_code", ftype.Code), db.C("rarity", ftype.Rarity),
 			db.C("weight_g", weight), db.C("price", price), db.C("caught_at", at), db.C("auto", true)}
-		if sell {
+		if sell && keep[ftype.Rarity] && st.Kept < space {
+			st.Kept++
+		} else if sell {
 			cols = append(cols, db.C("sold_at", now), db.C("sold_price", price))
 			total += price
 			st.Sold++

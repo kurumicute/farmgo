@@ -34,11 +34,22 @@ func TestAutoSellerItemsFromBackpack(t *testing.T) {
 			t.Fatalf("%+v", o)
 		}
 	}
-	// 作物選單只列有勾選販售的作物（不含魚）
+	// 選單列有勾選販售的作物與魚（魚在第 2 項）
 	pick := p.selectMenu("選擇要設定保留條件的作物")
-	if pick == nil || len(pick.Options) != 3 {
+	if pick == nil || len(pick.Options) != 4 || pick.Options[1].Value != "fish" {
 		t.Fatalf("%+v", pick)
 	}
+	// 魚依稀有度保留（2026-11-25）：沒有「跟著所有作物」，選項是稀有度
+	p.choose("選擇要設定保留條件的作物", "fish")
+	contains(t, p.Text, "自動釣魚機的魚的保留條件", "不保留")
+	keep := p.selectMenu("自動釣魚機的魚要保留哪些")
+	if keep == nil || len(keep.Options) != 4 || keep.Options[1].Value != "r:rare" {
+		t.Fatalf("%+v", keep)
+	}
+	p.chooseMany("自動釣魚機的魚要保留哪些", []string{"r:epic", "r:legendary"})
+	contains(t, p.Text, "自動釣魚機的魚保留：史詩魚、傳說魚")
+	p.goPage("auto_seller")
+	contains(t, p.Text, "保留：自動釣魚機的魚：史詩魚、傳說魚")
 	// 小麥只保留可以加工的
 	p.choose("選擇要設定保留條件的作物", "wheat")
 	contains(t, p.Text, "小麥的保留條件", "跟著所有作物")
@@ -47,5 +58,5 @@ func TestAutoSellerItemsFromBackpack(t *testing.T) {
 	p.goPage("auto_seller")
 	contains(t, p.Text, "保留：小麥：可以加工的（普通品質）")
 	p.goPage("backpack")
-	contains(t, p.Text, "保留：小麥：可以加工的（普通品質）")
+	contains(t, p.Text, "保留：小麥：可以加工的（普通品質）；自動釣魚機的魚：史詩魚、傳說魚")
 }
