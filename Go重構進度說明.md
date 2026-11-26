@@ -294,6 +294,10 @@
   - 自動販售機設定頁：第 2 個選單多「自動釣魚機的魚」（放在第 2 項，作物太多時不會被截掉），選了之後第 3 個選單是稀有度。
   - 介紹網站：`/api/guide` 新增 `pond`（`GuideParts` 的 `pond` 部分，數值即時讀 `pond.Current()`），手冊新增「🐟 魚塘」一節、首頁新增魚塘卡片，釣魚一節補上保留稀有度的說明；英文翻譯在 `i18n/site/en.json`。
   - 測試：新增 `TestAutoFisherKeepsRareFish`，`TestAutoSellerKeep`、`TestAutoSellerItemsFromBackpack` 補上魚的情況；完整測試在本機通過。
+- **2026-11-26（玩家反映「互動失敗」）**：**互動 API 失敗時記錄細節**，不改遊戲行為。
+  - 正式環境 23 小時內有 44 次「更新面板失敗」，大多和「延後回覆失敗」在同一秒出現，但日誌只記了錯誤型別（`*discordgo.RESTError`），無法判斷原因。
+  - `discordio.Interaction` 的回應（callback）、對話框、編輯原訊息失敗時，多記一筆「互動 API 失敗」：`op`、HTTP 狀態、Discord 錯誤碼與說明（50035 附上回應內容）、請求耗時 `took_ms`、互動建立至今 `age_ms`、是否上傳圖片；網路錯誤記 `net_timeout` 與原因。網址含互動權杖，不記錄。
+  - 測試：新增 `TestInteractionAPIErrorIsLoggedWithCode`（確認記下 10062 且日誌不含權杖）。
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
 
@@ -692,7 +696,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 
 ## 附錄：檔案清單與 SHA-256
 
-共 437 列（2026-11-25 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
+共 438 列（2026-11-26 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
 
 | 檔案 | SHA-256 |
 | --- | --- |
@@ -728,10 +732,11 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/auth/auth.go` | `55bc1edd9db87504cf98860cc91194cee22f0fe6f3a1efcba35e5907c4b88605` |
 | `internal/auth/auth_test.go` | `5fceb18103f2cb1ec8ced5bf79854cccaedbd732fac5de4fb8e0f1bd507c192b` |
 | `internal/bot/commands.go` | `fe4e7df7df236145620dca2b2e2f0f7c4dcf738ad21de9e74f605bd6a5909a46` |
+| `internal/bot/discordio/apierror_test.go` | `5472bd3c2d11c9b7000dbbdf9b2c5215211e9824ab88a7a4ddbbdb3c886af083` |
 | `internal/bot/discordio/bot.go` | `3c16e3cbca0905bd378a2642b22dfed156817834c91e1b60756da48033e49050` |
 | `internal/bot/discordio/bot_test.go` | `19fc4e759501aa7e9d9010094f710e0eea340aad16981b7ee7b13eef6731de7c` |
 | `internal/bot/discordio/discordio_test.go` | `d0c08b322d8d1bd5625d5ce65e2c597c2bb0ef35e09f77a18df0d867c93a4108` |
-| `internal/bot/discordio/interaction.go` | `3bc05d14ea19228ef9ea24d82dc25fc0abda6d78405e1bcdc8a5914e48c33780` |
+| `internal/bot/discordio/interaction.go` | `675d5b8c6ac2286245eebfb317ec9998ed5bc16f3f92deab39982d5bc2099a5d` |
 | `internal/bot/discordio/members.go` | `54bb6c9f1d635694ef5e6947759f0c10eaf9659a747d99cbde604ca2f64c5cc1` |
 | `internal/bot/discordio/members_test.go` | `a0567a8f1ad18ce1f95a6f210aee92aad92990b4c0c8248c560d6ebf52600f75` |
 | `internal/bot/discordio/music.go` | `1a9e9d3d4ae3a55a450492fd2367caf9f1a0a7b5a7b8d31208e50c76c6da2d2d` |

@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -160,11 +163,50 @@ func (it *Interaction) respond(ctx context.Context, kind int, e *encoded) error 
 	if e != nil {
 		resp.Data, files = e.msg, e.files
 	}
-	if _, err := it.c.send(ctx, http.MethodPost, it.callbackURL(), resp, files); err != nil {
+	if _, err := it.call(ctx, "callback", http.MethodPost, it.callbackURL(), resp, files); err != nil {
 		return err
 	}
 	it.responded = true
 	return nil
+}
+
+// call 送出這次互動的 API 請求；失敗時記下 Discord 的錯誤碼、請求耗時與互動建立至今的時間，
+// 用來分辨「交互失敗」是逾時（10062）、重複回應（40060）、內容不合法（50035）還是網路錯誤（2026-11-26）。
+func (it *Interaction) call(ctx context.Context, op, method, endpoint string, payload any, files []ui.File) ([]byte, error) {
+	started := time.Now()
+	body, err := it.c.send(ctx, method, endpoint, payload, files)
+	if err != nil {
+		logAPIError(op, it.i.Type.String(), time.Since(started), it.age(), len(files) > 0, err)
+	}
+	return body, err
+}
+
+// logAPIError 記錄互動 API 失敗的細節。網址含互動權杖，所以不記錄網址與 url.Error 的完整字串。
+func logAPIError(op, kind string, took, age time.Duration, upload bool, err error) {
+	args := []any{"op", op, "type", kind, "took_ms", took.Milliseconds(), "age_ms", age.Milliseconds(), "upload", upload}
+	var rest *discordgo.RESTError
+	var uerr *url.Error
+	switch {
+	case errors.As(err, &rest):
+		if rest.Response != nil {
+			args = append(args, "status", rest.Response.StatusCode)
+		}
+		if rest.Message != nil {
+			args = append(args, "code", rest.Message.Code, "message", rest.Message.Message)
+		}
+		if rest.Message == nil || rest.Message.Code == discordgo.ErrCodeInvalidFormBody {
+			b := string(rest.ResponseBody)
+			if len(b) > 800 {
+				b = b[:800]
+			}
+			args = append(args, "body", b)
+		}
+	case errors.As(err, &uerr):
+		args = append(args, "net_timeout", uerr.Timeout(), "cause", fmt.Sprintf("%T: %v", uerr.Err, uerr.Err))
+	default:
+		args = append(args, "error", fmt.Sprintf("%T", err))
+	}
+	slog.Warn("互動 API 失敗", args...)
 }
 
 func (it *Interaction) bind(m ui.Message) {
@@ -192,7 +234,7 @@ func (it *Interaction) SendModal(ctx context.Context, m *ui.Modal) error {
 	if it.reg != nil {
 		it.reg.BindModal(ctx, m)
 	}
-	if _, err := it.c.send(ctx, http.MethodPost, it.callbackURL(), wireResponse{Type: respModal, Data: modalOf(m)}, nil); err != nil {
+	if _, err := it.call(ctx, "modal", http.MethodPost, it.callbackURL(), wireResponse{Type: respModal, Data: modalOf(m)}, nil); err != nil {
 		return err
 	}
 	it.responded = true
@@ -253,7 +295,7 @@ func (it *Interaction) Show(ctx context.Context, m ui.Message) error {
 			return err
 		}
 	}
-	_, err := it.c.send(ctx, http.MethodPatch, it.webhookURL("/messages/@original"), e.msg, e.files)
+	_, err := it.call(ctx, "edit_original", http.MethodPatch, it.webhookURL("/messages/@original"), e.msg, e.files)
 	return err
 }
 
@@ -275,7 +317,7 @@ func (it *Interaction) EditOriginal(ctx context.Context, m ui.Message) error {
 	defer it.mu.Unlock()
 	it.bind(m)
 	e := encode(m, true)
-	_, err := it.c.send(ctx, http.MethodPatch, it.webhookURL("/messages/@original"), e.msg, e.files)
+	_, err := it.call(ctx, "edit_original", http.MethodPatch, it.webhookURL("/messages/@original"), e.msg, e.files)
 	return err
 }
 
