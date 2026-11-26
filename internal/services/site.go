@@ -1130,6 +1130,8 @@ func buildSeedLab(rareSeeds []string) map[string]any {
 		// 2026-11-14 起：基因升降、突變遺傳、研究經驗與等級、雜交作物售價、稀有種子來源
 		"gene_up_pct": bpPct(c.GeneUpBP), "gene_down_pct": bpPct(c.GeneDownBP),
 		"inherit_mutation_pct": bpPct(c.InheritMutationBP), "hybrid_price_mul": 1.5,
+		// 2026-11-26：種子帶珍稀變種、夜光作物時每次種下出現的機率
+		"variant_express_pct": bpPct(c.VariantExpressBP), "glow_express_pct": bpPct(c.GlowExpressBP),
 		"exp": map[string]any{"identify": c.ExpIdentify, "cross": c.ExpCross, "cross_fail": c.ExpCrossFail, "mutate": c.ExpMutate,
 			"clone": c.ExpClone},
 		"level_exp": []int{c.LevelExp[2], c.LevelExp[3]}, "rare_seeds": rareSeeds,

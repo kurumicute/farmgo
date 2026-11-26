@@ -193,7 +193,7 @@ func (s *GameService) plant(ctx context.Context, t *db.Tx, farm *models.Farm, pl
 }
 
 // plantWith 同 plant；labSeed 不是 nil 時種的是種子實驗室的特殊種子（已由呼叫端標記為已種下）：
-// 品質基因、突變基因加到加成，種子本身的突變直接成為作物的突變，產量基因增加收成數量（生長基因在澆水時套用）。
+// 品質基因、突變基因加到加成，種子本身的突變成為作物的突變（珍稀變種、夜光作物有機率不出現），產量基因增加收成數量（生長基因在澆水時套用）。
 func (s *GameService) plantWith(ctx context.Context, t *db.Tx, farm *models.Farm, plot *models.FarmPlot, crop *models.CropType,
 	source string, labSeed *models.LabSeed) (string, *int, error) {
 	now := s.now()
@@ -238,8 +238,12 @@ func (s *GameService) plantWith(ctx context.Context, t *db.Tx, farm *models.Farm
 	}
 	quality := genetics.RollQuality(genetics.EffectiveQualityBP(settings, farm.Level, qualityBonus), s.geneticsRng())
 	mutation := genetics.RollMutation(settings, s.geneticsRng(), mutationBonus)
+	// 種子的突變直接成為作物的突變；珍稀變種、夜光作物只有一定機率出現（2026-11-26），沒出現時用上面一般擲骰的結果。
+	// 一定出現的突變不多擲一次骰，其他測試的亂數順序不變
 	if labSeed != nil && labSeed.Mutation != "none" {
-		mutation = labSeed.Mutation
+		if bp := seedlab.ExpressBP(labSeed.Mutation); bp >= 10_000 || seedlab.Expresses(labSeed.Mutation, s.geneticsRng()) {
+			mutation = labSeed.Mutation
+		}
 	}
 	quantity := genetics.HarvestQuantity(crop.HarvestQuantity, mutation, settings, h.Value)
 	if labSeed != nil {

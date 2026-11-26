@@ -4770,6 +4770,8 @@ if (typeof document !== "undefined") {
       ["cross_mutation_per_level_bp", "每級突變基因的自然突變（%）", 0, 2000, true]]],
     ["☢️ 突變研究", [["mutate_crystal", "需要的水晶（個）", 0, 100], ["mutate_base_bp", "基礎成功率（%）", 0, 10000, true],
       ["mutate_per_level_bp", "突變基因每級 +（%）", 0, 10000, true], ["mutate_max_bp", "成功率上限（%）", 0, 10000, true]]],
+    ["✨ 種子帶的突變（每次種下時）", [["variant_express_bp", "珍稀變種出現的機率（%）", 0, 10000, true],
+      ["glow_express_bp", "夜光作物出現的機率（%）", 0, 10000, true]]],
     ["🌱 基因效果（每高 1 級）", [["growth_pct_per_level", "生長時間減少（%）", 0, 20], ["yield_pct_per_level", "產量：收成數量增加（%，無條件進位）", 0, 50],
       ["quality_bp_per_level", "品質加成（%）", 0, 1000, true], ["mutation_bp_per_level", "突變加成（%）", 0, 1000, true],
       ["inherit_bp", "收成時取回種子（%）", 0, 10000, true]]],

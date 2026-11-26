@@ -186,6 +186,20 @@ func QualityBonusBP(level int) int { return Current().QualityBPPerLevel * max(0,
 // MutationBonusBP 突變基因：種植時突變機率加成（種子本身沒有突變時才擲骰）。
 func MutationBonusBP(level int) int { return Current().MutationBPPerLevel * max(0, level-1) }
 
+// ExpressBP 種子帶的突變每次種下時出現的機率（萬分比）：珍稀變種、夜光作物依設定（2026-11-26 削弱），其他突變一定出現。
+func ExpressBP(mutation string) int {
+	switch mutation {
+	case "variant":
+		return Current().VariantExpressBP
+	case "glow":
+		return Current().GlowExpressBP
+	}
+	return 10_000
+}
+
+// Expresses 種子的突變這次種下是否出現；u 是 [0, 1) 的亂數。
+func Expresses(mutation string, u float64) bool { return int(u*10_000) < ExpressBP(mutation) }
+
 // ---------- 鑑定 ----------
 
 // RollIdentify 鑑定：一般作物每個基因 1–2 級；稀有作物（商店不賣的，例如琥珀瓜、月光花）2–3 級。u < 0.5 時多 1 級。

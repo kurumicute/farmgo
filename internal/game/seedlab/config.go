@@ -58,13 +58,16 @@ type Config struct {
 	YieldPctPerLevel      int // 產量基因每級增加的收成：作物原本收成數量的 %（無條件進位，所以 2 級起至少 +1）
 	QualityBPPerLevel     int
 	MutationBPPerLevel    int
-	ExpIdentify           int
-	ExpCross              int
-	ExpCrossFail          int
-	ExpMutate             int
-	ExpClone              int
-	LevelExp              [MaxLevel + 1]int // 升到該等級需要的累積經驗（只用 index 2..MaxLevel）
-	Hybrids               map[string]HybridSetting
+	// 2026-11-26（使用者要求削弱）：種子帶珍稀變種／夜光作物時，每次種下長出這個突變的機率（其他突變仍然一定出現）
+	VariantExpressBP int
+	GlowExpressBP    int
+	ExpIdentify      int
+	ExpCross         int
+	ExpCrossFail     int
+	ExpMutate        int
+	ExpClone         int
+	LevelExp         [MaxLevel + 1]int // 升到該等級需要的累積經驗（只用 index 2..MaxLevel）
+	Hybrids          map[string]HybridSetting
 	// 擴充（2026-11-15，Go 版新增）：種子庫每級增加的格數與各級價格、額外研究槽的各級價格（研究 Lv.3 才能買）
 	LibraryStep     int
 	LibraryPrices   []int
@@ -120,6 +123,7 @@ func DefaultConfig() *Config {
 		DominantBP: 7000, CloneFeePct: 50, CloneHerb: 1, CloneMinutes: 60,
 		CloneTwoBP: 3000, CloneThreeBP: 1000, CloneHerbBonusBP: 2000, CloneMaxBatches: 10,
 		GrowthPctPerLevel: 6, YieldPctPerLevel: 15, QualityBPPerLevel: 500, MutationBPPerLevel: 150,
+		VariantExpressBP: 6000, GlowExpressBP: 6000,
 		ExpIdentify: 2, ExpCross: 10, ExpCrossFail: 15, ExpMutate: 8, ExpClone: 3,
 		LevelExp:    [MaxLevel + 1]int{0, 0, 100, 300},
 		Hybrids:     map[string]HybridSetting{},
@@ -196,6 +200,8 @@ var intFields = []intField{
 	{"yield_pct_per_level", "產量基因每級增加的收成（%）", 0, 50, func(c *Config) *int { return &c.YieldPctPerLevel }},
 	{"quality_bp_per_level", "品質基因每級的品質加成", 0, 1_000, func(c *Config) *int { return &c.QualityBPPerLevel }},
 	{"mutation_bp_per_level", "突變基因每級的突變加成", 0, 1_000, func(c *Config) *int { return &c.MutationBPPerLevel }},
+	{"variant_express_bp", "種子帶珍稀變種時長出變種的機率", 0, 10_000, func(c *Config) *int { return &c.VariantExpressBP }},
+	{"glow_express_bp", "種子帶夜光作物時長出夜光的機率", 0, 10_000, func(c *Config) *int { return &c.GlowExpressBP }},
 	{"exp_identify", "鑑定的研究經驗", 0, 10_000, func(c *Config) *int { return &c.ExpIdentify }},
 	{"exp_cross", "雜交成功的研究經驗", 0, 10_000, func(c *Config) *int { return &c.ExpCross }},
 	{"exp_cross_fail", "雜交失敗的研究經驗", 0, 10_000, func(c *Config) *int { return &c.ExpCrossFail }},

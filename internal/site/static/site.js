@@ -301,6 +301,10 @@
     setText("g-lab-mutate-base", String(l.mutate_base_pct));
     setText("g-lab-mutate-level", String(l.mutate_level_pct));
     setText("g-lab-mutate-max", String(l.mutate_max_pct));
+    if (l.variant_express_pct != null) {
+      setText("g-lab-express-variant", String(l.variant_express_pct));
+      setText("g-lab-express-glow", String(l.glow_express_pct));
+    }
     setText("g-lab-inherit", String(l.inherit_pct));
     setText("g-lab-share-send", String(l.share_send));
     setText("g-lab-share-receive", String(l.share_receive));

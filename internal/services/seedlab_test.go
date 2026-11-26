@@ -411,6 +411,7 @@ func TestSeedLabYieldAndGlow(t *testing.T) {
 	e.s.LabRng = func() float64 { return 0.9 }
 	seed := e.identify(pid, "wheat")
 	e.exec("UPDATE lab_seeds SET gene_yield = 5, mutation = 'glow' WHERE id = $1", seed.ID)
+	e.rolls(0.5, 0.5, 0) // 最後一個：夜光這次出現（預設 60%，2026-11-26）
 	e.ok(e.s.PlantLabSeed(e.ctx, pid, seed.ID, 1))
 	// 小麥每次收成 2 個 + 產量基因 5 級：2 × 15% × 4 = 1.2，無條件進位 +2
 	if n := e.scalar("SELECT remaining_quantity FROM farm_plots WHERE plot_number = 1 AND lab_seed_id IS NOT NULL"); n != 4 {
@@ -631,6 +632,34 @@ func TestIdentifySeedsBatch(t *testing.T) {
 	wantKind(t, err, gameerr.Validation)
 	if n := e.scalar("SELECT count(*) FROM lab_records WHERE kind = 'identify'"); n != 4 {
 		t.Fatal(n)
+	}
+	e.invariant()
+}
+
+// 種子帶珍稀變種、夜光作物時，每次種下只有設定的機率（預設 60%）出現，沒出現時照一般擲骰（2026-11-26）；其他突變一定出現。
+func TestLabSeedVariantAndGlowExpressByChance(t *testing.T) {
+	e := setup(t)
+	pid := e.labOwner("阿明", e.group("主群組"))
+	e.s.LabRng = func() float64 { return 0.9 }
+	plant := func(plot int, mutation string, express float64) string {
+		seed := e.identify(pid, "wheat")
+		e.exec("UPDATE lab_seeds SET mutation = $2 WHERE id = $1", seed.ID, mutation)
+		e.rolls(0.999, 0.999, express) // 品質：普通；一般突變：沒有；最後一個是種子突變是否出現
+		e.ok(e.s.PlantLabSeed(e.ctx, pid, seed.ID, plot))
+		return e.text("SELECT mutation FROM farm_plots WHERE plot_number = $1", plot)
+	}
+	if got := plant(1, "variant", 0.59); got != "variant" {
+		t.Fatal(got)
+	}
+	if got := plant(2, "variant", 0.6); got != "none" {
+		t.Fatal(got)
+	}
+	if got := plant(3, "glow", 0.7); got != "none" {
+		t.Fatal(got)
+	}
+	// 其他突變一定出現（不多擲骰）
+	if got := plant(4, "golden", 0.99); got != "golden" {
+		t.Fatal(got)
 	}
 	e.invariant()
 }

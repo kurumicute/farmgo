@@ -126,7 +126,7 @@ func (p *Panel) loadLab(ctx context.Context) (any, error) {
 // labIntro 實驗室介紹（也放在未解鎖畫面）。
 func labIntro() string {
 	return fmt.Sprintf("🧪 把一般種子**鑑定**成有基因的特殊種子，再用兩顆種子**雜交**培育出更好的基因或全新的雜交作物；"+
-		"**突變研究**能讓種子帶上突變並一直傳承下去。基因有 4 種（%s），每種 1–5 級。",
+		"**突變研究**能讓種子帶上突變並一直傳承下去（珍稀變種、夜光作物每次種下有機率不出現）。基因有 4 種（%s），每種 1–5 級。",
 		strings.Join(func() []string {
 			out := make([]string, len(seedlab.GeneOrder))
 			for i, g := range seedlab.GeneOrder {
@@ -517,6 +517,8 @@ func (p *Panel) buildLabSeeds(ctx context.Context, data any) (*ui.Embed, error) 
 		detail := []string{fmt.Sprintf("%s %s", cropEmoji(sel.CropCode), sel.Label()), sel.Genes.Text()}
 		if eff := labMutationEffect(sel.Mutation); eff != "" {
 			detail = append(detail, p.f("✨ %s：%s", sel.MutationName, eff))
+		} else if sel.Mutation == "variant" { // 2026-11-26：珍稀變種不再一定出現
+			detail = append(detail, p.f("✨ 珍稀變種：每次種下有 %s%% 機率長出變種", bpPct(seedlab.ExpressBP("variant"))))
 		}
 		if sel.Hybrid {
 			detail = append(detail, p.s("🌟 雜交作物：商店買不到，只能自己培育或由朋友分享。"))
@@ -991,7 +993,8 @@ func (p *Panel) buildLabRecords(_ context.Context, data any) (*ui.Embed, error) 
 func labMutationEffect(m string) string {
 	switch m {
 	case "glow":
-		return fmt.Sprintf("售價 ×%s（和黃金作物一樣疊在品質倍率之後）", bpPct(balance.GlowPricePct))
+		return fmt.Sprintf("售價 ×%s（和黃金作物一樣疊在品質倍率之後），每次種下有 %s%% 機率出現", bpPct(balance.GlowPricePct),
+			bpPct(seedlab.ExpressBP("glow")))
 	case "bountiful":
 		return fmt.Sprintf("收成數量 +%d%%（無條件捨去，至少 +1）", balance.BountifulBonusPct)
 	case "crystal":
