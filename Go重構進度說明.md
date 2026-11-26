@@ -298,6 +298,15 @@
   - 正式環境 23 小時內有 44 次「更新面板失敗」，大多和「延後回覆失敗」在同一秒出現，但日誌只記了錯誤型別（`*discordgo.RESTError`），無法判斷原因。
   - `discordio.Interaction` 的回應（callback）、對話框、編輯原訊息失敗時，多記一筆「互動 API 失敗」：`op`、HTTP 狀態、Discord 錯誤碼與說明（50035 附上回應內容）、請求耗時 `took_ms`、互動建立至今 `age_ms`、是否上傳圖片；網路錯誤記 `net_timeout` 與原因。網址含互動權杖，不記錄。
   - 測試：新增 `TestInteractionAPIErrorIsLoggedWithCode`（確認記下 10062 且日誌不含權杖）。
+  - 上線後查到的兩次都是 10062：Bot 在互動建立後 0.25～1 秒就送出 callback（沒有圖片），但這一個請求本身花了 2.6～3.3 秒才完成，送到時已過期。
+  - 所以再加請求各階段計時（`httptrace`）：互動 API 請求超過 `SlowAPI`（1 秒）時，成功的記「互動 API 偏慢」，失敗的併入「互動 API 失敗」。記錄的欄位有：
+    - `get_conn`：開始取連線，在這之前是 discordgo 的速率限制等待
+    - `got_conn`、`connect`、`tls`
+    - `wrote`：送完請求
+    - `first_byte`：收到第一個回應位元組
+    - 連線是否重用、閒置多久、是否查了 DNS
+    
+    用來分辨慢在 Bot 這邊的連線，還是送出後在等 Discord 回應。測試：`TestSlowInteractionAPIIsTraced`。
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
 
@@ -732,11 +741,11 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/auth/auth.go` | `55bc1edd9db87504cf98860cc91194cee22f0fe6f3a1efcba35e5907c4b88605` |
 | `internal/auth/auth_test.go` | `5fceb18103f2cb1ec8ced5bf79854cccaedbd732fac5de4fb8e0f1bd507c192b` |
 | `internal/bot/commands.go` | `fe4e7df7df236145620dca2b2e2f0f7c4dcf738ad21de9e74f605bd6a5909a46` |
-| `internal/bot/discordio/apierror_test.go` | `5472bd3c2d11c9b7000dbbdf9b2c5215211e9824ab88a7a4ddbbdb3c886af083` |
+| `internal/bot/discordio/apierror_test.go` | `40dca1c27331debdbcac3c73428b93928242c5cfd8500bbe478537a66693c387` |
 | `internal/bot/discordio/bot.go` | `3c16e3cbca0905bd378a2642b22dfed156817834c91e1b60756da48033e49050` |
 | `internal/bot/discordio/bot_test.go` | `19fc4e759501aa7e9d9010094f710e0eea340aad16981b7ee7b13eef6731de7c` |
 | `internal/bot/discordio/discordio_test.go` | `d0c08b322d8d1bd5625d5ce65e2c597c2bb0ef35e09f77a18df0d867c93a4108` |
-| `internal/bot/discordio/interaction.go` | `675d5b8c6ac2286245eebfb317ec9998ed5bc16f3f92deab39982d5bc2099a5d` |
+| `internal/bot/discordio/interaction.go` | `ccd74b8b362ec0643455f132da21e943a333f54caeb3dda29c7afc960d91faab` |
 | `internal/bot/discordio/members.go` | `54bb6c9f1d635694ef5e6947759f0c10eaf9659a747d99cbde604ca2f64c5cc1` |
 | `internal/bot/discordio/members_test.go` | `a0567a8f1ad18ce1f95a6f210aee92aad92990b4c0c8248c560d6ebf52600f75` |
 | `internal/bot/discordio/music.go` | `1a9e9d3d4ae3a55a450492fd2367caf9f1a0a7b5a7b8d31208e50c76c6da2d2d` |

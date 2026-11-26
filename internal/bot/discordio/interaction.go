@@ -3,11 +3,13 @@ package discordio
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"sync"
 	"time"
@@ -174,16 +176,79 @@ func (it *Interaction) respond(ctx context.Context, kind int, e *encoded) error 
 // 用來分辨「交互失敗」是逾時（10062）、重複回應（40060）、內容不合法（50035）還是網路錯誤（2026-11-26）。
 func (it *Interaction) call(ctx context.Context, op, method, endpoint string, payload any, files []ui.File) ([]byte, error) {
 	started := time.Now()
-	body, err := it.c.send(ctx, method, endpoint, payload, files)
-	if err != nil {
-		logAPIError(op, it.i.Type.String(), time.Since(started), it.age(), len(files) > 0, err)
+	tr := &reqTrace{start: started}
+	body, err := it.c.send(httptrace.WithClientTrace(ctx, tr.hooks()), method, endpoint, payload, files)
+	took := time.Since(started)
+	switch {
+	case err != nil:
+		logAPIError(op, it.i.Type.String(), took, it.age(), len(files) > 0, tr, err)
+	case took >= SlowAPI:
+		slog.Warn("互動 API 偏慢", append([]any{"op", op, "type", it.i.Type.String(), "took_ms", took.Milliseconds(),
+			"age_ms", it.age().Milliseconds(), "upload", len(files) > 0}, tr.args()...)...)
 	}
 	return body, err
 }
 
+// SlowAPI 互動 API 請求超過這個時間就記錄各階段耗時（2026-11-26 追查 10062：callback 單次請求曾花 2.6～3.3 秒）。
+var SlowAPI = time.Second
+
+// reqTrace 一次請求各階段的時間點（距離開始送出的毫秒數，-1 表示沒有發生）。用來分辨慢在等連線
+// （discordgo 速率限制、建立連線、TLS）還是送出後等 Discord 回應。
+type reqTrace struct {
+	mu                                           sync.Mutex
+	start                                        time.Time
+	getConn, gotConn, connect, tls, wrote, first time.Duration
+	reused, wasIdle                              bool
+	idle                                         time.Duration
+	dns                                          bool
+}
+
+func (t *reqTrace) mark(d *time.Duration) {
+	t.mu.Lock()
+	*d = time.Since(t.start)
+	t.mu.Unlock()
+}
+
+func (t *reqTrace) hooks() *httptrace.ClientTrace {
+	t.getConn, t.gotConn, t.connect, t.tls, t.wrote, t.first = -1, -1, -1, -1, -1, -1
+	return &httptrace.ClientTrace{
+		GetConn: func(string) { t.mark(&t.getConn) },
+		GotConn: func(info httptrace.GotConnInfo) {
+			t.mark(&t.gotConn)
+			t.mu.Lock()
+			t.reused, t.wasIdle, t.idle = info.Reused, info.WasIdle, info.IdleTime
+			t.mu.Unlock()
+		},
+		DNSDone:              func(httptrace.DNSDoneInfo) { t.mu.Lock(); t.dns = true; t.mu.Unlock() },
+		ConnectDone:          func(string, string, error) { t.mark(&t.connect) },
+		TLSHandshakeDone:     func(tls.ConnectionState, error) { t.mark(&t.tls) },
+		WroteRequest:         func(httptrace.WroteRequestInfo) { t.mark(&t.wrote) },
+		GotFirstResponseByte: func() { t.mark(&t.first) },
+	}
+}
+
+// args 日誌欄位：get_conn（開始取連線，之前是速率限制等待）、got_conn、connect、tls、wrote（送完請求）、
+// first_byte（收到第一個回應位元組），以及連線是否重用、閒置多久、是否查了 DNS。
+func (t *reqTrace) args() []any {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	ms := func(d time.Duration) int64 {
+		if d < 0 {
+			return -1
+		}
+		return d.Milliseconds()
+	}
+	return []any{"get_conn", ms(t.getConn), "got_conn", ms(t.gotConn), "connect", ms(t.connect), "tls", ms(t.tls),
+		"wrote", ms(t.wrote), "first_byte", ms(t.first), "reused", t.reused, "was_idle", t.wasIdle,
+		"idle_ms", t.idle.Milliseconds(), "dns", t.dns}
+}
+
 // logAPIError 記錄互動 API 失敗的細節。網址含互動權杖，所以不記錄網址與 url.Error 的完整字串。
-func logAPIError(op, kind string, took, age time.Duration, upload bool, err error) {
+func logAPIError(op, kind string, took, age time.Duration, upload bool, tr *reqTrace, err error) {
 	args := []any{"op", op, "type", kind, "took_ms", took.Milliseconds(), "age_ms", age.Milliseconds(), "upload", upload}
+	if took >= SlowAPI {
+		args = append(args, tr.args()...)
+	}
 	var rest *discordgo.RESTError
 	var uerr *url.Error
 	switch {

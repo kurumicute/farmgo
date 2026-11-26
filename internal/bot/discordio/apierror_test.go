@@ -48,3 +48,35 @@ func TestInteractionAPIErrorIsLoggedWithCode(t *testing.T) {
 		t.Fatalf("日誌含權杖：%s", out)
 	}
 }
+
+// 成功但偏慢的請求記錄各階段時間點。
+func TestSlowInteractionAPIIsTraced(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(80 * time.Millisecond)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	old, oldSlow := API, SlowAPI
+	API, SlowAPI = srv.URL+"/api/v10/", 50*time.Millisecond
+	t.Cleanup(func() { API, SlowAPI = old, oldSlow; srv.Close() })
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	i := &discordgo.Interaction{ID: snowflake(time.Now()), AppID: "app", Token: "secret-token-xyz",
+		Type: discordgo.InteractionMessageComponent, Data: discordgo.MessageComponentInteractionData{CustomID: "c1"}}
+	it := NewInteraction(session(t), i, ui.NewRegistry())
+	if err := it.DeferUpdateIfPending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"互動 API 偏慢", "op=callback", "got_conn=", "wrote=", "first_byte=", "reused="} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("缺少 %q：%s", want, out)
+		}
+	}
+	if strings.Contains(out, "first_byte=-1") || strings.Contains(out, "secret-token-xyz") {
+		t.Fatal(out)
+	}
+}
