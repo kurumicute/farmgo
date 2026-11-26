@@ -2509,7 +2509,7 @@
  "轉移後 %s內不能再轉移。再按一次「確認轉移」。": "you can't move again for %s. Tap \"Confirm Move\" again.",
  "轉移所屬群組": "Move Home Server",
  "農作物": "Crops",
- "農作物；讓前線維持出勤，不足時大部分時間在休息": "Crops; keep the front line on duty — without them, fighters spend most of their time resting",
+ "農作物與菇類；讓前線維持出勤，不足時大部分時間在休息": "Crops and mushrooms; keep the front line on duty — without them, fighters spend most of their time resting",
  "農場升級": "Farm Upgrade",
  "農場名稱": "Farm Name",
  "農場名稱已從「%s」改為「%s」，%s。下次改名需要 %d 金幣（%d 天沒改名會降價）。": "Your farm was renamed from \"%s\" to \"%s\" (%s). The next rename costs %d Gold (the price drops after %d days without renaming).",

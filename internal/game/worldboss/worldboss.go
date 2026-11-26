@@ -38,7 +38,7 @@ type SupplyInfo struct {
 }
 
 var SupplyInfos = map[string]SupplyInfo{
-	"food":      {"🌾", "糧食補給", "持續作戰", "農作物；讓前線維持出勤，不足時大部分時間在休息"},
+	"food":      {"🌾", "糧食補給", "持續作戰", "農作物與菇類；讓前線維持出勤，不足時大部分時間在休息"},
 	"medical":   {"🩹", "醫療補給", "恢復能力", "藥草、雞蛋、牛奶、果醬等指定食物與素材；把受傷缺勤的時間救回來"},
 	"combat":    {"⚔️", "戰鬥補給", "傷害效率", "漁獲與麵粉、麵包等加工物品；提高每次攻擊的傷害"},
 	"equipment": {"🛡️", "裝備補給", "戰鬥能力", "洞窟探索與機器製作素材；強化前線裝備"},
@@ -140,7 +140,9 @@ const (
 
 // DefaultItemOrder 預設設定 items 的代碼順序（Python DEFAULT_SETTINGS["items"] 的 dict 順序；管理網站表單依此顯示）。
 var DefaultItemOrder = []string{
-	"herb", "egg", "milk", "strawberry_jam", "tomato_jam", "grape_jam", "pumpkin_jam", "watermelon_jam", "flour", "bread", "wool", "wood", "stone", "copper_ore", "resin",
+	"herb", "egg", "milk", "strawberry_jam", "tomato_jam", "grape_jam", "pumpkin_jam", "watermelon_jam",
+	"shiitake", "button_mushroom", "enoki", "truffle", "glowcap", "lingzhi",
+	"flour", "bread", "wool", "wood", "stone", "copper_ore", "resin",
 	"iron_ore", "gear", "crystal", "ancient_core", "machine_core",
 }
 
@@ -166,18 +168,26 @@ func DefaultSettings() Settings {
 			"grape_jam":      {"medical", 40},
 			"pumpkin_jam":    {"medical", 49},
 			"watermelon_jam": {"medical", 115},
-			"flour":          {"combat", 5},
-			"bread":          {"combat", 20},
-			"wool":           {"equipment", 12},
-			"wood":           {"equipment", 2},
-			"stone":          {"equipment", 2},
-			"copper_ore":     {"equipment", 3},
-			"resin":          {"equipment", 2},
-			"iron_ore":       {"equipment", 6},
-			"gear":           {"equipment", 12},
-			"crystal":        {"equipment", 15},
-			"ancient_core":   {"equipment", 40},
-			"machine_core":   {"equipment", 40},
+			// Go 版新增（2026-11-26，使用者要求）：地下菇房的菇類，積分 ≈ 售價 ÷ 10（無條件進位）；
+			// 菇類算糧食，靈芝是藥材算醫療
+			"shiitake":        {"food", 20},
+			"button_mushroom": {"food", 23},
+			"enoki":           {"food", 26},
+			"truffle":         {"food", 70},
+			"glowcap":         {"food", 90},
+			"lingzhi":         {"medical", 52},
+			"flour":           {"combat", 5},
+			"bread":           {"combat", 20},
+			"wool":            {"equipment", 12},
+			"wood":            {"equipment", 2},
+			"stone":           {"equipment", 2},
+			"copper_ore":      {"equipment", 3},
+			"resin":           {"equipment", 2},
+			"iron_ore":        {"equipment", 6},
+			"gear":            {"equipment", 12},
+			"crystal":         {"equipment", 15},
+			"ancient_core":    {"equipment", 40},
+			"machine_core":    {"equipment", 40},
 		},
 	}
 }

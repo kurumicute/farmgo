@@ -307,6 +307,14 @@
     - 連線是否重用、閒置多久、是否查了 DNS
     
     用來分辨慢在 Bot 這邊的連線，還是送出後在等 Discord 回應。測試：`TestSlowInteractionAPIIsTraced`。
+- **2026-11-26（使用者要求，Go 版新增）**：**菇類可以捐給世界 Boss**，不需要 Migration。
+  - 作物（含新作物與變種）和魚簍裡的魚原本就依售價換算積分，不用另外設定。菇類在目錄裡屬於加工物品，只有指定了積分才能捐，所以加進預設設定 `wb.DefaultSettings().Items`（`DefaultItemOrder` 同步）。
+  - 積分約為售價 ÷ 10、無條件進位，和果醬的算法相同：
+    - 香菇 20、洋菇 23、金針菇 26、松露 70、發光菇 90，算糧食補給
+    - 靈芝 52，算醫療補給
+  - 糧食補給的說明改成「農作物與菇類；…」（英文同步）。
+  - 正式環境的排程設定是快照，改預設值不會生效，要另外改 `world_boss_schedules` 的 `items`。
+  - 測試：新增 `TestDonateMushrooms`。
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
 
@@ -733,7 +741,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `go.sum` | `57fff2606d2e1ed7ed9f91d4933e6be9a516a7f713d459f85cf6c3c46153e3ed` |
 | `i18n/README.md` | `5804b3be07f09e59ea5ac2e9a3939e09765eb418d5ed9965ba0b74abd70bfedc` |
 | `i18n/en.json` | `2430e2e50d15345f2048bf55d52b20633f6cd489e2dd631d9b77f9cbdee9dfae` |
-| `i18n/en.text.json` | `ca664e6ec513a9ce6e34f0c08988136141d99e1edd579eb4a8766c3cfc262445` |
+| `i18n/en.text.json` | `f69442d9d42cc8d5de3307cba579c54d84af417454b1d8e6aede8f4419214637` |
 | `i18n/i18n.go` | `9607e661181898dfaa80baafd02f6a5863597b1cc00ca34013dea211a3dd23e4` |
 | `i18n/i18n_test.go` | `c30f905a93d9aeab3427254876b1b037a537203ba30088723304fa8c22cb8840` |
 | `i18n/site/en.json` | `5d976e007b35418d27b7da4be9738c8c9ceb6444a28b4c1661aef2f3288f31f7` |
@@ -922,7 +930,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/game/weather/luck_test.go` | `4594ec86c2b7335362f6ef7f6ba1af557d6e5572e39119fc155f5548fad5a13d` |
 | `internal/game/weather/weather.go` | `9ef8ade48ef3ef708f6f995d18b00eee1003b2d2f009be57b98cea9361132802` |
 | `internal/game/weather/weather_test.go` | `60de641e9a012f625b6596e84a61dced40f0bbdd5ea89db6ab5b3c2278586790` |
-| `internal/game/worldboss/worldboss.go` | `bf48640f807809086b67a7788de6cf194c4192bb2f711adaf182f5324c5523dc` |
+| `internal/game/worldboss/worldboss.go` | `c28de30ab4d2bcc7c21a2a7ecd720a7435a892b64ba3f34538331cbcd002b1f3` |
 | `internal/game/worldboss/worldboss_test.go` | `ecf564a6af0ad5184b6787a03e4a06651374fc86316473e216dbc78a22bcaec2` |
 | `internal/music/commands.go` | `0f077ace95795aefe14d71330c09f8e0b27f4a398aa9fcbca1b1b07451489485` |
 | `internal/music/format.go` | `e13108c2306f10d9d5b194aa5c618ceb7c9183650485d6ac1e47b6a5e8636ba0` |
@@ -1107,7 +1115,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/services/treasure_test.go` | `cdcca57827a0a620e5d0d84be4f545856fa564f68bcc7a141edd33a7f1079325` |
 | `internal/services/weather_test.go` | `ca98ebbc02be0aab4b3f63ab790f467fe397b9a3465eb7d016d95f30b6ede8db` |
 | `internal/services/worldboss.go` | `ca9ba0d8808ffc6802f0b54fdad77ed5cd20fa9b40ca0fe6bd3fc09c64f91633` |
-| `internal/services/worldboss_test.go` | `6d67a18555fe0fc42247a4c06a121167f83e89b1af776d1fdf89fe08313adaca` |
+| `internal/services/worldboss_test.go` | `1c18acbf03fa6b8a14636e62b6268580e9e812fe711e6d20595059fd1c750178` |
 | `internal/site/lang.go` | `638b8a19b15f23ad1f54edc209f4e06e43f0fed86417fbfc57b0daab16b7ea6d` |
 | `internal/site/lang_test.go` | `cadfcf39f169b75a30c98835d5ef303bdad7851fb0c5f09b776175d1bcf65743` |
 | `internal/site/site.go` | `dbbdf1a341fcc084c9b3e59b9232ff04f6af68d913a5d55779503f232ca1acaf` |

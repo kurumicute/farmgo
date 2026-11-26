@@ -828,3 +828,31 @@ func TestLastLeaderboardIsPreviousFinishedEvent(t *testing.T) {
 		t.Fatalf("%+v", cur)
 	}
 }
+
+// 菇類（2026-11-26 新增）可以捐：一般菇類算糧食、靈芝算醫療，積分 ≈ 售價 ÷ 10。
+func TestDonateMushrooms(t *testing.T) {
+	e := setup(t)
+	home := e.group("主群組")
+	pid := e.farmer("阿明", home)
+	eid := e.boss(home, bossOpt{})
+	e.give(pid, "shiitake", 3)
+	e.give(pid, "lingzhi", 1)
+	got := map[string]BossDonationOption{}
+	for _, o := range must[[]BossDonationOption](t)(e.wb.BossDonationOptions(e.ctx, &home, pid, eid, "goods")) {
+		got[o.Code] = o
+	}
+	if o := got["shiitake"]; o.Held != 3 || o.PointsMin != 20 || o.Supply != "food" {
+		t.Fatalf("%+v", got)
+	}
+	if o := got["lingzhi"]; o.Held != 1 || o.PointsMin != 52 || o.Supply != "medical" {
+		t.Fatalf("%+v", got)
+	}
+	if r := e.mustDonate(&home, pid, eid, "goods", "shiitake", 2); r.Points != 40 {
+		t.Fatal(r.Points)
+	}
+	e.mustDonate(&home, pid, eid, "goods", "lingzhi", 1)
+	v := e.bossView(&home, pid, nil)
+	if supplyRow(v, "food").Progress != 40 || supplyRow(v, "medical").Progress != 52 {
+		t.Fatalf("%+v", v.Supplies)
+	}
+}
