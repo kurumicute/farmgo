@@ -39,7 +39,7 @@ func TestInteractionAPIErrorIsLoggedWithCode(t *testing.T) {
 		t.Fatal("應該失敗")
 	}
 	out := buf.String()
-	for _, want := range []string{"互動 API 失敗", "op=callback", "status=404", "code=10062", "age_ms=", "took_ms="} {
+	for _, want := range []string{"互動 API 失敗", "op=callback:defer_update", "status=404", "code=10062", "age_ms=", "took_ms="} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("缺少 %q：%s", want, out)
 		}
@@ -71,7 +71,7 @@ func TestSlowInteractionAPIIsTraced(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, want := range []string{"互動 API 偏慢", "op=callback", "got_conn=", "wrote=", "first_byte=", "reused="} {
+	for _, want := range []string{"互動 API 偏慢", "op=callback:defer_update", "got_conn=", "wrote=", "first_byte=", "reused="} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("缺少 %q：%s", want, out)
 		}

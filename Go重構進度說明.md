@@ -328,6 +328,11 @@
     - 介紹網站：突變研究一段，數值由 `/api/guide` 的 `variant_express_pct`、`glow_express_pct` 讀取。
     - 中英文同步。
   - 測試：新增 `TestLabSeedVariantAndGlowExpressByChance`；`TestSeedLabYieldAndGlow` 固定亂數，讓夜光出現。
+- **2026-11-27（追查「互動失敗」）**：**按鈕、選單、對話框一律先 defer 再編輯原訊息**，不改遊戲內容。
+  - 上線的計時紀錄顯示，慢的都是元件的 callback。連線是重用的（沒有重新連線、TLS），請求 0～10 ms 就送完，但要等 Discord 1～3.7 秒才收到第一個回應位元組。從 VPS 直接測 Discord：ping 約 78 ms、0% 掉包，一般 API 含建立連線約 0.3 秒，網路正常。
+  - 原本 `Interaction.Show` 只有上傳圖片或互動建立超過 2 秒時才先 defer，其他情況直接回 UPDATE_MESSAGE（type 7，帶完整 Embed 與元件）。現在元件與對話框一律先送 DEFERRED_UPDATE_MESSAGE（type 6，沒有內容），再 PATCH 原訊息；指令仍然直接回應。移除 `showDirectAge`。
+  - 日誌的 `op` 加上回應類型（例如 `callback:defer_update`、`callback:update_message`），方便比較各類型的耗時。
+  - 測試：`TestComponentShowDeferEditAndFollowup` 改成沒有圖片也先 defer；`apierror_test.go` 的 op 同步。
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
 
@@ -726,7 +731,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 
 ## 附錄：檔案清單與 SHA-256
 
-共 438 列（2026-11-26 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
+共 438 列（2026-11-27 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
 
 | 檔案 | SHA-256 |
 | --- | --- |
@@ -762,11 +767,11 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/auth/auth.go` | `55bc1edd9db87504cf98860cc91194cee22f0fe6f3a1efcba35e5907c4b88605` |
 | `internal/auth/auth_test.go` | `5fceb18103f2cb1ec8ced5bf79854cccaedbd732fac5de4fb8e0f1bd507c192b` |
 | `internal/bot/commands.go` | `fe4e7df7df236145620dca2b2e2f0f7c4dcf738ad21de9e74f605bd6a5909a46` |
-| `internal/bot/discordio/apierror_test.go` | `40dca1c27331debdbcac3c73428b93928242c5cfd8500bbe478537a66693c387` |
+| `internal/bot/discordio/apierror_test.go` | `99fc2f32f09de5870c9af398b39f8ec841ce0b4ac377f73e82042dbb8deb42ee` |
 | `internal/bot/discordio/bot.go` | `3c16e3cbca0905bd378a2642b22dfed156817834c91e1b60756da48033e49050` |
 | `internal/bot/discordio/bot_test.go` | `19fc4e759501aa7e9d9010094f710e0eea340aad16981b7ee7b13eef6731de7c` |
-| `internal/bot/discordio/discordio_test.go` | `d0c08b322d8d1bd5625d5ce65e2c597c2bb0ef35e09f77a18df0d867c93a4108` |
-| `internal/bot/discordio/interaction.go` | `ccd74b8b362ec0643455f132da21e943a333f54caeb3dda29c7afc960d91faab` |
+| `internal/bot/discordio/discordio_test.go` | `2124958d71ffa50d274fed6f3a4237451a4e1b3f657fc11fbf79a17f519b002a` |
+| `internal/bot/discordio/interaction.go` | `6cb023359eb7984bccbc75cad97586592ead7efc4fb8fb3b5603e0f972626037` |
 | `internal/bot/discordio/members.go` | `54bb6c9f1d635694ef5e6947759f0c10eaf9659a747d99cbde604ca2f64c5cc1` |
 | `internal/bot/discordio/members_test.go` | `a0567a8f1ad18ce1f95a6f210aee92aad92990b4c0c8248c560d6ebf52600f75` |
 | `internal/bot/discordio/music.go` | `1a9e9d3d4ae3a55a450492fd2367caf9f1a0a7b5a7b8d31208e50c76c6da2d2d` |

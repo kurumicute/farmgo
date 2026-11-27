@@ -228,13 +228,17 @@ func TestComponentShowDeferEditAndFollowup(t *testing.T) {
 	if r.Method != "PATCH" || r.Path != "webhooks/app/tok/messages/@original" || len(r.Files) != 1 || r.Files[0] != "farm.png" {
 		t.Fatalf("%+v", r)
 	}
-	// 剛建立的互動、沒有新圖片：直接 UPDATE_MESSAGE（type 7）
+	// 剛建立的互動、沒有新圖片：也先 defer（type 6）再編輯原訊息（UPDATE_MESSAGE 在正式環境常要等 1～3.7 秒；2026-11-27）
 	freshID := fmt.Sprint((time.Now().UnixMilli() - 1420070400000) << 22)
 	fresh := NewInteraction(session(t), component(freshID, "c1"), reg)
 	if err := fresh.Show(context.Background(), ui.Message{Embed: &ui.Embed{Title: "A"}, View: v, Attachments: &ui.Attachments{Keep: true}}); err != nil {
 		t.Fatal(err)
 	}
-	if r := f.last(); r.Method != "POST" || r.Path != "interactions/"+freshID+"/tok/callback" || typeOf(r) != 7 {
+	reqs = f.requests()
+	if d := reqs[len(reqs)-2]; d.Method != "POST" || d.Path != "interactions/"+freshID+"/tok/callback" || typeOf(d) != 6 {
+		t.Fatalf("%+v", d)
+	}
+	if r := f.last(); r.Method != "PATCH" || r.Path != "webhooks/app/tok/messages/@original" {
 		t.Fatalf("%+v", r)
 	}
 	if v.Items()[0].(*ui.Button).CustomID() == "" || !reg.Has(v.Items()[0].(*ui.Button).CustomID()) { // 送出前已登記元件

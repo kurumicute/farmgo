@@ -165,11 +165,28 @@ func (it *Interaction) respond(ctx context.Context, kind int, e *encoded) error 
 	if e != nil {
 		resp.Data, files = e.msg, e.files
 	}
-	if _, err := it.call(ctx, "callback", http.MethodPost, it.callbackURL(), resp, files); err != nil {
+	if _, err := it.call(ctx, "callback:"+respName(kind), http.MethodPost, it.callbackURL(), resp, files); err != nil {
 		return err
 	}
 	it.responded = true
 	return nil
+}
+
+// respName 回應類型的名稱，記在日誌的 op（例如 callback:defer_update），用來比較各類型的耗時。
+func respName(kind int) string {
+	switch kind {
+	case respMessage:
+		return "message"
+	case respDeferMessage:
+		return "defer_message"
+	case respDeferUpdate:
+		return "defer_update"
+	case respUpdateMessage:
+		return "update_message"
+	case respModal:
+		return "modal"
+	}
+	return fmt.Sprint(kind)
 }
 
 // call 送出這次互動的 API 請求；失敗時記下 Discord 的錯誤碼、請求耗時與互動建立至今的時間，
@@ -344,16 +361,17 @@ func (it *Interaction) EditMessage(ctx context.Context, m ui.Message) error {
 	return it.respond(ctx, respUpdateMessage, &e)
 }
 
-// Show 尚未回應時直接回應（UPDATE_MESSAGE），已 defer 時編輯原訊息。
+// Show 指令尚未回應時直接回應；元件與對話框一律先 defer 再編輯原訊息。
 func (it *Interaction) Show(ctx context.Context, m ui.Message) error {
 	it.mu.Lock()
 	defer it.mu.Unlock()
 	it.bind(m)
 	e := encode(m, true)
 	if !it.responded {
-		// 要上傳圖片或互動已經快到 3 秒期限時，先 defer 再編輯原訊息：直接回應要在 3 秒內「傳完」，
-		// 上傳圖片可能超過期限而變成「交互失敗」（2026-11-17）
-		if it.isCommand() || (len(e.files) == 0 && it.age() < showDirectAge) {
+		// 元件與對話框一律先 defer（type 6，內容很小）再編輯原訊息：正式環境的 UPDATE_MESSAGE 回應
+		// 送出後要等 Discord 1～3.7 秒才回應，超過 3 秒玩家就看到「交互失敗」（2026-11-27 紀錄）。
+		// 之前只在上傳圖片（2026-11-17）或互動建立超過 2 秒時才先 defer。
+		if it.isCommand() {
 			return it.respond(ctx, respUpdateMessage, &e)
 		}
 		if err := it.respond(ctx, respDeferUpdate, nil); err != nil {
@@ -363,9 +381,6 @@ func (it *Interaction) Show(ctx context.Context, m ui.Message) error {
 	_, err := it.call(ctx, "edit_original", http.MethodPatch, it.webhookURL("/messages/@original"), e.msg, e.files)
 	return err
 }
-
-// showDirectAge 互動建立超過這段時間後，Show 一律先 defer（Discord 要求 3 秒內回應）。
-const showDirectAge = 2 * time.Second
 
 // age 互動建立至今的時間（無法解析 ID 時視為 0）。
 func (it *Interaction) age() time.Duration {
