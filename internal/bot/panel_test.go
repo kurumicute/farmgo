@@ -578,25 +578,35 @@ func TestSlowActionSharesReplyBudget(t *testing.T) {
 }
 
 func TestUnchangedImageReusesExistingAttachment(t *testing.T) {
-	// 同一張圖沿用訊息上已有的附件，不重新上傳；換到沒圖的頁面才移除，之後重新上傳。
+	// 同一張圖沿用訊息上已有的附件，不重新上傳；沒圖的頁面把舊圖留成縮圖，回來時也沿用（2026-11-28）。
 	e := setup(t)
 	p := e.makePlayer(alice, guildA, "玩家")
 	onMessage := []string{FarmImage}
-	att := func(page string) *ui.Attachments { return lastEdit(t, p.goWith(page, onMessage)).Message.Attachments }
-	if a := att("backpack"); a.Keep || len(a.Files) != 0 { // 沒有圖的頁面：移除
-		t.Fatalf("%+v", a)
+	edit := func(page string, attached []string) ui.Message { return lastEdit(t, p.goWith(page, attached)).Message }
+	if m := edit("backpack", nil); m.Attachments.Keep || len(m.Attachments.Files) != 0 || m.Embed.Thumbnail != "" { // 訊息上沒有圖：移除
+		t.Fatalf("%+v", m.Attachments)
 	}
-	if a := att("plots"); a.Keep || len(a.Files) != 1 { // 訊息上沒有圖：上傳新圖
-		t.Fatalf("%+v", a)
+	if m := edit("plots", onMessage); m.Attachments.Keep || len(m.Attachments.Files) != 1 { // 訊息上沒有圖：上傳新圖
+		t.Fatalf("%+v", m.Attachments)
 	}
-	if a := att("main"); !a.Keep { // 圖片相同（同一座農田）：沿用
-		t.Fatalf("%+v", a)
+	if m := edit("main", onMessage); !m.Attachments.Keep { // 圖片相同（同一座農田）：沿用
+		t.Fatalf("%+v", m.Attachments)
 	}
-	if a := att("backpack"); a.Keep || len(a.Files) != 0 { // 沒有圖的頁面：移除
-		t.Fatalf("%+v", a)
+	m := edit("backpack", onMessage) // 沒有圖的頁面：舊圖留成縮圖
+	if !m.Attachments.Keep || m.Embed.Thumbnail != "attachment://"+FarmImage || m.Embed.Image != "" {
+		t.Fatalf("%+v %q", m.Attachments, m.Embed.Thumbnail)
 	}
-	if a := att("main"); a.Keep || len(a.Files) != 1 { // 訊息上已經沒有圖：重新上傳
-		t.Fatalf("%+v", a)
+	if m := edit("sell", onMessage); !m.Attachments.Keep || m.Embed.Thumbnail != "attachment://"+FarmImage { // 連續換到沒圖的頁面也一樣
+		t.Fatalf("%+v", m.Attachments)
+	}
+	if m := edit("main", onMessage); !m.Attachments.Keep || m.Embed.Image != "attachment://"+FarmImage { // 回總覽：沿用，不重新上傳
+		t.Fatalf("%+v", m.Attachments)
+	}
+	if m := edit("backpack", nil); m.Attachments.Keep || len(m.Attachments.Files) != 0 || m.Embed.Thumbnail != "" { // 訊息上其實沒有圖：移除，不為縮圖重新上傳
+		t.Fatalf("%+v %q", m.Attachments, m.Embed.Thumbnail)
+	}
+	if m := edit("main", onMessage); m.Attachments.Keep || len(m.Attachments.Files) != 1 { // 訊息上已經沒有圖：重新上傳
+		t.Fatalf("%+v", m.Attachments)
 	}
 }
 

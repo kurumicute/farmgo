@@ -333,6 +333,12 @@
   - 原本 `Interaction.Show` 只有上傳圖片或互動建立超過 2 秒時才先 defer，其他情況直接回 UPDATE_MESSAGE（type 7，帶完整 Embed 與元件）。現在元件與對話框一律先送 DEFERRED_UPDATE_MESSAGE（type 6，沒有內容），再 PATCH 原訊息；指令仍然直接回應。移除 `showDirectAge`。
   - 日誌的 `op` 加上回應類型（例如 `callback:defer_update`、`callback:update_message`），方便比較各類型的耗時。
   - 測試：`TestComponentShowDeferEditAndFollowup` 改成沒有圖片也先 defer；`apierror_test.go` 的 op 同步。
+- **2026-11-28（Go 版新增，減少重新上傳圖片）**：**沒有圖片的頁面把訊息上的圖留成右上角縮圖**。
+  - 原因：換到沒有圖片的頁面時原本會移除附件（沒被 Embed 引用的附件，Discord 會另外顯示在訊息下方），回到總覽、農田頁就得重新上傳。正式環境 3 小時內上傳了 659 次（`main` 262 次、`plots` 149 次，每次約 1～4 秒）。流量最大的釣魚（`fish_game`）、雜交（`lab_cross`）、出售頁都沒有圖片。
+  - 現在 `Panel.render` 遇到沒有自己圖片、也沒有 thumbnail 的頁面時，如果上一張圖已經在訊息上（雜湊等於 `sentDigest`），就沿用那張圖、改成 `embed.Thumbnail = attachment://farm.png`，不送附件欄位。回到同一張圖的頁面時直接沿用，不重新上傳。
+  - 訊息上其實沒有那張圖時（`MessageAttachments` 沒有 `farm.png`），`attachments` 改成移除附件、清掉縮圖，不會為了縮圖重新上傳。錯誤畫面照舊移除圖片。
+  - 例外：世界 Boss 戰鬥區（`boss_battle`、`boss_donate`、`boss_live_board`）照 Python 只有數值面板，不放縮圖（`noThumbnailPages`）。總覽的 thumbnail 本來就是頭像，不受影響。
+  - 測試：`TestUnchangedImageReusesExistingAttachment` 改成沒圖的頁面沿用縮圖、回總覽不重新上傳；`TestPanelBossImageOnlyInIntroArea` 離開世界 Boss 頁時改成留下縮圖。
 
 ### 2026-11-15：自動販售機販售項目、季節輪替、商店分類
 
@@ -731,7 +737,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 
 ## 附錄：檔案清單與 SHA-256
 
-共 438 列（2026-11-27 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
+共 438 列（2026-11-28 更新；不含本說明檔、`.env` 與 `farmgmdiscordb-old/`；農田圖片素材 `internal/bot/farmimage/farm/` 合併成一列：各檔案「相對路徑:SHA-256」依路徑排序、以換行連接後的 SHA-256）。
 
 | 檔案 | SHA-256 |
 | --- | --- |
@@ -819,12 +825,12 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/pages_seedmaker.go` | `cc7b54eecc2b5987b27529b060185f92957edd1c931685bb683d5539d8d4e341` |
 | `internal/bot/pages_shop.go` | `62871ce0482ef56a8b1dbfc4fbf393401d9be3a97ef44ae8c3d224fdf052200f` |
 | `internal/bot/pages_social.go` | `5c123abcb93b8a287a6a4d3255a4a819d1ab75f61700768c6a341e44d8b94f40` |
-| `internal/bot/panel.go` | `19f07302011c982a668f75f4a98f40f2fc270fe9172de44494432ffa5c2401c2` |
+| `internal/bot/panel.go` | `862ea49adbc44860793ea7d5e1da76c946155da528c1adeeccfb7cf922ab4fd2` |
 | `internal/bot/panel_aid_test.go` | `1a4c0cd9fe8e99f2a2100d3f2aa1cea070c5db582eb0dad212e12cc51673322d` |
 | `internal/bot/panel_autofish_test.go` | `f8204b17908932e84a9a869f876bd292203f84a7c5ccaa2ad8b1b4bab16ac36d` |
 | `internal/bot/panel_autoseller_test.go` | `90c14fa477fa16074c63dc7b4ecdf1cc0392c94d8ec8143206b078a307e09c1b` |
 | `internal/bot/panel_beehive_test.go` | `8bfe36432b153c4587ea267008bc92a8944e551a388f2362c2fd76c9c597b09c` |
-| `internal/bot/panel_boss_test.go` | `d94aac119d7868055d446b6070b25871c8924e818c91381cf9165029d5d30e26` |
+| `internal/bot/panel_boss_test.go` | `38ca255163df246c04642f878d4c96ed51adf8a44c14c2e44f4ec96b9f45a816` |
 | `internal/bot/panel_expansions_test.go` | `c468078d50a3681d34cc5ca3c88c3377f2629fb532bc679ca6d182f63ec2ea50` |
 | `internal/bot/panel_fishing_test.go` | `7a1e1ee28c345c5f1b6aba3103d9fdff5b901c6b3d9fc4e8c9b7cbe3efd69228` |
 | `internal/bot/panel_go_features_test.go` | `5e2ae2a3a752f6b9b35541372f799e01706fe7592292b0a2ea511040b6de261f` |
@@ -833,7 +839,7 @@ Discord 面板（`app/discord_bot`，約 5,600 行）。函式庫：`github.com/
 | `internal/bot/panel_ranch_test.go` | `02bc4bfa4359a4ce25958fced45b01db4da11e09175e21670f0f0c98c96010f8` |
 | `internal/bot/panel_shop_test.go` | `7ac65cbe3837c238433e007532c4ca1e7168b309f07837c3eb0a57eb79a4768f` |
 | `internal/bot/panel_social_test.go` | `3aa94c269e73497f7425e5d8b667662ab17e83fecdc52e266c3c14ca938200bc` |
-| `internal/bot/panel_test.go` | `297c58f0b48d4ed902faec8f5f423074175efecb3b2346ba6a7a8806c851c7bc` |
+| `internal/bot/panel_test.go` | `401805e0546c34432a5d4da680413a39239c09c0abe4230afff85bf847c2d3aa` |
 | `internal/bot/panel_upgrade_test.go` | `5dee0df268c9c265b203ac94482d8ab3f8a71598275758eda3ca896cc284d4bd` |
 | `internal/bot/panel_weather_test.go` | `1e1beb4dcb3dad56bfc77798bac6041dfb5b3080857500e91ccb0954b0a8e3b5` |
 | `internal/bot/querycount_test.go` | `a86cf613acfc9d8a927c7d0a98adf7f5aac9cf0242aae524a1a11c55d101d47b` |

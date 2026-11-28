@@ -160,7 +160,7 @@ func TestPanelBossImageOnlyInIntroArea(t *testing.T) {
 	if a := att("boss"); a.Keep || len(a.Files) != 1 { // 從戰鬥區回介紹區：重新附上圖片
 		t.Fatalf("%+v", a)
 	}
-	if a := att("backpack"); a.Keep || len(a.Files) != 0 { // 離開世界 Boss 頁：移除
+	if a := att("backpack"); !a.Keep || p.panel.lastEmbed.Thumbnail != "attachment://"+FarmImage { // 離開世界 Boss 頁：沒圖的頁面把 Boss 圖留成縮圖
 		t.Fatalf("%+v", a)
 	}
 }

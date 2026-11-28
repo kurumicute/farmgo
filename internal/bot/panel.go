@@ -38,6 +38,9 @@ const (
 	FarmImage = "farm.png"
 )
 
+// noThumbnailPages 沒有圖片、也不沿用上一頁的圖當縮圖的頁面（世界 Boss 戰鬥區照 Python 只有數值面板）。
+var noThumbnailPages = map[string]bool{"boss_battle": true, "boss_donate": true, "boss_live_board": true}
+
 // Picker 數量選擇（Python self.picker dict）：買、賣、兌換時顯示 1／5／10／全部／自訂。
 type Picker struct {
 	Key     string
@@ -161,6 +164,7 @@ type Panel struct {
 	imageDigest []byte
 	sentDigest  []byte
 	imageSize   int
+	carried     bool // 這一頁沒有自己的圖，沿用訊息上的舊圖當縮圖
 }
 
 // NewPanel 建立面板（Python FarmPanel.__init__）。
@@ -237,7 +241,8 @@ func logUnexpected(err error, msg string, args ...any) {
 // render 讀取目前頁面的資料並重建元件；讀取失敗時顯示錯誤並提供回總覽按鈕。pre 不為 nil 且頁面相同時使用預先讀好的資料。
 func (p *Panel) render(ctx context.Context, notice string, pre *prepared) *ui.Embed {
 	p.View.Clear()
-	p.files, p.imageDigest = nil, nil // 換頁時舊圖片也要移除
+	prevFiles, prevDigest, prevSize := p.files, p.imageDigest, p.imageSize
+	p.files, p.imageDigest, p.carried = nil, nil, false // 換頁時舊圖片也要移除
 	embed, err := func() (e *ui.Embed, err error) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -278,6 +283,13 @@ func (p *Panel) render(ctx context.Context, notice string, pre *prepared) *ui.Em
 		p.files, p.imageDigest = nil, nil
 		embed = &ui.Embed{Title: p.s("⚠️ 無法顯示"), Color: Red, Description: "### " + cleanMessage(p.msg(err))}
 		p.navBack(0)
+	} else if len(p.files) == 0 && embed.Image == "" && embed.Thumbnail == "" && !noThumbnailPages[p.Page] &&
+		len(prevFiles) > 0 && prevDigest != nil && string(prevDigest) == string(p.sentDigest) {
+		// 2026-11-28：沒有圖片的頁面（釣魚、雜交、出售…）把訊息上現有的圖改成右上角縮圖留著，
+		// 回到總覽、農田頁時直接沿用，不必重新上傳（正式環境每次回總覽都要多等 1～4 秒）。
+		// 附件沒被 Embed 引用的話 Discord 會另外顯示在訊息下方，所以一定要掛在 thumbnail。
+		p.files, p.imageDigest, p.imageSize, p.carried = prevFiles, prevDigest, prevSize, true
+		embed.Thumbnail = "attachment://" + FarmImage
 	}
 	if notice != "" {
 		placeNotice(p.lang, embed, notice)
@@ -439,7 +451,7 @@ func (p *Panel) refresh(ctx context.Context, it ui.Interaction, notice string, p
 	}
 	defer p.scheduleFishTimer(it) // 釣魚畫面：上鉤、反應期限、拉扯逾時時自動更新（送出失敗也照常排定，與 Python 相同）
 	embed := p.render(ctx, notice, pre)
-	att := p.attachments(it)
+	att := p.attachments(it, embed)
 	deferred := it.Responded()
 	uploadStarted := time.Now()
 	if err := it.Show(ctx, ui.Message{Embed: embed, View: p.View, Attachments: att}); err != nil {
@@ -459,10 +471,15 @@ func (p *Panel) refresh(ctx context.Context, it ui.Interaction, notice string, p
 }
 
 // attachments 圖片和面板訊息上現有的一樣時沿用既有附件，否則上傳新檔案（沒有圖片時移除附件）。
-func (p *Panel) attachments(it ui.Interaction) *ui.Attachments {
+// 沿用成縮圖的舊圖（carried）不能沿用時直接移除，不為了縮圖重新上傳。
+func (p *Panel) attachments(it ui.Interaction, embed *ui.Embed) *ui.Attachments {
 	if len(p.files) > 0 && p.imageDigest != nil && string(p.imageDigest) == string(p.sentDigest) &&
 		slices.Contains(it.MessageAttachments(), FarmImage) {
 		return &ui.Attachments{Keep: true}
+	}
+	if p.carried {
+		p.files, p.imageDigest, p.carried = nil, nil, false
+		embed.Thumbnail = ""
 	}
 	return &ui.Attachments{Files: p.files}
 }
